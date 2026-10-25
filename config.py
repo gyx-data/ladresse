@@ -140,6 +140,9 @@ DEFAULT_SETTINGS = {
     "quartier": True,                 # phase d'exploration du quartier avant la maison
     "didacticiel": True,              # didacticiel guidé et doublé
     "voix_reelles": True,             # voix françaises du système (Windows / espeak) si disponibles
+    "elevenlabs_key": "",              # clé API ElevenLabs (prioritaire sur les voix système)
+    "elevenlabs_voice_m": "",          # ID de la voix masculine ElevenLabs (auto si vide)
+    "elevenlabs_voice_f": "",          # ID de la voix féminine ElevenLabs (auto si vide)
     "pause_auto": True,               # pause quand la fenêtre perd le focus
     "afficher_fps": False,
     "keys": dict(DEFAULT_KEYS),

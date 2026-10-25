@@ -170,7 +170,7 @@ def _rdc(house, rng):
     point(house, "four", (4.0, 0.5, 11.0), "Ouvrir", 0, radius=0.9)
     # table et chaises
     rb.table(b, 3.2, 8.4, y0, 1.2, 0.8, 0.75)
-    rb.chair(b, 3.2, 7.6, y0, 0)
+    rb.chair(b, 3.2, 7.3, y0, 0)
     rb.chair(b, 3.8, 9.3, y0, 0, fallen=True)
     b.cyl("email", 3.0, y0 + 0.75, 8.35, 0.025, 0.09, 6, (0.95, 0.95, 0.95))                    # salière
     point(house, "sel", (3.0, 0.85, 8.35), "Ramasser le sel", 0, radius=0.8)
@@ -247,8 +247,8 @@ def _etage(house, rng):
     for (zz, face) in ((9.0, "+x"), (10.5, "+x")):
         pass
     for z in (1.0, 2.5, 4.4, 8.9, 10.2):
-        rb.painting(b, 7.86, 1.65, z, 0.42, 0.55, "-x", tex="portrait")
-        frames.append((7.86, 1.65, z))
+        rb.painting(b, 7.9, 1.65, z, 0.42, 0.55, "-x", tex="portrait")
+        frames.append((7.9, 1.65, z))
     house.photo_frames = frames
     del xs
     # placard : étagères et produits
@@ -410,7 +410,7 @@ def _sous_sol(house, rng):
         rb.shelving_unit(b, sx, 23.2, sx + 2.1, 23.8, y0, levels=4, height=1.9)
         for lv in range(4):
             for j in range(4):
-                rb.delivery_bag(b, sx + 0.35 + j * 0.45, 23.7, y0 + 0.18 + lv * 0.43, rng.uniform(-8, 8), torn=True)
+                rb.delivery_bag(b, sx + 0.35 + j * 0.45, 23.5, y0 + 0.18 + lv * 0.43, rng.uniform(-8, 8), torn=True)
     # taches sur les murs
     rb.wall_decal(b, "taches", 5.0, 1.2 + y0, 16.35, 3.0, 2.0, "+z", off=0.0, col=(1, 1, 1))
     rb.wall_decal(b, "taches", 10.8, 1.2 + y0, 20.0, 4.0, 2.0, "-x", off=0.0)

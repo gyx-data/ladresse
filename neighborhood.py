@@ -404,8 +404,8 @@ class Neighborhood:
             while x <= a1:
                 b.box("metal", x - 0.04, 0.5, z1 - 0.16, x + 0.04, H, z1 - 0.04, (0.3, 0.32, 0.36))
                 x += 2.0
-        b.box("metal", x0, H, z1 - 0.3, x1, H + 0.8, z1, (0.1, 0.25, 0.6))       # bandeau d'enseigne
-        b.box("metal", x0, H - 0.05, z1 - 0.32, x1, H, z1 + 0.02, (0.8, 0.1, 0.12))
+        b.box("platre", x0, H, z1 - 0.3, x1, H + 0.8, z1 + 0.02, (0.04, 0.12, 0.45))   # bandeau bleu Carrefour
+        b.box("platre", x0, H - 0.05, z1 - 0.32, x1, H + 0.02, z1 + 0.04, (0.82, 0.08, 0.12))  # liseré rouge
         # toit
         b.box("beton", x0, H + 0.8, z0, x1, H + 0.9, z1, (0.4, 0.4, 0.42))
         # sol / plafond intérieurs
@@ -467,11 +467,21 @@ class Neighborhood:
         sign(self.root, "CAISSE FERMÉE", (18.1, 1.25, -23.2), 0.12, 0, (255, 255, 255), (214, 36, 46, 255), px=48)
         for gx in (SHOP_DOOR_X - 1.15, SHOP_DOOR_X + 1.15):
             b.box("metal", gx - 0.05, 0, z1 - 1.1, gx + 0.05, 1.5, z1 - 0.7, (0.8, 0.82, 0.88), collide=True)
-        # enseigne lumineuse
-        sign(self.root, SHOP_NAME, (SHOP_DOOR_X, H + 0.42, z1 + 0.04), 0.62, 180, (255, 255, 255), px=110)
-        sign(self.root, "Ouvert 7j/7 · 7h – 23h", (SHOP_DOOR_X + 6.5, 2.6, z1 + 0.02), 0.2, 180, (255, 255, 255), (214, 36, 46, 230), px=48)
-        sign(self.root, "PROMO CARTE : -1 € sur les piles", (SHOP_DOOR_X - 6.5, 2.6, z1 + 0.02), 0.2, 180, (255, 255, 255),
-             (18, 72, 160, 230), px=48)
+        # enseigne lumineuse Carrefour City
+        sign(self.root, SHOP_NAME, (SHOP_DOOR_X, H + 0.42, z1 + 0.06), 0.55, 180,
+             (255, 255, 255), bg=(10, 30, 115, 255), px=110)
+        # horaires et promos sur la vitrine
+        sign(self.root, "Ouvert 7j/7 · 7h – 23h", (SHOP_DOOR_X + 6.5, 2.6, z1 + 0.04), 0.2, 180,
+             (255, 255, 255), (214, 36, 46, 230), px=48)
+        sign(self.root, "PROMO CARTE : -1 € sur les piles", (SHOP_DOOR_X - 6.5, 2.6, z1 + 0.04), 0.2, 180,
+             (255, 255, 255), (18, 72, 160, 230), px=48)
+        # logo Carrefour (croix rouge/bleu)
+        self._carrefour_logo(SHOP_DOOR_X - 5.5, H + 0.42, z1 + 0.06)
+        # affiches promo dans les vitrines
+        sign(self.root, "FRUITS & LÉGUMES  FRAIS", (x0 + 4.0, 1.8, z1 + 0.02), 0.18, 180,
+             (255, 255, 255), (46, 139, 87, 230), px=48)
+        sign(self.root, "- 30 %  SUR LE BIO", (x1 - 4.0, 1.8, z1 + 0.02), 0.18, 180,
+             (255, 255, 255), (214, 36, 46, 230), px=48)
         self.lights.append(LightSource((SHOP_DOOR_X, 3.0, z1 + 1.5), (0.6, 0.7, 1.0), 1.5, 9.0, name="enseigne"))
         # portes coulissantes (animées)
         self.door_panels = []
@@ -484,6 +494,26 @@ class Neighborhood:
             self.door_panels.append((root, s))
         self.door_open = 0.0
         b.box("crepi", d0 - 0.1, 2.5, z1 - 0.2, d1 + 0.1, H, z1, (0.85, 0.85, 0.85))
+
+    def _carrefour_logo(self, x, y, z):
+        """Logo Carrefour simplifié (losange rouge/bleu) sur la façade."""
+        from PIL import Image, ImageDraw
+        from texture_generator import textures
+        sz = 200
+        img = Image.new("RGBA", (sz, sz), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        c = sz // 2
+        r = int(sz * 0.44)
+        d.ellipse([c - r, c - r, c + r, c + r], fill=(255, 255, 255, 255))
+        # flèche gauche (rouge)
+        pts_r = [(c - r * 0.15, c), (c - r * 0.7, c - r * 0.5), (c - r * 0.7, c + r * 0.5)]
+        d.polygon(pts_r, fill=(214, 36, 46, 255))
+        # flèche droite (bleue)
+        pts_b = [(c + r * 0.15, c), (c + r * 0.7, c - r * 0.5), (c + r * 0.7, c + r * 0.5)]
+        d.polygon(pts_b, fill=(10, 30, 115, 255))
+        tex = textures.from_pil(img)
+        Entity(parent=self.root, model="quad", texture=tex, position=(x, y, z),
+               rotation_y=180, scale=(0.5, 0.5), double_sided=True)
 
     def _build_resto(self, b, be, rng):
         x0, z0, x1, z1 = RESTO

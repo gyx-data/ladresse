@@ -563,11 +563,8 @@ class PhoneUI:
             col, row = i % 3, i // 3
             x = -0.12 + col * 0.12
             y = 0.04 - row * 0.15
-            b = button(self.home, "", x, y, 0.085, 0.085, (lambda a=aid: self.open_app(a)), rgb(255, 255, 255, 255), z=-0.1)
-            b.texture = textures.get(tex)
-            b.color = rgb(255, 255, 255)
-            b.highlight_color = rgb(255, 255, 255)
-            b.pressed_color = rgb(200, 200, 200)
+            icon_e = rect(self.home, x, y, 0.085, 0.085, rgb(255, 255, 255), z=-0.1, texture=textures.get(tex))
+            b = button(self.home, "", x, y, 0.085, 0.085, (lambda a=aid: self.open_app(a)), rgb(0, 0, 0, 0), z=-0.11)
             label(self.home, name if len(name) < 12 else "Photo", x, y - 0.058, 0.42, color.white, z=-0.1)
             if aid == "messages":
                 self.msg_badge = rect(self.home, x + 0.04, y + 0.04, 0.03, 0.03, rgb(230, 50, 50), z=-0.12)
@@ -731,6 +728,7 @@ class PhoneUI:
             self.apps[self.current].on_key(key)
 
     def update(self, dt):
+        self._toast.update(dt)
         self.calls.update(dt)
         if self.frozen:
             self.frozen_until -= dt

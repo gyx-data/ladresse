@@ -68,6 +68,9 @@ $s.Dispose()
 """
 
 
+_EL_URL = "https://api.elevenlabs.io/v1"
+
+
 def _key(text, gender, rate):
     raw = f"{ENGINE_VERSION}|{text}|{gender}|{rate}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:20]
@@ -140,7 +143,58 @@ class TTS:
             return True
         return any(g == gender for _, g in self.voices)
 
+    def _probe_elevenlabs(self):
+        """Try ElevenLabs API — returns True if usable."""
+        import urllib.request, urllib.error
+        key = config.settings.get("elevenlabs_key", "").strip()
+        if not key:
+            return False
+        try:
+            req = urllib.request.Request(f"{_EL_URL}/voices",
+                                        headers={"xi-api-key": key, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            voices = data.get("voices", [])
+            self._el_key = key
+            self._el_voices = {"Male": None, "Female": None}
+            vm = config.settings.get("elevenlabs_voice_m", "").strip()
+            vf = config.settings.get("elevenlabs_voice_f", "").strip()
+            if vm:
+                self._el_voices["Male"] = vm
+            if vf:
+                self._el_voices["Female"] = vf
+            for v in voices:
+                labels = v.get("labels", {})
+                lang = labels.get("language", "") or v.get("fine_tuning", {}).get("language", "")
+                if "fr" in lang.lower() or "french" in lang.lower() or "multilingual" in v.get("model_id", "").lower():
+                    gender = labels.get("gender", "").capitalize()
+                    if gender == "Male" and not self._el_voices["Male"]:
+                        self._el_voices["Male"] = v["voice_id"]
+                    elif gender == "Female" and not self._el_voices["Female"]:
+                        self._el_voices["Female"] = v["voice_id"]
+            if not self._el_voices["Male"] and not self._el_voices["Female"]:
+                for v in voices[:3]:
+                    vid = v["voice_id"]
+                    g = v.get("labels", {}).get("gender", "").capitalize()
+                    if g == "Male" and not self._el_voices["Male"]:
+                        self._el_voices["Male"] = vid
+                    elif not self._el_voices["Female"]:
+                        self._el_voices["Female"] = vid
+            if not self._el_voices["Male"]:
+                self._el_voices["Male"] = self._el_voices["Female"]
+            if not self._el_voices["Female"]:
+                self._el_voices["Female"] = self._el_voices["Male"]
+            if self._el_voices["Male"] or self._el_voices["Female"]:
+                self.backend = "elevenlabs"
+                self.status = "ElevenLabs"
+                return True
+        except Exception:
+            pass
+        return False
+
     def _probe(self):
+        if self._probe_elevenlabs():
+            return
         if sys.platform.startswith("win"):
             out = self._powershell(None, "probe", timeout=25)
             if out is not None:
@@ -212,7 +266,47 @@ class TTS:
         except (OSError, subprocess.SubprocessError, UnicodeError):
             return None
 
+    def _generate_elevenlabs(self, job):
+        """Generate one voice line via ElevenLabs API, save as WAV."""
+        import urllib.request, urllib.error, struct
+        gender = job["gender"]
+        vid = self._el_voices.get(gender) or self._el_voices.get("Female") or self._el_voices.get("Male")
+        if not vid:
+            return
+        body = json.dumps({
+            "text": job["text"],
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+        }).encode("utf-8")
+        url = f"{_EL_URL}/text-to-speech/{vid}?output_format=pcm_22050"
+        req = urllib.request.Request(url, data=body, headers={
+            "xi-api-key": self._el_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                pcm = resp.read()
+        except (urllib.error.URLError, OSError):
+            return
+        if len(pcm) < 200:
+            return
+        tmp = job["path"] + ".part"
+        with wave.open(tmp, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(22050)
+            w.writeframes(pcm)
+        shutil.move(tmp, job["path"])
+
     def _generate(self, batch):
+        if self.backend == "elevenlabs":
+            for j in batch:
+                try:
+                    self._generate_elevenlabs(j)
+                except Exception:
+                    pass
+            return
         if self.backend == "sapi":
             fd, jf = tempfile.mkstemp(suffix=".json", prefix="ladresse_jobs_")
             with os.fdopen(fd, "w", encoding="utf-8") as f:
