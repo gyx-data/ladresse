@@ -1,33 +1,35 @@
-# Serveur relais L'ADRESSE — installation Pterodactyl (ou tout PC / VPS)
+# Serveur multijoueur L'ADRESSE — installation Pterodactyl (ou tout PC / VPS)
 
 Aucune dépendance : Python 3.8 ou plus récent suffit.
 
 ## Comment ça marche
 
-Le serveur est un **relais** : il ne fait tourner aucune partie.
+**Toutes les parties tournent sur ce serveur.**
 
-* Il **liste les parties** disponibles. N'importe quel joueur peut **créer** la sienne (nom, nombre de joueurs
-  maximum de 1 à 8, mot de passe facultatif) et les autres la **rejoignent** depuis l'écran *Multijoueur*.
-* La partie tourne **chez le joueur qui l'a créée** (l'hôte) : IA du livreur, minuteries, messages d'assistance.
-* Le serveur se contente de **faire suivre les paquets** entre les joueurs d'une même partie.
-  Les positions passent en UDP, directement d'un joueur à tous les autres (un seul passage par le relais),
-  et basculent automatiquement en TCP si l'UDP d'un joueur est bloqué.
+* L'écran *Multijoueur* du jeu liste les parties disponibles. N'importe quel joueur peut **créer** la sienne
+  (nom, nombre de joueurs maximum de 1 à 8, mot de passe facultatif) ; les autres la **rejoignent**.
+* Chaque partie (IA du livreur, minuteries, messages d'assistance, morts, victoire) tourne **ici**, dans une
+  seule boucle de jeu à 20 ticks/s pour tous les salons. Si le créateur quitte, la partie **continue** et un autre
+  joueur devient créateur. Le salon disparaît quand le dernier joueur part.
+* Les positions des joueurs passent en UDP, directement d'un joueur à tous les autres (un seul passage par le
+  serveur), et basculent automatiquement en TCP si l'UDP d'un joueur est bloqué.
 
-Conséquence : **une mise à jour du jeu ne demande pas de mettre le serveur à jour.** Seuls les joueurs doivent
-avoir la même version du jeu que l'hôte (le relais refuse les autres avec un message clair).
-Il ne faut redéployer le serveur que si le protocole du relais change (version 3.x aujourd'hui), ce qui est rare.
-
-Si l'hôte quitte pendant la partie, elle s'arrête pour tout le monde. S'il quitte dans le salon d'attente,
-un autre joueur devient l'hôte.
+Quand faut-il mettre le serveur à jour ?
+* **Oui** si les règles du multijoueur changent : `coop_rules.py`, `coop_state.py`, `coop_game.py`.
+* **Non** pour tout le reste (graphismes, interface, maison, quartier, mode solo...).
+Les joueurs d'une même partie doivent avoir la même version du jeu (le serveur refuse les autres avec un message clair).
 
 ## Fichiers à envoyer sur le serveur
 
-Dans le dossier racine du serveur Pterodactyl (`/home/container`), mettez **uniquement ces 2 fichiers** :
+Décompressez `LADRESSE-serveur.zip` dans le dossier racine du serveur Pterodactyl (`/home/container`) :
 
 | Fichier | Rôle |
 | --- | --- |
-| `server.py` | le relais (à lancer) |
-| `server_config.py` | réglages par défaut |
+| `server.py` | le serveur (fichier à lancer) |
+| `server_config.py` | réglages réseau par défaut |
+| `coop_game.py` | déroulé d'une partie |
+| `coop_state.py` | état d'une partie, IA du livreur |
+| `coop_rules.py` | règles et durées du multijoueur |
 
 Supprimez l'ancien `game_state.py` s'il est encore là : il ne sert plus.
 Optionnel : `server_config.json` (copie de `server_config.example.json`) pour changer des valeurs **sans toucher au code**.
@@ -40,13 +42,14 @@ Optionnel : `server_config.json` (copie de `server_config.example.json`) pour ch
 * Le port est détecté automatiquement (`SERVER_PORT` fourni par Pterodactyl). Rien à modifier.
 * Commande d'arrêt : `stop` (ou `^C`) — les joueurs sont prévenus.
 
+Au démarrage, la console affiche « serveur démarré sur 0.0.0.0:27326 ».
 Le jeu se connecte par défaut à `5.180.34.43:27326`. Un autre serveur peut être saisi en bas de l'écran
 *Multijoueur* (champ « Serveur »).
 
 ## Console
 
-`help`, `list` (salons, joueurs, IP, UDP), `rooms`, `kick <id>`, `close <code du salon>`, `say <texte>` (message
-à tous), `stats`, `stop`.
+`help`, `list` (salons, phase de chaque partie, joueurs, IP, UDP), `rooms`, `kick <id>`, `close <code du salon>`,
+`say <texte>` (message à tous), `stats` (trafic, temps moyen d'un tick), `stop`.
 
 ## Changer une valeur sans modifier le code
 
@@ -59,7 +62,7 @@ Par ordre de priorité : variable d'environnement `LADRESSE_<NOM>` (ex. `LADRESS
 | `host` | 0.0.0.0 | interface d'écoute |
 | `motd` | « Bienvenue… » | message d'accueil affiché dans le jeu |
 | `max_rooms` | 64 | parties simultanées sur le serveur |
-| `max_room_players` | 8 | limite maximale qu'un hôte peut choisir |
+| `max_room_players` | 8 | limite maximale qu'un créateur peut choisir |
 | `max_rooms_per_ip` | 4 | parties créées depuis une même IP |
 | `max_connections` | 256 | connexions TCP simultanées |
 | `max_per_ip` | 8 | connexions par IP |
@@ -69,6 +72,8 @@ Par ordre de priorité : variable d'environnement `LADRESSE_<NOM>` (ex. `LADRESS
 | `udp_rate_per_sec` | 120 | paquets UDP par seconde et par joueur |
 | `log` | `server.log` | fichier journal (rotation à 2 Mo) |
 
+Les durées et règles de partie (temps de survie, rythme des évènements...) se règlent dans `coop_rules.py`.
+
 ## Héberger sans Pterodactyl
 
 * Sur un PC : `python server.py`, ou le bouton **Serveur local (LAN)** de l'écran *Multijoueur*.
@@ -76,5 +81,6 @@ Par ordre de priorité : variable d'environnement `LADRESSE_<NOM>` (ex. `LADRESS
 
 ## Vérifier
 
-`python tests/server_stress_test.py` (depuis le dossier du jeu) lance un relais local, l'attaque avec des
-clients simulés, puis joue une partie entre deux vrais clients du jeu : doit afficher `SERVER STRESS OK`.
+`python tests/server_stress_test.py` (depuis le dossier du jeu) lance un serveur local, l'attaque avec des
+clients simulés, joue une partie entre deux vrais clients du jeu et fait tourner 40 parties en parallèle :
+doit afficher `SERVER STRESS OK`.

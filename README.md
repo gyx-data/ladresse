@@ -68,7 +68,7 @@ noir), puis appelle PyInstaller (`--onefile --windowed --name LADRESSE`). Résul
 
 ## Multijoueur (parties publiques, 1 à 8 joueurs)
 
-Le serveur `5.180.34.43:27326` est un **relais** autonome (Python pur, aucune dépendance, Pterodactyl) :
+Toutes les parties tournent sur le serveur `5.180.34.43:27326` (Python pur, aucune dépendance, Pterodactyl) :
 
 ```bash
 cd server
@@ -77,15 +77,15 @@ python server.py          # écoute en TCP + UDP sur 0.0.0.0:27326
 
 * L'écran *Multijoueur* liste les parties disponibles ; n'importe qui peut **créer** la sienne (nom, joueurs
   maximum, mot de passe facultatif) ou en **rejoindre** une.
-* La partie tourne **chez l'hôte** (`coop_host.py` : IA de l'entité, minuteries, messages d'assistance différents
-  pour chaque joueur, morts, victoire). Le relais ne fait que suivre les paquets : **mettre le jeu à jour ne demande
-  pas de mettre le serveur à jour**, seuls les joueurs d'une même partie doivent avoir la même version.
+* Le serveur fait tourner chaque partie (`server/coop_game.py` : IA de l'entité, minuteries, messages
+  d'assistance différents pour chaque joueur, morts, victoire) dans une seule boucle à 20 ticks/s ; une partie
+  continue si son créateur s'en va. Seuls `server/coop_*.py` demandent une mise à jour du serveur.
 * Positions en UDP de joueur à joueur (repli TCP automatique), interpolation côté client pour des mouvements fluides.
-* Robustesse du relais : limiteurs de débit TCP/UDP, taille maximale, délais d'inactivité, limites par IP,
+* Robustesse : limiteurs de débit TCP/UDP, taille maximale, délais d'inactivité, limites par IP,
   jeton de session UDP anti-usurpation, arrêt propre, console (`list`, `kick`, `close`, `say`, `stats`, `stop`).
   Détails : `server/LISEZMOI_SERVEUR.md`.
 
-Le bouton **Serveur local (LAN)** lance le relais dans le jeu (port 27326, TCP + UDP à ouvrir sur la box pour
+Le bouton **Serveur local (LAN)** lance le serveur dans le jeu (port 27326, TCP + UDP à ouvrir sur la box pour
 jouer par Internet sans le serveur officiel).
 
 ## Fiabilité
@@ -110,8 +110,7 @@ quest_system.py         quêtes                      sound_engine.py (synthèse 
 texture_generator.py    textures (Pillow/numpy)     shaders.py / lighting_system.py / effects.py / particle_system.py
 jumpscare_system.py     jumpscares                  ui_manager.py / settings_menu.py / ui_widgets.py
 save_system.py          sauvegarde JSON             multiplayer_client.py / multiplayer_manager.py
-coop_host.py            partie multijoueur chez l'hôte      coop_state.py (état, IA) / coop_rules.py (règles)
-server/                 server.py, server_config.py (relais : salons + transfert des paquets)
+server/                 server.py, server_config.py (salons, transfert des positions) + coop_game.py, coop_state.py, coop_rules.py (parties)
 tests/smoke_test.py     test de fumée (xvfb-run -a python tests/smoke_test.py)
 ```
 

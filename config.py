@@ -11,7 +11,7 @@ CACHE_VERSION = "v4"
 
 # --- Réseau ---------------------------------------------------------------
 SERVER_HOST = "5.180.34.43"
-SERVER_PORT = 27326          # serveur relais (salons) — la partie tourne chez l'hôte
+SERVER_PORT = 27326          # serveur multijoueur : salons + parties
 TICK_RATE = 20
 MAX_PLAYERS = 4
 

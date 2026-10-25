@@ -1,15 +1,11 @@
-"""Partie multijoueur exécutée chez l'HÔTE (le joueur qui a créé le salon).
+"""Partie multijoueur exécutée SUR LE SERVEUR : une instance par salon.
 
-Reprend la logique de l'ancien serveur dédié (déroulé de la partie, IA de l'entité, messages d'assistance
-contradictoires, morts, victoire). Les messages passent par le relais :
-  * joueurs -> hôte : « to: host » ; hôte -> joueurs : « to: all » ou un id ;
-  * les messages destinés à l'hôte lui-même sont livrés directement (pas d'aller-retour réseau).
-Tourne dans un thread à TICK_RATE ticks/s, indépendamment des images du jeu.
+Déroulé de la partie, IA du livreur, minuteries, messages d'assistance contradictoires, morts, victoire.
+Le serveur appelle `step(dt)` pour tous les salons depuis une seule boucle à TICK_RATE ticks/s et
+transmet les messages des joueurs via `receive()`. Les envois passent par `sender.to(cibles, message, udp)`.
 """
 import math
-import queue
 import random
-import threading
 import time
 import unicodedata
 
@@ -18,82 +14,61 @@ from coop_state import GameState, EntityState, dist3
 
 
 class PeerLink:
-    """Remplace la connexion TCP de l'ancien serveur : envoie à un joueur via l'hôte."""
+    """Lien vers un joueur : ps.conn.send(...) envoie à ce joueur seulement."""
 
-    def __init__(self, session, pid):
-        self.session, self.pid = session, pid
+    def __init__(self, game, pid):
+        self.game, self.pid = game, pid
 
     def send(self, obj):
-        self.session.send_to(self.pid, obj)
+        self.game.sender.to([self.pid], obj)
 
 
-class HostSession:
-    def __init__(self, net, max_players=cfg.MAX_PLAYERS):
-        self.net = net
+class RoomGame:
+    def __init__(self, sender, max_players=cfg.MAX_PLAYERS):
+        self.sender = sender            # objet du serveur : sender.to(cibles, message, udp=False)
         self.state = GameState(max_players)
-        self.lock = threading.RLock()
-        self.inq = queue.Queue()
-        self.running = True
+        self.owner = None               # créateur du salon (seul à pouvoir lancer)
         self.last_tcp_entity = 0.0
-        self._last_tick = time.time()
         self.errors = []
-        self.thread = threading.Thread(target=self._loop, daemon=True, name="coop-host")
-        self.thread.start()
 
     # ------------------------------------------------------------------
     # Transport
     # ------------------------------------------------------------------
-    @property
-    def me(self):
-        return self.net.id
-
-    def send_to(self, pid, obj, udp=False):
-        if pid == self.me:
-            self.net.deliver_local(obj)
-        else:
-            self.net.relay(pid, obj, udp=udp)
-
     def broadcast(self, obj, exclude=None, udp=False):
         targets = [pid for pid in self.state.players if pid != exclude]
-        if self.me in targets:
-            self.net.deliver_local(obj)
-        others = [pid for pid in targets if pid != self.me]
-        if not others:
-            return
-        everyone = len(others) == len(self.state.players) - (1 if self.me in self.state.players else 0)
-        self.net.relay("all" if everyone else others, obj, udp=udp)
+        if targets:
+            self.sender.to("all" if exclude is None else targets, obj, udp=udp)
 
     def broadcast_udp(self, obj, exclude=None):
         self.broadcast(obj, exclude, udp=True)
 
     def receive(self, pid, msg):
-        """Appelé par le thread réseau (ou par l'hôte lui-même) : traité dans le thread de la partie."""
-        if self.running and isinstance(msg, dict):
-            self.inq.put((pid, msg))
-
-    def stop(self):
-        self.running = False
+        if isinstance(msg, dict):
+            try:
+                self.handle(pid, msg)
+            except Exception as e:          # message malformé : ignoré
+                self.errors.append(repr(e))
 
     # ------------------------------------------------------------------
-    # Membres du salon (liste tenue par le relais)
+    # Membres du salon
     # ------------------------------------------------------------------
-    def sync_members(self, roster):
+    def sync_members(self, roster, owner):
         """roster : [{id, name}] dans l'ordre d'arrivée."""
-        with self.lock:
-            s = self.state
-            ids = [p["id"] for p in roster]
-            for pid in list(s.players):
-                if pid not in ids:
-                    self._remove(pid)
-            if s.phase == "lobby":
-                for p in roster:
-                    if p["id"] not in s.players:
-                        s.add_player(p["id"], p.get("name", "Joueur"), PeerLink(self, p["id"]))
-                s.host = self.me
+        s = self.state
+        self.owner = owner
+        ids = [p["id"] for p in roster]
+        for pid in list(s.players):
+            if pid not in ids:
+                self._remove(pid)
+        if s.phase == "lobby":
+            for p in roster:
+                if p["id"] not in s.players:
+                    s.add_player(p["id"], p.get("name", "Joueur"), PeerLink(self, p["id"]))
+        s.host = owner
 
-    def lobby_players(self):
-        with self.lock:
-            return [p.info() for p in self.state.players.values()]
+    @property
+    def phase(self):
+        return self.state.phase
 
     def _remove(self, pid):
         s = self.state
@@ -105,31 +80,11 @@ class HostSession:
             self.broadcast(dict(type="player_left", id=pid, name=name))
             self._check_end()
 
-    # ------------------------------------------------------------------
-    # Boucle
-    # ------------------------------------------------------------------
-    def _loop(self):
-        while self.running:
-            t0 = time.time()
-            with self.lock:
-                for _ in range(500):
-                    try:
-                        pid, msg = self.inq.get_nowait()
-                    except queue.Empty:
-                        break
-                    try:
-                        self.handle(pid, msg)
-                    except Exception as e:          # message malformé : ignoré
-                        self.errors.append(repr(e))
-                dt = min(0.25, t0 - self._last_tick)
-                self._last_tick = t0
-                try:
-                    self._tick(dt)
-                except Exception as e:
-                    self.errors.append(repr(e))
-            sleep = cfg.TICK_DT - (time.time() - t0)
-            if sleep > 0:
-                time.sleep(sleep)
+    def step(self, dt):
+        try:
+            self._tick(min(0.25, dt))
+        except Exception as e:
+            self.errors.append(repr(e))
 
     # ------------------------------------------------------------------
     # Messages des joueurs
@@ -141,7 +96,7 @@ class HostSession:
             return
         t = msg.get("type")
         if t == "start":
-            if pid == self.me and s.phase == "lobby":
+            if pid == self.owner and s.phase == "lobby":
                 self._start_game()
         elif t == "move":
             self._on_move(ps, msg)
@@ -178,7 +133,7 @@ class HostSession:
         now = time.time()
         dt = max(0.02, now - ps.last_move)
         if dist3(ps.pos, pos) > cfg.MAX_SPEED * dt + cfg.SPEED_TOLERANCE and ps.alive and self.state.phase != "lobby" \
-                and ps.id != self.me and now - getattr(ps, "_corrected", 0) > 1.0:
+                and now - getattr(ps, "_corrected", 0) > 1.0:
             ps._corrected = now
             ps.conn.send(dict(type="correct", pos=ps.pos))
             return

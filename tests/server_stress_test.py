@@ -1,4 +1,4 @@
-"""Test de robustesse du serveur RELAIS et de la partie tenue par l'hôte (sans Ursina).
+"""Test de robustesse du serveur multijoueur et des parties qu'il fait tourner (sans Ursina).
 
     python tests/server_stress_test.py      -> « SERVER STRESS OK » ou la liste des échecs
 """
@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(ROOT, "server"))
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="ladresse_stress_")
 os.environ["LADRESSE_LOG"] = os.path.join(os.environ["APPDATA"], "server.log")
 os.environ["LADRESSE_MAX_ROOMS_PER_IP"] = "50"
-os.environ["LADRESSE_MAX_PER_IP"] = "64"
+os.environ["LADRESSE_MAX_PER_IP"] = "128"
 
 import server as srv            # noqa: E402
 import config                   # noqa: E402
@@ -42,7 +42,7 @@ def free_port():
 class Raw:
     """Client brut (TCP + UDP) pour piloter le relais."""
 
-    def __init__(self, port, name=None, proto="3.0"):
+    def __init__(self, port, name=None, proto="4.0"):
         self.port = port
         self.s = socket.create_connection(("127.0.0.1", port), timeout=3)
         self.s.settimeout(0.05)
@@ -140,12 +140,12 @@ def relay_tests(port, server):
     check(a.wait("room", pred=lambda m: len(m["players"]) == 2) is not None, "l'hôte voit le nouveau joueur")
 
     # relais TCP
-    b.send(type="to", to="host", d={"type": "order", "meal": "pizza"})
-    m = a.wait("from")
-    check(m is not None and m["from"] == b.id and m["d"]["meal"] == "pizza", "relais joueur -> hôte")
+    b.send(type="to", to="host", d={"type": "chat", "message": "allo"})
+    m = a.wait("from", pred=lambda m: m["d"].get("type") == "chat")
+    check(m is not None and m["from"] == 0 and m["d"]["name"] == "Alice#2", "action d'un joueur traitée par la partie du serveur")
     a.send(type="to", to="all", d={"type": "game_event", "event": "x"})
-    m = b.wait("from")
-    check(m is not None and m["from"] == a.id, "relais hôte -> tous")
+    m = b.wait("from", pred=lambda m: m["d"].get("event") == "x")
+    check(m is not None and m["from"] == a.id, "relais joueur -> tous")
     b.send(type="to", to="all", d="pas un objet")
     b.pump(0.2)
     check(not [x for x in a.msgs if x.get("type") == "from"], "charge utile invalide ignorée")
@@ -198,14 +198,22 @@ def relay_tests(port, server):
     check(server.rooms.get(code2) is not None and h.id in server.rooms[code2].members, "un non-hôte ne peut pas exclure")
 
     # partie lancée : plus de nouveaux joueurs ; départ de l'hôte -> salon fermé
-    a.send(type="room_state", phase="playing")
-    a.wait("room", pred=lambda m: m["room"]["phase"] == "playing")
+    b.send(type="to", to="host", d={"type": "start"})
+    b.pump(0.3)
+    check(server.rooms[code].sim.phase == "lobby", "seul le créateur peut lancer")
+    a.send(type="to", to="host", d={"type": "start"})
+    check(a.wait("room", pred=lambda m: m["room"]["phase"] == "playing") is not None, "lancement par le créateur")
     e.send(type="join", room=code, game="1.0")
     check(e.wait("error", pred=lambda m: m.get("code") == "started") is not None, "partie en cours : rejoindre refusé")
     a.close()
-    check(b.wait("room_closed", t=3) is not None and c.wait("room_closed", t=3) is not None, "départ de l'hôte en jeu : salon fermé pour tous")
+    m = b.wait("room", t=3, pred=lambda m: a.id not in [p["id"] for p in m["players"]])
+    check(m is not None and m["host"] == b.id, "départ du créateur en jeu : un autre joueur prend la main")
     time.sleep(0.2)
-    check(code not in server.rooms, "salon supprimé")
+    check(code in server.rooms and server.rooms[code].sim.phase != "lobby", "la partie continue sur le serveur")
+    b.send(type="leave")
+    c.send(type="leave")
+    b.wait("left")
+    c.wait("left")
 
     # départ de l'hôte dans le salon d'attente : un autre joueur devient hôte
     b.pump(0.2)
@@ -261,22 +269,22 @@ def server_cfg():
     return srv.cfg
 
 
-def host_tests(port):
-    """Deux vrais clients du jeu : l'hôte fait tourner la partie, le second joueur la suit."""
-    print("== partie chez l'hôte ==")
+def game_tests(port, server):
+    """Deux vrais clients du jeu : la partie tourne sur le serveur."""
+    print("== partie sur le serveur ==")
     from multiplayer_client import NetClient
     import coop_rules
     coop_rules.FIRST_CANCEL_DELAY = 0.2
     coop_rules.TIME_SCALE = 1.0
-    host, peer = NetClient(), NetClient()
-    host.connect("127.0.0.1", port, "Hôte")
+    owner, peer = NetClient(), NetClient()
+    owner.connect("127.0.0.1", port, "Créateur")
     peer.connect("127.0.0.1", port, "Invité")
-    got = {"h": [], "p": []}
+    got = {"o": [], "p": []}
 
     def drain(t=0.4):
         end = time.time() + t
         while time.time() < end:
-            got["h"] += host.poll()
+            got["o"] += owner.poll()
             got["p"] += peer.poll()
             time.sleep(0.02)
 
@@ -291,43 +299,74 @@ def host_tests(port):
         return None
 
     drain(0.3)
-    host.create_room("Test hôte", 4)
-    room = find("h", "room")
-    check(room is not None and host.is_host and host.host_session is not None, "créer -> on devient hôte, la partie tourne en local")
-    peer.join_room(room["room"]["id"])
+    owner.create_room("Test serveur", 4)
+    room = find("o", "room")
+    check(room is not None and owner.is_host, "créer une partie -> on en est le créateur")
+    code = room["room"]["id"]
+    sim = server.rooms[code].sim
+    peer.join_room(code)
     check(find("p", "room") is not None and not peer.is_host, "second joueur dans le salon")
     drain(0.3)
-    check(len(host.host_session.state.players) == 2, "l'hôte connaît les deux joueurs")
-    host.send_start()
-    sh, sp = find("h", "start"), find("p", "start")
-    check(sh is not None and sp is not None and len(sp["players"]) == 2, "lancement reçu par les deux joueurs")
+    check(len(sim.state.players) == 2, "la partie du serveur connaît les deux joueurs")
+    owner.send_start()
+    so, sp = find("o", "start"), find("p", "start")
+    check(so is not None and sp is not None and len(sp["players"]) == 2 and sp["_from"] == 0, "lancement envoyé par le serveur aux deux joueurs")
     for _ in range(5):
         peer.send_move((7.2, 0.0, 1.5), (0, 45))
         time.sleep(0.06)
-    mv = find("h", "move", pred=lambda m: m.get("_from") == peer.id)
-    check(mv is not None and mv["pos"][2] == 1.5, "position du joueur reçue par l'hôte (directement)")
-    ps = host.host_session.state.players[peer.id]
-    check(abs(ps.pos[2] - 1.5) < 1e-6, "l'hôte suit la position pour l'IA")
+    mv = find("o", "move", pred=lambda m: m.get("_from") == peer.id)
+    check(mv is not None and mv["pos"][2] == 1.5, "position reçue directement par l'autre joueur")
+    check(abs(sim.state.players[peer.id].pos[2] - 1.5) < 1e-6, "le serveur suit la position pour l'IA")
     peer.send_order("pizza", "17 rue des Lilas")
-    oh, op = find("h", "order_result"), find("p", "order_result")
-    check(oh is not None and op is not None and op["entity"] == "rampant", "commande traitée par l'hôte, résultat diffusé")
+    oo, op = find("o", "order_result"), find("p", "order_result")
+    check(oo is not None and op is not None and op["entity"] == "rampant", "commande traitée par le serveur, résultat diffusé")
     check(find("p", "game_event", pred=lambda m: m.get("event") == "order_cancelled", t=3) is not None, "évènement programmé diffusé")
     peer.send_chat("on est où ?")
-    ch = find("h", "chat")
-    check(ch is not None and ch["name"] == "Invité", "chat relayé par l'hôte")
-    # un joueur ne peut pas se faire passer pour l'hôte
+    ch = find("o", "chat")
+    check(ch is not None and ch["name"] == "Invité", "chat diffusé par le serveur")
     peer.relay("all", {"type": "game_over", "result": "win"})
     drain(0.4)
-    check(not [m for m in got["h"] if m.get("type") == "game_over"], "messages de jeu d'un non-hôte ignorés")
+    check(not [m for m in got["o"] if m.get("type") == "game_over"], "faux messages de partie d'un joueur ignorés")
+    owner.close()
+    m = find("p", "room", pred=lambda m: m["host"] == peer.id, t=3)
+    check(m is not None and not [x for x in got["p"] if x.get("type") == "room_closed"], "le créateur part : la partie continue")
+    peer.send_chat("toujours là")
+    check(find("p", "chat", pred=lambda m: m.get("message") == "toujours là") is not None, "la partie répond toujours")
     peer.send_death("test")
-    d = find("h", "player_death")
+    d = find("p", "player_death")
     check(d is not None and d["id"] == peer.id, "mort d'un joueur diffusée")
+    check(not sim.errors, f"aucune erreur dans la partie {sim.errors[:2]}")
     peer.close()
+    time.sleep(0.4)
+    check(code not in server.rooms, "dernier joueur parti : salon supprimé")
+
+
+def load_test(port, server, rooms=40):
+    """Beaucoup de salons en même temps sur la même boucle de jeu."""
+    print("== charge ==")
+    clients = []
+    for i in range(rooms):
+        c = Raw(port, f"P{i}")
+        c.send(type="create", name=f"Charge {i}", max=2, game="1.0")
+        clients.append(c)
     time.sleep(0.5)
-    drain(0.5)
-    check(peer.id is None and len(host.host_session.state.players) == 1, "départ d'un joueur retiré de la partie")
-    check(not host.host_session.errors, f"aucune erreur dans la partie de l'hôte {host.host_session.errors[:2]}")
-    host.close()
+    for c in clients:
+        c.send(type="to", to="host", d={"type": "start"})
+    time.sleep(2.0)
+    playing = sum(1 for r in server.rooms.values() if r.sim.phase != "lobby")
+    check(playing >= rooms, f"{playing} parties lancées en parallèle")
+    from coop_state import EntityState
+    with server.lock:
+        for r in server.rooms.values():          # livreur actif partout : cas le plus lourd
+            r.sim.state.entity = EntityState("rampant")
+            r.sim.state.entity.active = True
+            r.sim.state.phase = "survival"
+            r.sim.state.t_release = r.sim.state.t
+    server.stats["tick_ms"] = 0.0
+    time.sleep(2.0)
+    check(server.stats["tick_ms"] < 5.0, f"boucle de jeu rapide, livreur actif partout : {server.stats['tick_ms']:.2f} ms par tick pour {len(server.rooms)} salons")
+    for c in clients:
+        c.close()
 
 
 def main():
@@ -337,7 +376,8 @@ def main():
     time.sleep(0.3)
     try:
         relay_tests(port, server)
-        host_tests(port)
+        game_tests(port, server)
+        load_test(port, server)
     except Exception:
         import traceback
         traceback.print_exc()

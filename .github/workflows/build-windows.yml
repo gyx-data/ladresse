@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Force -DestinationPath dist\LADRESSE-serveur.zip -Path `
-            server\server.py, server\server_config.py, server\server_config.example.json, server\LISEZMOI_SERVEUR.md
+            server\server.py, server\server_config.py, server\coop_game.py, server\coop_state.py, server\coop_rules.py, server\server_config.example.json, server\LISEZMOI_SERVEUR.md
           Get-FileHash dist\LADRESSE.exe, dist\LADRESSE-serveur.zip -Algorithm SHA256 | Format-List
 
       - uses: actions/upload-artifact@v4

@@ -1,14 +1,16 @@
-"""Serveur relais multijoueur de L'ADRESSE.
+"""Serveur multijoueur de L'ADRESSE.
 
 Tourne sur Pterodactyl (Python 3.8+, aucune dépendance) :  ``python server.py``
 IP publique : 5.180.34.43 | Port : 27326 (TCP pour les messages, UDP pour les positions)
 
-Le relais ne fait tourner AUCUNE partie : chaque partie tourne chez le joueur qui a créé le salon (l'hôte).
-Le relais :
+Toutes les parties tournent SUR CE SERVEUR (une instance de coop_game.RoomGame par salon, une seule boucle
+de jeu à 20 ticks/s pour tous les salons). Le serveur :
   * gère les salons : créer (nom, limite de joueurs, mot de passe facultatif), lister, rejoindre, quitter ;
-  * fait suivre les paquets entre les joueurs d'un même salon (TCP fiable ou UDP rapide, repli TCP si l'UDP est bloqué) ;
+  * fait tourner la partie de chaque salon (IA du livreur, minuteries, messages d'assistance, morts, victoire) ;
+    elle continue même si son créateur s'en va ;
+  * fait suivre les positions de joueur à joueur (UDP, repli TCP si l'UDP est bloqué) ;
   * protège le serveur : limites de débit, de taille, de connexions, délais d'inactivité.
-Comme il ignore les règles du jeu, une mise à jour du jeu ne demande pas de mettre le serveur à jour.
+Seules les règles du multijoueur (coop_*.py) vivent ici : les autres mises à jour du jeu ne touchent pas le serveur.
 
 Protocole : JSON, un message par ligne (TCP) ou par datagramme (UDP). Voir LISEZMOI_SERVEUR.md.
 """
@@ -25,6 +27,8 @@ import time
 import unicodedata
 
 import server_config as cfg
+import coop_rules
+from coop_game import RoomGame
 
 _log_lock = threading.Lock()
 _log_file = None
@@ -156,6 +160,25 @@ class Connection:
             pass
 
 
+class RoomSender:
+    """Envois de la partie d'un salon vers ses joueurs (expéditeur 0 = le serveur)."""
+
+    def __init__(self, server, room):
+        self.server, self.room = server, room
+
+    def to(self, targets, obj, udp=False):
+        r = self.room
+        members = list(r.members.values()) if targets == "all" else [r.members[i] for i in targets if i in r.members]
+        if not members:
+            return
+        if not udp:
+            msg = dict(type="from", **{"from": 0}, d=obj)
+            for m in members:
+                m.send(msg)
+            return
+        self.server._send_udp(members, 0, obj)
+
+
 class Room:
     def __init__(self, code, name, host, max_players, password, game):
         self.code = code
@@ -167,6 +190,7 @@ class Room:
         self.game = game                  # version du jeu de l'hôte (les joueurs doivent avoir la même)
         self.phase = "lobby"              # lobby | playing
         self.created = time.time()
+        self.sim = None                   # partie (RoomGame), créée par le serveur
 
     def host_name(self):
         c = self.members.get(self.host)
@@ -189,7 +213,7 @@ class RelayServer:
         self.running = False
         self.tcp = None
         self.udp = None
-        self.stats = dict(tcp_in=0, udp_in=0, udp_out=0)
+        self.stats = dict(tcp_in=0, udp_in=0, udp_out=0, ticks=0, tick_ms=0.0)
 
     # ------------------------------------------------------------------
     # Démarrage
@@ -210,12 +234,14 @@ class RelayServer:
         self.running = True
         threading.Thread(target=self._accept_loop, daemon=True).start()
         threading.Thread(target=self._udp_loop, daemon=True).start()
-        log(f"L'ADRESSE — relais démarré sur {self.host}:{self.port} (TCP+UDP), protocole {cfg.PROTOCOL_VERSION}, "
-            f"{cfg.MAX_ROOMS} salons max, {cfg.MAX_ROOM_PLAYERS} joueurs max par salon")
+        log(f"L'ADRESSE — serveur démarré sur {self.host}:{self.port} (TCP+UDP), protocole {cfg.PROTOCOL_VERSION}, "
+            f"{cfg.MAX_ROOMS} salons max, {cfg.MAX_ROOM_PLAYERS} joueurs max par salon, {coop_rules.TICK_RATE} ticks/s")
         for err in getattr(cfg, "CONFIG_ERRORS", []):
             log("configuration :", err)
         if block:
-            self._watchdog_loop()
+            self._tick_loop()
+        else:
+            threading.Thread(target=self._tick_loop, daemon=True).start()
 
     def stop(self):
         self.running = False
@@ -230,10 +256,32 @@ class RelayServer:
             except Exception:
                 pass
 
-    def _watchdog_loop(self):
+    def _tick_loop(self):
+        """Une seule boucle fait avancer toutes les parties (pas un thread par salon)."""
+        last = time.perf_counter()
         try:
             while self.running:
-                time.sleep(0.5)
+                t0 = time.perf_counter()
+                dt = t0 - last
+                last = t0
+                with self.lock:
+                    for r in list(self.rooms.values()):
+                        if r.sim is None:
+                            continue
+                        r.sim.step(dt)
+                        if r.phase == "lobby" and r.sim.phase != "lobby":
+                            r.phase = "playing"           # la partie a commencé : plus de nouveaux joueurs
+                            self._broadcast_room(r)
+                        if r.sim.errors:
+                            for e in r.sim.errors[:3]:
+                                log(f"salon {r.code} : erreur de partie {e}")
+                            r.sim.errors.clear()
+                spent = time.perf_counter() - t0
+                self.stats["ticks"] += 1
+                self.stats["tick_ms"] = self.stats["tick_ms"] * 0.95 + spent * 1000 * 0.05
+                sleep = coop_rules.TICK_DT - spent
+                if sleep > 0:
+                    time.sleep(sleep)
         except KeyboardInterrupt:
             log("arrêt du serveur")
         finally:
@@ -356,11 +404,6 @@ class RelayServer:
             if conn.room is not None:
                 self._leave_room(conn)
             conn.send(dict(type="left"))
-        elif t == "room_state":
-            r = conn.room
-            if r is not None and r.host == conn.id and msg.get("phase") in ("lobby", "playing"):
-                r.phase = msg["phase"]
-                self._broadcast_room(r)
         elif t == "kick":
             r = conn.room
             target = self.conns.get(msg.get("id"))
@@ -392,6 +435,7 @@ class RelayServer:
         while code is None or code in self.rooms:
             code = "".join(secrets.choice(ROOM_CHARS) for _ in range(5))
         r = Room(code, name, conn.id, mx, password, game)
+        r.sim = RoomGame(RoomSender(self, r), mx)
         self.rooms[code] = r
         r.members[conn.id] = conn
         conn.room = r
@@ -439,22 +483,15 @@ class RelayServer:
             log(f"salon {r.code} fermé (vide)")
             return
         if r.host == conn.id:
-            if r.phase == "lobby":
-                r.host = next(iter(r.members))
-                log(f"salon {r.code} : {r.host_name()} devient l'hôte")
-            else:
-                # la partie tournait chez l'hôte : elle ne peut pas continuer sans lui
-                for m in list(r.members.values()):
-                    m.send(dict(type="room_closed", reason="L'hôte a quitté la partie."))
-                    m.room = None
-                r.members.clear()
-                self.rooms.pop(r.code, None)
-                log(f"salon {r.code} fermé (départ de l'hôte)")
-                return
+            # la partie tourne sur le serveur : elle continue, un autre joueur devient le créateur
+            r.host = next(iter(r.members))
+            log(f"salon {r.code} : {r.host_name()} devient le créateur")
         self._broadcast_room(r)
 
     def _broadcast_room(self, r):
         info, roster = r.info(), r.roster()
+        if r.sim is not None:
+            r.sim.sync_members(roster, r.host)
         for m in list(r.members.values()):
             m.send(dict(type="room", room=info, players=roster, host=r.host, you=m.id))
 
@@ -468,8 +505,7 @@ class RelayServer:
         if to in ("all", "others", None):
             return [m for m in r.members.values() if m is not src]
         if to == "host":
-            h = r.members.get(r.host)
-            return [h] if h is not None and h is not src else []
+            return []
         ids = to if isinstance(to, list) else [to]
         out = []
         for i in ids[:64]:
@@ -479,8 +515,15 @@ class RelayServer:
         return out
 
     def _relay_tcp(self, src, to, d):
-        if not isinstance(d, dict):
+        if not isinstance(d, dict) or src.room is None:
             return
+        sim = src.room.sim
+        if to == "host":                     # message de jeu : traité par la partie du salon
+            if sim is not None:
+                sim.receive(src.id, d)
+            return
+        if sim is not None and d.get("type") == "move":
+            sim.receive(src.id, d)           # la partie suit les positions (IA, anti-triche)
         out = dict(type="from", **{"from": src.id}, d=d)
         for m in self._targets(src, to):
             m.send(out)
@@ -526,14 +569,21 @@ class RelayServer:
                 pass
             return
         d = msg.get("d")
-        if not isinstance(d, dict) or not src.allow_udp():
+        if not isinstance(d, dict) or not src.allow_udp() or src.room is None:
             return
-        targets = self._targets(src, msg.get("to"))
-        if not targets:
-            return
-        data = json.dumps({"f": src.id, "d": d}, separators=(",", ":")).encode("utf-8")
+        sim = src.room.sim
+        to = msg.get("to")
+        if sim is not None and (to == "host" or d.get("type") == "move"):
+            sim.receive(src.id, d)
+        targets = self._targets(src, to)
+        if targets:
+            self._send_udp(targets, src.id, d)
+
+    def _send_udp(self, targets, sender_id, d):
+        """UDP vers chaque cible ; repli TCP (fréquence limitée) pour celles dont l'UDP est bloqué."""
+        data = json.dumps({"f": sender_id, "d": d}, separators=(",", ":")).encode("utf-8")
         now = time.time()
-        key = (src.id, d.get("type"))
+        key = (sender_id, d.get("type"))
         for m in targets:
             if m.udp_addr is not None and now - m.last_recv < cfg.CLIENT_TIMEOUT:
                 try:
@@ -545,7 +595,7 @@ class RelayServer:
             # UDP bloqué chez ce joueur : repli TCP, à fréquence limitée
             if now - m.fallback.get(key, 0.0) >= 1.0 / cfg.UDP_FALLBACK_HZ:
                 m.fallback[key] = now
-                m.send(dict(type="from", **{"from": src.id}, d=d))
+                m.send(dict(type="from", **{"from": sender_id}, d=d))
 
 
 def console(server, stream=None):
@@ -560,7 +610,7 @@ def console(server, stream=None):
                 elif cmd in ("list", "rooms"):
                     log(f"connexions={len(server.conns)} salons={len(server.rooms)}")
                     for r in server.rooms.values():
-                        log(f"  [{r.code}] « {r.name} » {r.phase} {len(r.members)}/{r.max} jeu {r.game}"
+                        log(f"  [{r.code}] « {r.name} » {r.sim.phase if r.sim else r.phase} {len(r.members)}/{r.max} jeu {r.game}"
                             f"{' privé' if r.password else ''} — hôte {r.host_name()}")
                         for c in r.members.values():
                             log(f"      #{c.id} {c.name} {c.addr[0]} {'UDP' if c.udp_addr else 'TCP seul'}")
@@ -586,7 +636,9 @@ def console(server, stream=None):
                     for c in list(server.conns.values()):
                         c.send(dict(type="notice", message=arg[:200]))
                 elif cmd == "stats":
-                    log(f"messages TCP reçus {server.stats['tcp_in']}, UDP reçus {server.stats['udp_in']}, UDP relayés {server.stats['udp_out']}")
+                    st = server.stats
+                    log(f"messages TCP reçus {st['tcp_in']}, UDP reçus {st['udp_in']}, UDP envoyés {st['udp_out']}, "
+                        f"ticks {st['ticks']}, tick moyen {st['tick_ms']:.2f} ms pour {len(server.rooms)} salon(s)")
                 elif cmd in ("stop", "quit", "exit"):
                     server.running = False
                     return

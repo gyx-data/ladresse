@@ -1,8 +1,7 @@
-"""Configuration du serveur relais L'ADRESSE (Pterodactyl, Python 3.8+, aucune dépendance).
+"""Configuration du serveur multijoueur L'ADRESSE (Pterodactyl, Python 3.8+, aucune dépendance).
 
-Le serveur ne connaît PAS les règles du jeu : la partie tourne chez le joueur qui crée le salon (l'hôte).
-Le relais gère seulement les salons (créer / lister / rejoindre) et fait suivre les paquets entre joueurs,
-il n'a donc pas besoin d'être mis à jour quand le jeu change.
+Toutes les parties tournent sur ce serveur (règles : coop_rules.py, état : coop_state.py, déroulé : coop_game.py).
+Seuls ces fichiers concernent le jeu : une mise à jour graphique ou solo du jeu ne demande rien côté serveur.
 """
 import json
 import os
@@ -55,7 +54,7 @@ def _default_port():
 
 HOST = _get("HOST", "0.0.0.0", str)
 PORT = _get("PORT", _default_port(), int, 1, 65535)        # IP publique : 5.180.34.43
-PROTOCOL_VERSION = "3.0"     # protocole du relais (indépendant de la version du jeu)
+PROTOCOL_VERSION = "4.0"     # protocole réseau (4 = parties tenues par le serveur)
 MOTD = _get("MOTD", "Bienvenue au 17 rue des Lilas.", str)[:200]
 LOG_FILE = _get("LOG", os.path.join(HERE, "server.log"), str)
 

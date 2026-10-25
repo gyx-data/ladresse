@@ -252,7 +252,7 @@ def scenario():
         game.ui.rating.root.enabled = False
     check(True, "les quatre fins s'enchaînent")
 
-    # --- multijoueur : relais + hôte (ce jeu) + second joueur simulé ---
+    # --- multijoueur : serveur (parties) + ce jeu + second joueur simulé ---
     import server as S
     srv = S.RelayServer("127.0.0.1", 27997)
     srv.start(block=False)
@@ -261,27 +261,28 @@ def scenario():
     game.ui.ending.stop()
     game.state.flags.pop("ending_started", None)
     game.mode = "menu"
+    config.settings["mp_adresse"] = "127.0.0.1:27997"
+    config.settings["mp_pseudo"] = "Hote"
     game.show_multiplayer()
-    yield from wait(5)
     mp = game.mp
-    mp.client.close()
-    mp.client.connect("127.0.0.1", 27997, "Hote")
-    for _ in range(20):
+    for _ in range(60):
+        if mp.client.id is not None:
+            break
         yield
     mp.client.create_room("Smoke", 4)
     for _ in range(20):
         yield
     code = (mp.room or {}).get("id")
     sock = socket.create_connection(("127.0.0.1", 27997))
-    sock.sendall((json.dumps({"type": "hello", "name": "Bob", "proto": "3.0"}) + "\n").encode())
+    sock.sendall((json.dumps({"type": "hello", "name": "Bob", "proto": "4.0"}) + "\n").encode())
     sock.sendall((json.dumps({"type": "join", "room": code, "game": config.VERSION}) + "\n").encode())
     for _ in range(30):
         yield
-    check(mp.client.is_host and len(mp.players) == 2, "salon multijoueur : hôte + un joueur")
+    check(mp.client.is_host and len(mp.players) == 2, "salon multijoueur : créateur + un joueur")
     mp.do_start()
     for _ in range(40):
         yield
-    check(mp.in_game and len(mp.avatars) == 1, "partie lancée chez l'hôte, avatar du second joueur créé")
+    check(mp.in_game and len(mp.avatars) == 1, "partie lancée sur le serveur, avatar du second joueur créé")
     sock.sendall((json.dumps({"type": "to", "to": "all", "d": {"type": "move", "pos": [7.5, 0.0, 2.0], "rot": [0, 90], "s": 1}}) + "\n").encode())
     for _ in range(40):
         yield

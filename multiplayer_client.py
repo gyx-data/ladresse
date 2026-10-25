@@ -1,11 +1,11 @@
-"""Client réseau du mode multijoueur, branché sur le serveur RELAIS (TCP : messages fiables, UDP : positions).
+"""Client réseau du mode multijoueur (TCP : messages fiables, UDP : positions et entité).
 
-Le relais gère les salons et fait suivre les paquets ; la partie elle-même tourne chez l'hôte du salon
-(coop_host.HostSession). Ce client :
-  * parle au relais : hello, list, create, join, leave, room_state ;
-  * envoie les messages de jeu à l'hôte (ou les livre directement si l'on EST l'hôte) ;
-  * reçoit les messages de l'hôte et les positions des autres joueurs, et les range dans `inbox`
-    sous leur forme habituelle (type="start", "entity_update", "move"... + "_from").
+Toutes les parties tournent SUR LE SERVEUR (5.180.34.43:27326). Ce client :
+  * gère les salons : hello, list, create, join, leave ;
+  * envoie ses actions de jeu à la partie du serveur (« to: host ») ;
+  * diffuse sa position directement aux autres joueurs (« to: all », un seul passage par le serveur) ;
+  * range dans `inbox` les messages de la partie (expéditeur 0 = le serveur) et les positions des autres
+    joueurs, sous leur forme habituelle (type="start", "entity_update", "move"... + "_from").
 """
 import json
 import queue
@@ -15,7 +15,8 @@ import time
 
 import config
 
-PROTOCOL_VERSION = "3.0"      # protocole du relais (server_config.PROTOCOL_VERSION, version majeure)
+PROTOCOL_VERSION = "4.0"      # protocole réseau (server_config.PROTOCOL_VERSION, version majeure)
+SERVER_ID = 0                 # expéditeur des messages de la partie (le serveur)
 SEND_RATE = 20.0              # positions envoyées par seconde
 KEEPALIVE = 0.5               # renvoi de la position même immobile (s)
 
@@ -37,13 +38,13 @@ class NetClient:
         self.ping = 0.0
         self.error = None
         self.room = None              # infos du salon (dict) ou None
-        self.host_id = None
-        self.host_session = None      # HostSession si l'on est l'hôte
+        self.host_id = None           # créateur du salon (peut lancer la partie, exclure)
         self.last_udp = 0.0
         self.hello_t = None
         self.last_move_sent = 0.0
         self._last_move = None
         self._seq = 0
+        self._gen = 0                 # numéro de tentative : une connexion abandonnée ne doit pas reprendre la main
 
     @property
     def is_host(self):
@@ -57,23 +58,31 @@ class NetClient:
         if self.connecting:
             return
         self.connecting = True
+        gen = self._gen
 
         def run():
             try:
-                self.connect(host, port, name)
+                self.connect(host, port, name, gen=gen)
                 callback(True, "Connecté")
             except Exception as e:
-                self.close()
-                callback(False, f"Connexion impossible : {e}")
+                if gen == self._gen:
+                    self.close()
+                    callback(False, f"Connexion impossible : {e}")
             finally:
-                self.connecting = False
+                if gen == self._gen:
+                    self.connecting = False
         threading.Thread(target=run, daemon=True).start()
 
-    def connect(self, host, port, name, timeout=5.0):
+    def connect(self, host, port, name, timeout=5.0, gen=None):
+        addr = (socket.gethostbyname(host), int(port))
+        sock = socket.create_connection(addr, timeout=timeout)
+        if gen is not None and gen != self._gen:
+            sock.close()                   # tentative abandonnée entre-temps (fermeture, autre serveur)
+            raise ConnectionAbortedError("tentative annulée")
         self._stop = False
-        self.addr = (socket.gethostbyname(host), int(port))
+        self.addr = addr
         self.name = name
-        self.sock = socket.create_connection(self.addr, timeout=timeout)
+        self.sock = sock
         self.sock.settimeout(None)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -91,9 +100,10 @@ class NetClient:
         self.send(dict(type="hello", name=name, proto=PROTOCOL_VERSION, game=config.VERSION))
 
     def close(self):
+        self._gen += 1
+        self.connecting = False
         self._stop = True
         self.connected = False
-        self.stop_hosting()
         self.room = None
         self.host_id = None
         for s in (self.sock, self.udp):
@@ -119,25 +129,10 @@ class NetClient:
         self.send(dict(type="join", room=code, password=password, game=config.VERSION))
 
     def leave_room(self):
-        self.stop_hosting()
         if self.room is not None:
             self.send(dict(type="leave"))
         self.room = None
         self.host_id = None
-
-    def set_room_phase(self, phase):
-        self.send(dict(type="room_state", phase=phase))
-
-    def start_hosting(self, max_players):
-        if self.host_session is None:
-            from coop_host import HostSession
-            self.host_session = HostSession(self, max_players)
-        return self.host_session
-
-    def stop_hosting(self):
-        if self.host_session is not None:
-            self.host_session.stop()
-            self.host_session = None
 
     # ------------------------------------------------------------------
     # Réception
@@ -163,7 +158,6 @@ class NetClient:
                     self._on_tcp(msg)
         if not self._stop:
             self.connected = False
-            self.stop_hosting()
             self.inbox.put(dict(type="disconnected"))
 
     def _on_tcp(self, msg):
@@ -185,35 +179,18 @@ class NetClient:
         elif t == "room":
             self.room = msg.get("room")
             self.host_id = msg.get("host")
-            if self.is_host:
-                hs = self.start_hosting((self.room or {}).get("max", 4))
-                hs.sync_members(msg.get("players", []))
-            else:
-                self.stop_hosting()
         elif t in ("room_closed", "left"):
-            self.stop_hosting()
             self.room = None
             self.host_id = None
         self.inbox.put(msg)
 
     def _deliver(self, sender, d):
-        """Message de jeu venant d'un autre joueur (via le relais)."""
+        """Message de la partie (serveur) ou position d'un autre joueur."""
         if not isinstance(d, dict) or sender == self.id:
             return
-        kind = d.get("type")
-        if self.is_host:
-            if self.host_session is not None:
-                self.host_session.receive(sender, d)
-            if kind == "move":
-                self.inbox.put(dict(d, _from=sender))
-        elif sender == self.host_id or kind == "move":
-            # seuls l'hôte (état de la partie) et les positions des joueurs sont acceptés
-            if self.inbox.qsize() < 4000:
-                self.inbox.put(dict(d, _from=sender))
-
-    def deliver_local(self, obj):
-        """Message de l'hôte destiné à soi-même (pas d'aller-retour réseau)."""
-        self.inbox.put(dict(obj, _from=self.id))
+        # seuls le serveur (état de la partie) et les positions des joueurs sont acceptés
+        if (sender == SERVER_ID or d.get("type") == "move") and self.inbox.qsize() < 4000:
+            self.inbox.put(dict(d, _from=sender))
 
     def _udp_loop(self):
         while not self._stop and self.udp is not None:
@@ -277,10 +254,8 @@ class NetClient:
             self.send(dict(type="to", to=to, d=d))
 
     def _to_host(self, d):
-        if self.is_host and self.host_session is not None:
-            self.host_session.receive(self.id, d)
-        else:
-            self.relay("host", d)
+        """Action de jeu envoyée à la partie du serveur."""
+        self.relay("host", d)
 
     def poll(self):
         out = []
@@ -304,8 +279,6 @@ class NetClient:
         self._last_move = (p, r)
         self._seq = (self._seq + 1) % 1_000_000
         d = dict(type="move", pos=p, rot=r, s=self._seq)
-        if self.is_host and self.host_session is not None:
-            self.host_session.receive(self.id, d)
         # diffusion directe à tous les joueurs (un seul passage par le relais) ; repli TCP limité à 10 Hz
         if self.udp_ok():
             self._udp_send(dict(i=self.id, k=self.tok, to="all", d=d))
@@ -335,7 +308,6 @@ class NetClient:
 
     def send_start(self):
         if self.is_host:
-            self.set_room_phase("playing")
             self._to_host(dict(type="start"))
 
     def send_ping(self):

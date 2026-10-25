@@ -1,7 +1,7 @@
-"""État d'une partie multijoueur, tenu par l'HÔTE (le joueur qui a créé le salon) : joueurs, portes,
+"""État d'une partie multijoueur, tenu par le SERVEUR : joueurs, portes,
 entité (IA simplifiée sur graphe de points de passage), messages d'assistance individuels.
 
-Pur Python, sans Ursina : exécuté dans un thread de l'hôte (coop_host.py).
+Pur Python, sans Ursina : une instance par salon, sur le serveur (coop_game.py).
 """
 import heapq
 import math

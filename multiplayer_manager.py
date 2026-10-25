@@ -1,8 +1,8 @@
 """Mode multijoueur : liste des parties, création de salon, salon d'attente, joueurs distants, synchronisation.
 
-Architecture : le serveur (5.180.34.43:27326) est un simple RELAIS qui liste les parties et fait suivre les
-paquets. La partie tourne chez l'hôte (le joueur qui a créé le salon, voir coop_host.py) ; les positions
-vont directement d'un joueur aux autres et sont lissées par interpolation.
+Architecture : toutes les parties tournent sur le serveur (5.180.34.43:27326, voir server/coop_game.py) ;
+elles continuent même si leur créateur s'en va. Les positions vont directement d'un joueur aux autres
+(un seul passage par le serveur) et sont lissées par interpolation.
 
 Les morts deviennent spectateurs ; sur les photos, les autres joueurs apparaissent « faux » (paranoïa) ;
 chacun reçoit des messages d'assistance contradictoires.
@@ -15,7 +15,6 @@ from ursina import Entity, Vec3, camera, color, destroy, invoke
 from ursina.prefabs.input_field import InputField
 
 import config
-import coop_rules
 import game_data as gd
 from config import settings
 from multiplayer_client import NetClient
@@ -29,6 +28,10 @@ MUTED = (140, 132, 124)
 BLOOD = (176, 22, 20)
 OK_GREEN = (110, 170, 120)
 ROWS = 6
+ROOM_MAX_CHOICES = (2, 3, 4, 5, 6, 8)
+# mêmes couleurs que server/coop_rules.JACKET_COLORS (ordre d'arrivée dans le salon)
+JACKET_COLORS = [(0.75, 0.2, 0.2), (0.2, 0.45, 0.8), (0.2, 0.65, 0.3), (0.85, 0.7, 0.15),
+                 (0.55, 0.25, 0.7), (0.9, 0.45, 0.15), (0.2, 0.7, 0.7), (0.85, 0.85, 0.85)]
 
 
 def _lerp_angle(a, b, t):
@@ -318,13 +321,13 @@ class MultiplayerManager:
         label(b, "Mot de passe (facultatif)", -0.4, -0.1, 0.6, rgb(*MUTED), origin=(-0.5, 0), z=0)
         self.f_pass = InputField(default_value="", parent=b, position=(-0.16, -0.14, -0.05), scale=(0.48, 0.05),
                                  character_limit=32)
-        label(b, "La partie tourne sur votre PC : restez jusqu'à la fin, sinon elle s'arrête pour tous.", 0, -0.22, 0.55,
+        label(b, "La partie tourne sur le serveur : elle continue même si vous partez avant la fin.", 0, -0.22, 0.55,
               rgb(*MUTED), z=0, max_w=1.3)
         button(b, "Annuler", 0.2, -0.36, 0.18, 0.055, lambda: self._render("browser"), style="dark", size=0.75)
         button(b, "Créer", 0.5, -0.36, 0.3, 0.06, self._create, style="primary", size=0.9)
 
     def _step_max(self, d):
-        ch = list(coop_rules.ROOM_MAX_CHOICES)
+        ch = list(ROOM_MAX_CHOICES)
         i = ch.index(self._create_max) if self._create_max in ch else 2
         self._create_max = ch[max(0, min(len(ch) - 1, i + d))]
         self.max_lbl.text = str(self._create_max)
@@ -391,17 +394,17 @@ class MultiplayerManager:
             me = p["id"] == self.client.id
             label(b, p["name"] + ("  (vous)" if me else ""), x - cw / 2 + 0.09, y + 0.011, 0.75, rgb(*BONE),
                   origin=(-0.5, 0), z=0.2, max_w=cw - 0.3)
-            label(b, "Hôte" if p["id"] == self.host else "Prêt", x - cw / 2 + 0.09, y - 0.019, 0.5,
+            label(b, "Créateur" if p["id"] == self.host else "Prêt", x - cw / 2 + 0.09, y - 0.019, 0.5,
                   rgb(*BLOOD) if p["id"] == self.host else rgb(*OK_GREEN), origin=(-0.5, 0), z=0.2)
             if is_host and not me:
                 button(b, "Exclure", x + cw / 2 - 0.07, y, 0.11, 0.04, lambda pid=p["id"]: self._kick(pid), style="ghost", size=0.5)
         button(b, "Quitter le salon", -0.55, -0.36, 0.26, 0.055, self._leave_room, style="dark", size=0.72)
         if is_host:
             self.start_btn = button(b, "Lancer la partie", 0.5, -0.36, 0.3, 0.062, self.do_start, style="primary", size=0.9)
-            label(b, "Vous êtes l'hôte : la partie tourne sur votre PC.", 0.1, -0.27, 0.52, rgb(*MUTED), z=0)
+            label(b, "Vous avez créé la partie : lancez-la quand tout le monde est prêt.", 0.1, -0.27, 0.52, rgb(*MUTED), z=0)
         else:
             self.start_btn = None
-            label(b, "En attente du lancement par l'hôte…", 0.3, -0.36, 0.65, rgb(*MUTED), z=0)
+            label(b, "En attente du lancement par le créateur…", 0.3, -0.36, 0.65, rgb(*MUTED), z=0)
 
     def _kick(self, pid):
         self.client.send(dict(type="kick", id=pid))
@@ -452,7 +455,7 @@ class MultiplayerManager:
         self._pending_status = (msg, ok)
 
     def host_local(self):
-        """Lance le relais dans ce processus (partie en réseau local ou en ouvrant le port sur sa box)."""
+        """Lance le serveur dans ce processus (partie en réseau local ou en ouvrant le port sur sa box)."""
         if getattr(self, "_local_server", None) is None:
             try:
                 import importlib.util
@@ -553,7 +556,7 @@ class MultiplayerManager:
     # Messages (relais + hôte)
     # ------------------------------------------------------------------
     def _roster(self, players):
-        cols = coop_rules.JACKET_COLORS
+        cols = JACKET_COLORS
         return {p["id"]: dict(id=p["id"], name=p.get("name", "?"), color=list(cols[i % len(cols)])) for i, p in enumerate(players)}
 
     def handle(self, m):

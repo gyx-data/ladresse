@@ -175,9 +175,9 @@ def _server():
     c.close()
     srv.running = False
     assert b'"type":"room"' in buf, buf[:200]
-    # la partie tourne chez l'hôte : le module de partie doit être embarqué
-    import coop_host  # noqa: F401
-    return f"relais local OK (port {port}), salon créé"
+    # les parties tournent sur le serveur : son module de partie doit être embarqué
+    import coop_game  # noqa: F401
+    return f"serveur local OK (port {port}), salon créé"
 
 
 def _tts(rep):
@@ -210,7 +210,7 @@ def run():
     rep.step("données du jeu", _data)
     rep.step("carte fidélité", _loyalty)
     rep.step("sauvegarde", _save)
-    rep.step("relais embarqué", _server)
+    rep.step("serveur embarqué", _server)
     try:
         _tts(rep)
     except Exception:
