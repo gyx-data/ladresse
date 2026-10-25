@@ -1,4 +1,4 @@
-name: Windows — compilation de LADRESSE.exe
+name: Build Windows exe
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build-windows-${{ github.ref }}
@@ -64,16 +64,4 @@ jobs:
             dist/LADRESSE.exe
             dist/LADRESSE-serveur.zip
           if-no-files-found: error
-
-      - name: Publication (Release GitHub)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: "L'ADRESSE — build ${{ github.run_number }}"
-          body: |
-            LADRESSE.exe (Windows 10/11, 64 bits) et le serveur coopératif prêt pour Pterodactyl.
-            Compilé et auto-testé automatiquement (commit ${{ github.sha }}).
-          files: |
-            dist/LADRESSE.exe
-            dist/LADRESSE-serveur.zip
-          make_latest: true
+          retention-days: 90
