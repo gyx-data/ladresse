@@ -154,6 +154,11 @@ class Surface:
         return self.ya + (self.yb - self.ya) * t
 
 
+# Cage de l'escalier de la cave (x0, z0, x1, z1) : aucun sol plat extérieur ne doit la recouvrir, sinon le joueur
+# marche à y = 0 au-dessus des marches (ground_height retient la surface la plus haute) et ne peut pas descendre.
+CAVE_STAIRWELL = (6.0, 12.0, 8.0, 16.3)
+
+
 def rect_minus(rect, hole):
     """Retourne la liste de rectangles couvrant rect privé de hole."""
     x0, z0, x1, z1 = rect
@@ -330,7 +335,7 @@ class House:
         cneg = (0.75, 0.75, 0.75) if neg == "EXT" else (1, 1, 1)
         cpos = (0.75, 0.75, 0.75) if pos == "EXT" else (1, 1, 1)
         b.wall_openings(axis, a0, a1, fixed, y0, y0 + h, list(openings), thick,
-                        tex_neg=tneg, tex_pos=tpos, col_neg=cneg, col_pos=cpos)
+                        tex_neg=tneg, tex_pos=tpos, col_neg=cneg, col_pos=cpos, cap_top=(height is not None))
 
     def _openings_for(self, lvl, axis, fixed, a0, a1):
         ops = []
@@ -537,10 +542,10 @@ class House:
                 b.quad("vitre", (c - hw, ys, zc), (c + hw, ys, zc), (c + hw, ye, zc), (c - hw, ye, zc), (0, 0, inward))
                 b.quad("vitre", (c + hw, ys, zc), (c - hw, ys, zc), (c - hw, ye, zc), (c + hw, ye, zc), (0, 0, out))
                 # cadre
-                for (xa, xb) in ((c - hw - 0.04, c - hw), (c + hw, c + hw + 0.04)):
+                for (xa, xb) in ((c - hw - 0.04, c - hw + 0.004), (c + hw - 0.004, c + hw + 0.04)):
                     b.box("bois_meuble", xa, ys - 0.04, zc - 0.07, xb, ye + 0.04, zc + 0.07, (0.55, 0.5, 0.45))
-                b.box("bois_meuble", c - hw - 0.04, ys - 0.05, zc - 0.1, c + hw + 0.04, ys, zc + 0.1, (0.55, 0.5, 0.45))
-                b.box("bois_meuble", c - hw - 0.04, ye, zc - 0.07, c + hw + 0.04, ye + 0.04, zc + 0.07, (0.55, 0.5, 0.45))
+                b.box("bois_meuble", c - hw - 0.04, ys - 0.05, zc - 0.102, c + hw + 0.04, ys + 0.004, zc + 0.102, (0.55, 0.5, 0.45))
+                b.box("bois_meuble", c - hw - 0.04, ye - 0.004, zc - 0.07, c + hw + 0.04, ye + 0.04, zc + 0.07, (0.55, 0.5, 0.45))
                 b.box("bois_meuble", c - 0.02, ys, zc - 0.05, c + 0.02, ye, zc + 0.05, (0.55, 0.5, 0.45))
                 if state == "volet":
                     zo = zc + out * 0.12
@@ -562,10 +567,10 @@ class House:
                 xc = fixed
                 b.quad("vitre", (xc, ys, c + hw), (xc, ys, c - hw), (xc, ye, c - hw), (xc, ye, c + hw), (inward, 0, 0))
                 b.quad("vitre", (xc, ys, c - hw), (xc, ys, c + hw), (xc, ye, c + hw), (xc, ye, c - hw), (out, 0, 0))
-                for (za, zb) in ((c - hw - 0.04, c - hw), (c + hw, c + hw + 0.04)):
+                for (za, zb) in ((c - hw - 0.04, c - hw + 0.004), (c + hw - 0.004, c + hw + 0.04)):
                     b.box("bois_meuble", xc - 0.07, ys - 0.04, za, xc + 0.07, ye + 0.04, zb, (0.55, 0.5, 0.45))
-                b.box("bois_meuble", xc - 0.1, ys - 0.05, c - hw - 0.04, xc + 0.1, ys, c + hw + 0.04, (0.55, 0.5, 0.45))
-                b.box("bois_meuble", xc - 0.07, ye, c - hw - 0.04, xc + 0.07, ye + 0.04, c + hw + 0.04, (0.55, 0.5, 0.45))
+                b.box("bois_meuble", xc - 0.102, ys - 0.05, c - hw - 0.04, xc + 0.102, ys + 0.004, c + hw + 0.04, (0.55, 0.5, 0.45))
+                b.box("bois_meuble", xc - 0.07, ye - 0.004, c - hw - 0.04, xc + 0.07, ye + 0.04, c + hw + 0.04, (0.55, 0.5, 0.45))
                 if state == "volet":
                     xo = xc + out * 0.12
                     b.box("volet", min(xo, xo + out * 0.04), ys - 0.06, c - hw - 0.05, max(xo, xo + out * 0.04), ye + 0.06,
@@ -753,7 +758,8 @@ class House:
         b.build(parent=self.exterior_root)
         self.builders["exterieur"] = b
         self.colliders.extend(b.colliders)
-        self.surfaces.append(Surface(-30, -16, 46, 40, 0.0, level=0))
+        for r in rect_minus((-30, -16, 46, 40), CAVE_STAIRWELL):
+            self.surfaces.append(Surface(*r, 0.0, level=0))
         # lumières extérieures
         lamp = LightSource(tuple(self.anchors["lamp_pos"]), (1.0, 0.8, 0.5), 1.6, 12.0, kind="flicker", name="lampadaire")
         self.anchors["lamp_light"] = lamp

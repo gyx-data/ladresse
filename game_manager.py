@@ -250,6 +250,8 @@ class GameManager:
         self.menu_silhouette.enabled = False
         # lueurs de fenêtres (menu)
         wins = [(1.5, 1.4, -0.16), (12.0, 1.4, -0.16), (2.0, 4.4, -0.16), (7.0, 4.4, -0.16)]
+        # la maison est reconstruite à chaque partie : les lueurs précédentes ont été détruites avec elle
+        self.glow_quads = []
         for (x, y, z) in wins:
             e = Entity(model="quad", position=(x, y, z), scale=(1.0, 1.0), color=color.rgba32(255, 200, 120, 0), rotation_y=0)
             e.enabled = False

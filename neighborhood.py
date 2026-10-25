@@ -20,9 +20,10 @@ from ursina import Entity, Vec3, camera, color, destroy
 
 import game_data as gd
 from character_model import CharacterModel
-from house_generator import Surface
+from house_generator import CAVE_STAIRWELL, Surface, rect_minus
 from interaction_system import Interactable
 from lighting_system import LightSource
+import products
 from room_builder import MeshBuilder
 from shop import (CATALOG, SHOP_NAME, RESTO_NAME, Basket, SelfCheckout, RestaurantCounter, eur)
 from fidelite import Loyalty
@@ -385,7 +386,8 @@ class Neighborhood:
         # enregistre colliders et sol dans la maison (physique commune)
         h.colliders.extend(cols)
         h._index_colliders()
-        h.surfaces.append(Surface(X_MIN - 2, Z_MIN - 2, X_MAX + 2, Z_MAX + 2, 0.0, level=0))
+        for r in rect_minus((X_MIN - 2, Z_MIN - 2, X_MAX + 2, Z_MAX + 2), CAVE_STAIRWELL):
+            h.surfaces.append(Surface(*r, 0.0, level=0))
         for l in self.lights:
             h.lights.append(l)
         self._spawn_npcs()
@@ -407,13 +409,15 @@ class Neighborhood:
             while x <= a1:
                 b.box("metal", x - 0.04, 0.5, z1 - 0.16, x + 0.04, H, z1 - 0.04, (0.3, 0.32, 0.36))
                 x += 2.0
-        b.box("platre", x0, H, z1 - 0.3, x1, H + 0.8, z1 + 0.02, (0.04, 0.12, 0.45))   # bandeau bleu Carrefour
-        b.box("platre", x0, H - 0.05, z1 - 0.32, x1, H + 0.02, z1 + 0.04, (0.82, 0.08, 0.12))  # liseré rouge
+        # bandeau et liseré dépassent d'1 cm des murs latéraux (faces non coplanaires : pas de scintillement)
+        b.box("platre", x0 - 0.01, H, z1 - 0.3, x1 + 0.01, H + 0.8, z1 + 0.02, (0.04, 0.12, 0.45))   # bandeau bleu Carrefour
+        b.box("platre", x0 - 0.015, H - 0.05, z1 - 0.32, x1 + 0.015, H + 0.02, z1 + 0.04, (0.82, 0.08, 0.12))  # liseré rouge
         # toit
         b.box("beton", x0, H + 0.8, z0, x1, H + 0.9, z1, (0.4, 0.4, 0.42))
         # sol / plafond intérieurs
         b.box("carrelage", x0 + 0.25, -0.02, z0 + 0.25, x1 - 0.25, 0.03, z1 - 0.2, (0.95, 0.95, 0.97), tile=0.6)
-        b.quad("plafond", (x0, H, z0), (x1, H, z0), (x1, H, z1), (x0, H, z1), (0, -1, 0), (0.95, 0.95, 0.95), tile=1.2)
+        b.quad("plafond", (x0, H - 0.005, z0), (x1, H - 0.005, z0), (x1, H - 0.005, z1), (x0, H - 0.005, z1), (0, -1, 0),
+               (0.95, 0.95, 0.95), tile=1.2)
         # éclairage néon (rangées)
         self.shop_lights = []
         for k, zz in enumerate((-33.0, -28.5, -24.0)):
@@ -579,7 +583,7 @@ class Neighborhood:
         b.box("crepi_rose", x0, 0, z0, x0 + 0.25, H + 0.4, z1, (0.9, 0.85, 0.82), collide=True)
         b.box("crepi_rose", x1 - 0.25, 0, z0, x1, H + 0.4, z1, (0.9, 0.85, 0.82), collide=True)
         d0, d1 = RESTO_DOOR_X - 0.8, RESTO_DOOR_X + 0.8
-        for (a0, a1) in ((x0, d0), (d1, x1)):
+        for (a0, a1) in ((x0 + 0.25, d0), (d1, x1 - 0.25)):        # entre les murs latéraux (pas de faces superposées)
             b.box("crepi_rose", a0, 0, z1 - 0.25, a1, 0.8, z1, (0.9, 0.85, 0.82), collide=True)
             b.box("vitre", a0 + 0.1, 0.8, z1 - 0.15, a1 - 0.1, 2.5, z1 - 0.1, (0.85, 0.7, 0.5), collide=True)
             b.box("crepi_rose", a0, 2.5, z1 - 0.25, a1, H + 0.4, z1, (0.9, 0.85, 0.82))
@@ -646,6 +650,9 @@ class Neighborhood:
             y = 1.0 + fl * 3.0
             xx = x0 + 1.0
             while xx < x1 - 1.4:
+                if fl == 0 and abs(xx + 0.45 - (x0 + w * 0.5)) < 1.0:     # la porte d'entrée est là
+                    xx += 2.6
+                    continue
                 lit = rng.random() < 0.3
                 if lit:
                     be.quad("neon", (xx, y, fz), (xx + 0.9, y, fz), (xx + 0.9, y + 1.4, fz), (xx, y + 1.4, fz), nrm, (1.0, 0.72, 0.42))
@@ -799,26 +806,32 @@ class Neighborhood:
     def _shop_interactables(self):
         g = self.game
         ia = g.interactions
+        # emplacement : (point d'interaction, centre du présentoir, orientation de la façade)
         slots = {"bazar": [], "epicerie": [], "frais": [], "presse": []}
         for shelf, lst in self.shelf_slots.items():
             for (ax, sz0, sz1) in lst:
                 for side in (-1, 1):
                     for k in range(3):
-                        slots[shelf].append(Vec3(ax + side * 0.85, 1.15, sz0 + 1.2 + k * 2.3))
+                        zz = sz0 + 1.2 + k * 2.3
+                        slots[shelf].append((Vec3(ax + side * 0.85, 1.15, zz), Vec3(ax + side * 0.75, 0.9, zz), 90.0 if side > 0 else 270.0))
         for k in range(8):
-            slots["frais"].append(Vec3(12.5 + k * 2.4, 1.2, SHOP[1] + 1.6))
+            xx = 12.5 + k * 2.4
+            slots["frais"].append((Vec3(xx, 1.2, SHOP[1] + 1.6), Vec3(xx, 0.95, SHOP[1] + 1.18), 0.0))
         used = {k: 0 for k in slots}
         self.product_points = []
         for art in CATALOG:
             lst = slots.get(art.shelf) or slots["epicerie"]
-            p = lst[used.get(art.shelf, 0) % len(lst)]
+            p, stand, rot = lst[used.get(art.shelf, 0) % len(lst)]
             used[art.shelf] = used.get(art.shelf, 0) + 1
             pb = MeshBuilder("produit")
-            # étiquette prix + mise en avant (boîte colorée plus grosse)
-            pb.box("papier", p[0] - 0.12, p[1] - 0.25, p[2] - 0.2, p[0] + 0.12, p[1] + 0.05, p[2] + 0.2, art.col)
+            # présentoir + produits modélisés avec leur emballage (products.py)
+            products.build(pb, art.id, stand[0], stand[1], stand[2], rot)
             pb.build(parent=self.root, emit=0.15)
-            sign(self.root, eur(art.card_price if art.card_price else art.price), (p[0], p[1] - 0.36, p[2]), 0.06,
-                       90 if p[0] > 21 else -90, (20, 20, 20), (255, 220, 40, 255), px=40)
+            # étiquette prix sur le rebord avant du présentoir (lisible depuis l'allée)
+            fx, fz = math.sin(math.radians(rot)), math.cos(math.radians(rot))
+            sign(self.root, eur(art.card_price if art.card_price else art.price),
+                 (stand[0] + fx * 0.137, stand[1] - 0.005, stand[2] + fz * 0.137), 0.045, rot + 180.0,
+                 (20, 20, 20), (255, 220, 40, 255), px=40)
             ia.add(Interactable(f"produit_{art.id}", p, (lambda a=art: f"Prendre : {a.name} — {eur(a.price)}"
                                                           + (f" (carte : {eur(a.card_price)})" if a.card_price else "")),
                                 (lambda it, a=art: self.take(a)), 0, radius=0.3, reach=2.0))

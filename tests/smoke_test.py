@@ -138,8 +138,11 @@ def scenario():
 
     # --- déplacements et collisions ---
     from ursina import held_keys
+    # durée de marche fixe (1,2 s à ~2,6 m/s) et non un nombre d'images : indépendant de la fréquence d'affichage
     held_keys["w"] = 1
-    yield from wait(30)
+    t0 = time.perf_counter()
+    while time.perf_counter() - t0 < 1.2:
+        yield
     held_keys["w"] = 0
     check(p.pos[2] > 3.0 and 6.0 < p.pos[0] < 8.0, "marche dans le couloir sans traverser les murs")
 

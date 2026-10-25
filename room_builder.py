@@ -292,6 +292,7 @@ class MeshBuilder:
         t = tile or TILE.get(tex, 1.0)
         if tex in PHOTO_SCALE:
             t = t * PHOTO_SCALE[tex]
+        tu, tv = t if isinstance(t, (tuple, list)) else (t, t)      # (périmètre, hauteur) : étiquette enroulée
         a = col if len(col) == 4 else (col[0], col[1], col[2], 1.0)
         R, S = len(rings), len(rings[0])
         centers = [tuple(sum(p[k] for p in ring) / S for k in range(3)) for ring in rings]
@@ -314,7 +315,7 @@ class MeshBuilder:
                 if j:
                     uacc += _len(_sub(rings[i][j], rings[i][j - 1]))
                 row_n.append(n)
-                row_uv.append((uacc / t, vacc / t))
+                row_uv.append((uacc / tu, vacc / tv))
             normals.append(row_n)
             uvs.append(row_uv)
         for i in range(R - 1):
@@ -326,7 +327,7 @@ class MeshBuilder:
                 front = _dot(_cross(_sub(pts[1], pts[0]), _sub(pts[2], pts[0])), nav) < 0
                 for idx in ((0, 1, 2, 0, 2, 3) if front else (0, 2, 1, 0, 3, 2)):
                     r, c = quad[idx]
-                    uv = uvs[r][c] if not (c == 0 and idx in (1, 2)) else (uvs[r][S - 1][0] + _len(_sub(rings[r][0], rings[r][S - 1])) / t, uvs[r][c][1])
+                    uv = uvs[r][c] if not (c == 0 and idx in (1, 2)) else (uvs[r][S - 1][0] + _len(_sub(rings[r][0], rings[r][S - 1])) / tu, uvs[r][c][1])
                     g["v"].append(rings[r][c])
                     g["u"].append(uv)
                     g["n"].append(normals[r][c])
@@ -574,8 +575,8 @@ def _ocollider(b, cx, y0, cz, sx, sy, sz, rot=0.0):
 
 
 def sofa(b, cx, cz, rot, y0, length=2.0, depth=0.9):
-    if b.model("sofa_03", cx, cz, y0, rot, (length, 1.0, depth), stretch=True):
-        _ocollider(b, cx, y0, cz, length, 0.42, depth, rot)
+    if b.model("sofa_03", cx, cz, y0, rot):                      # taille réelle : 2,73 x 0,93 m
+        _ocollider(b, cx, y0, cz, 2.7, 0.42, 0.92, rot)
         return
     b.obox("tissu", cx, y0, cz, length, 0.42, depth, rot, (1, 1, 1), collide=True)
     ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
@@ -597,8 +598,8 @@ def sofa(b, cx, cz, rot, y0, length=2.0, depth=0.9):
 
 
 def armchair(b, cx, cz, rot, y0):
-    if b.model("GreenChair_01", cx, cz, y0, rot, (0.95, 1.05, 0.9)):
-        _ocollider(b, cx, y0, cz, 0.95, 0.42, 0.9, rot)
+    if b.model("GreenChair_01", cx, cz, y0, rot):                # taille réelle : 0,67 x 0,66 m, 1,06 m de haut
+        _ocollider(b, cx, y0, cz, 0.67, 0.42, 0.66, rot)
         return
     sofa(b, cx, cz, rot, y0, length=0.95, depth=0.9)
 
@@ -629,8 +630,7 @@ def table(b, cx, cz, y0, sx, sz, h=0.75, tex="bois_meuble", col=WOOD, rot=0.0, c
 
 
 def chair(b, cx, cz, y0, rot=0.0, fallen=False, col=WOOD):
-    if b.model("painted_wooden_chair_01", cx, cz, y0, rot, (0.45, None if fallen else 0.92, 0.45 if not fallen else None),
-               pitch=90.0 if fallen else 0.0):
+    if b.model("painted_wooden_chair_01", cx, cz, y0, rot, pitch=90.0 if fallen else 0.0):   # taille réelle (0,96 m)
         if fallen:
             b.colliders.append((cx - 0.45, y0, cz - 0.3, cx + 0.45, y0 + 0.45, cz + 0.3))
         else:
@@ -712,12 +712,65 @@ def bed(b, cx, cz, rot, y0, w=1.6, l=2.0, col_sheet=(0.95, 0.9, 0.7)):
         b.obox("drap", cx + ox * ca + oz * sa, y0 + 0.48, cz - ox * sa + oz * ca, 0.5, 0.12, 0.32, rot, (1, 1, 0.95))
 
 
+def rounded_box(b, tex, cx, cz, y0, w, h, d, rot=0.0, col=(1, 1, 1), n=10.0, bevel=0.02):
+    """Boîte aux arêtes verticales et supérieures arrondies (électroménager) : flancs lissés, dessus biseauté."""
+    rings = [_ring(cx, cz, y0, w / 2, d / 2, rot, n),
+             _ring(cx, cz, y0 + h - bevel, w / 2, d / 2, rot, n),
+             _ring(cx, cz, y0 + h - bevel * 0.3, w / 2 - bevel * 0.6, d / 2 - bevel * 0.6, rot, n),
+             _ring(cx, cz, y0 + h, w / 2 - bevel, d / 2 - bevel, rot, n)]
+    b.loft(tex, rings, col)
+    b.cap(tex, rings[-1], (0, 1, 0), col)
+    return rings
+
+
+def _front(b, tex, cx, cz, rot, lx, ly, w, h, lz, col):
+    """Panneau vertical tourné vers +z local, centre bas (lx, ly), à la profondeur lz."""
+    n = (math.sin(math.radians(rot)), 0.0, math.cos(math.radians(rot)))
+    pa, pb = _local(cx, cz, rot, lx + w / 2, lz), _local(cx, cz, rot, lx - w / 2, lz)
+    b.quad(tex, (pa[0], ly, pa[1]), (pb[0], ly, pb[1]), (pb[0], ly + h, pb[1]), (pa[0], ly + h, pa[1]), n, col, tile=(w, h))
+
+
+def _knob(b, cx, cz, rot, lx, ly, lz, r=0.022, col=(0.8, 0.8, 0.82)):
+    kx, kz = _local(cx, cz, rot, lx, lz)
+    b.sphere("metal", kx, ly, kz, r, col, lat=5, lon=10, sy=0.7)
+
+
 def wardrobe(b, x0, z0, x1, z1, y0, face="+x", height=2.1):
-    b.box("bois_meuble", x0, y0, z0, x1, y0 + height, z1, DARKWOOD, collide=True)
+    """Armoire ancienne : caisse (portes animées à part), socle mouluré, corniche, pieds tournés."""
+    b.box("bois_meuble", x0 + 0.03, y0 + 0.1, z0, x1 - 0.03, y0 + height - 0.08, z1, DARKWOOD, collide=True)
+    b.box("bois_meuble", x0, y0 + 0.06, z0 - 0.01, x1, y0 + 0.14, z1 + 0.025, (0.45, 0.4, 0.36))
+    b.box("bois_meuble", x0 - 0.04, y0 + height - 0.08, z0 - 0.02, x1 + 0.04, y0 + height, z1 + 0.05, (0.45, 0.4, 0.36))
+    b.box("bois_meuble", x0 - 0.02, y0 + height - 0.12, z0 - 0.01, x1 + 0.02, y0 + height - 0.08, z1 + 0.03, (0.5, 0.45, 0.4))
+    for fx in (x0 + 0.08, x1 - 0.08):
+        for fz in (z0 + 0.08, z1 - 0.06):
+            b.loft("bois_meuble", [_ring(fx, fz, y0 + yy, r, r, 0.0, 2.0, seg=12) for (yy, r) in
+                                   ((0.0, 0.03), (0.02, 0.045), (0.05, 0.035), (0.06, 0.05))], (0.4, 0.35, 0.3))
 
 
 def counter(b, x0, z0, x1, z1, y0, h=0.9):
-    b.box("bois_meuble", x0, y0, z0, x1, y0 + h - 0.04, z1, (0.6, 0.55, 0.5), collide=True)
+    """Meuble bas de cuisine : caisson sur socle en retrait, portes à cadre et poignées, plan de travail en marbre."""
+    wood = (0.6, 0.55, 0.5)
+    b.box("bois_meuble", x0, y0 + 0.1, z0, x1, y0 + h - 0.04, z1, wood, collide=True)
+    # façade = côté pièce (meubles adossés au mur x = 0 ou z = 12 de la cuisine)
+    if x1 - x0 < z1 - z0:
+        face, a0, a1, fixed = "+x", z0, z1, x1
+        b.box("beton", x0, y0, z0, x1 - 0.06, y0 + 0.1, z1, (0.25, 0.24, 0.23))
+    else:
+        face, a0, a1, fixed = "-z", x0, x1, z0
+        b.box("beton", x0, y0, z0 + 0.06, x1, y0 + 0.1, z1, (0.25, 0.24, 0.23))
+    n_doors = max(1, round((a1 - a0) / 0.6))
+    dw = (a1 - a0) / n_doors
+    for k in range(n_doors):
+        c = a0 + dw * (k + 0.5)
+        for (dy0, dy1, t, cc) in ((y0 + 0.13, y0 + h - 0.08, 0.012, (0.66, 0.6, 0.54)),
+                                  (y0 + 0.2, y0 + h - 0.15, 0.018, (0.58, 0.53, 0.47))):
+            inset = 0.02 if t < 0.015 else 0.08
+            if face == "+x":
+                b.box("bois_meuble", fixed, dy0, c - dw / 2 + inset, fixed + t, dy1, c + dw / 2 - inset, cc)
+            else:
+                b.box("bois_meuble", c - dw / 2 + inset, dy0, fixed - t, c + dw / 2 - inset, dy1, fixed, cc)
+        hx, hz = (fixed + 0.03, c + dw / 2 - 0.07) if face == "+x" else (c + dw / 2 - 0.07, fixed - 0.03)
+        b.cyl("metal", hx, y0 + h - 0.34, hz, 0.008, 0.14, 8, (0.8, 0.8, 0.82))
     b.box("marbre", x0 - 0.02, y0 + h - 0.04, z0 - 0.02, x1 + 0.02, y0 + h, z1 + 0.02, (1, 1, 1))
 
 
@@ -729,10 +782,44 @@ def carton(b, cx, cz, y0, size=0.5, rot=0.0, col=(0.7, 0.55, 0.35)):
     b.obox("papier", cx, y0 + size * 0.9, cz, size * 0.96, 0.02, 0.06, rot, (0.55, 0.45, 0.3))
 
 
+def pleated_panel(b, tex, cx, y0, cz, width, height, axis="x", depth=0.04, folds=8, col=(1, 1, 1), seg=48, hem=0.03):
+    """Tissu suspendu plissé (rideau, drap) centré sur (cx, cz), plis le long de `axis`, visible des deux côtés."""
+    pts = []
+    for k in range(seg + 1):
+        t = k / seg
+        a = -width / 2 + width * t
+        off = depth * math.sin(t * folds * 2 * math.pi)
+        pts.append((a, off, hem * math.sin(t * folds * 3.1 + 1.0)))
+    for k in range(seg):
+        (a0, o0, h0), (a1, o1, h1) = pts[k], pts[k + 1]
+        if axis == "x":
+            p0, p1 = (cx + a0, y0 + h0, cz + o0), (cx + a1, y0 + h1, cz + o1)
+            q0, q1 = (cx + a0, y0 + height, cz + o0), (cx + a1, y0 + height, cz + o1)
+            n = _norm((-(o1 - o0), 0, a1 - a0))
+        else:
+            p0, p1 = (cx + o0, y0 + h0, cz + a0), (cx + o1, y0 + h1, cz + a1)
+            q0, q1 = (cx + o0, y0 + height, cz + a0), (cx + o1, y0 + height, cz + a1)
+            n = _norm((a1 - a0, 0, -(o1 - o0)))
+        b.quad(tex, p0, p1, q1, q0, n, col, tile=(width / seg * 2, height))
+        b.quad(tex, p0, p1, q1, q0, (-n[0], -n[1], -n[2]), col, tile=(width / seg * 2, height))
+
+
 def covered_furniture(b, cx, cz, y0, sx, sz, h):
-    """Meuble recouvert d'un drap."""
-    b.obox("drap", cx, y0, cz, sx, h, sz, 0.0, (1, 1, 1), collide=True)
-    b.obox("drap", cx, y0 + h, cz, sx * 0.9, 0.06, sz * 0.9, 0.0, (0.9, 0.9, 0.9))
+    """Meuble recouvert d'un drap : dessus arrondi, drap qui retombe en ondulant jusqu'au sol."""
+    seg = 40
+
+    def ring(y, scale, wave):
+        out = []
+        for k, (x, _, z) in enumerate(_ring(0.0, 0.0, 0.0, sx / 2 * scale, sz / 2 * scale, 0.0, 5.0, seg=seg)):
+            w = 1.0 + wave * math.sin(k * 2 * math.pi * 7 / seg + 0.6) + wave * 0.5 * math.sin(k * 2 * math.pi * 3 / seg)
+            out.append((cx + x * w, y, cz + z * w))
+        return out
+
+    rings = [ring(y0, 1.1, 0.035), ring(y0 + h * 0.25, 1.05, 0.025), ring(y0 + h * 0.7, 1.0, 0.012), ring(y0 + h * 0.97, 0.99, 0.005),
+             ring(y0 + h + 0.03, 0.9, 0.0), ring(y0 + h + 0.05, 0.6, 0.0)]
+    b.loft("drap", rings, (0.95, 0.94, 0.9))
+    b.cap("drap", rings[-1], (0, 1, 0), (0.95, 0.94, 0.9))
+    b.colliders.append((cx - sx / 2, y0, cz - sz / 2, cx + sx / 2, y0 + h, cz + sz / 2))
 
 
 def _ring(cx, cz, y, hw, hd, rot=0.0, n=2.6, seg=32, ox=0.0, oz=0.0):
@@ -849,7 +936,14 @@ def bathtub(b, cx, cz, y0, rot, l=1.6, w=0.75, water=False):
 
 
 def fridge_body(b, cx, cz, y0, rot=0.0, w=0.7, d=0.7, h=1.7):
-    b.obox("email", cx, y0, cz, w, h, d, rot, (1, 1, 1), collide=True)
+    """Réfrigérateur années 60 : caisse aux angles arrondis, dessus bombé, grille et pieds (porte animée à part)."""
+    rounded_box(b, "email", cx, cz, y0 + 0.05, w, h - 0.05, d, rot, (0.97, 0.96, 0.9), n=8.0, bevel=0.06)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            fx, fz = _local(cx, cz, rot, sx * (w / 2 - 0.06), sz * (d / 2 - 0.06))
+            b.cyl("metal", fx, y0, fz, 0.025, 0.05, 8, (0.3, 0.3, 0.32))
+    _front(b, "metal", cx, cz, rot, 0.0, y0 + 0.06, w - 0.1, 0.06, d / 2 + 0.003, (0.25, 0.25, 0.27))
+    _ocollider(b, cx, y0, cz, w, h, d, rot)
 
 
 def candle(b, cx, cz, y0, col=(0.9, 0.85, 0.7)):
@@ -878,10 +972,26 @@ def mannequin(b, cx, cz, y0, rot=0.0):
 
 
 def washing_machine(b, cx, cz, y0, rot=0.0):
-    b.obox("email", cx, y0, cz, 0.6, 0.85, 0.6, rot, (1, 1, 1), collide=True)
-    ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
-    ox, oz = 0.0, 0.31
-    b.obox("metal", cx + ox * ca + oz * sa, y0 + 0.2, cz - ox * sa + oz * ca, 0.34, 0.34, 0.03, rot, (0.4, 0.45, 0.5))
+    """Lave-linge à hublot (façade vers +z local) : caisse arrondie, bandeau de commandes, hublot chromé, plinthe."""
+    rounded_box(b, "email", cx, cz, y0, 0.6, 0.85, 0.6, rot, (0.95, 0.95, 0.93), n=10.0, bevel=0.025)
+    fz = 0.301
+    _front(b, "metal", cx, cz, rot, 0.0, y0 + 0.73, 0.56, 0.1, fz, (0.78, 0.78, 0.8))
+    _front(b, "ecran_noir", cx, cz, rot, -0.06, y0 + 0.755, 0.14, 0.05, fz + 0.002, (1, 1, 1))
+    _knob(b, cx, cz, rot, 0.18, y0 + 0.78, fz + 0.01, 0.03)
+    for k in range(3):
+        _knob(b, cx, cz, rot, 0.06 + k * 0.035, y0 + 0.77, fz + 0.005, 0.009, (0.3, 0.3, 0.32))
+    _front(b, "metal", cx, cz, rot, 0.0, y0 + 0.02, 0.56, 0.08, fz, (0.6, 0.6, 0.62))
+
+    def disc(r, dz):
+        out = []
+        for (x, _, z) in _ring(0, 0, 0, r, r, 0.0, 2.0, seg=28):
+            px, pz = _local(cx, cz, rot, x, fz + dz)
+            out.append((px, y0 + 0.4 + z, pz))
+        return out
+    b.loft("metal", [disc(0.2, 0.0), disc(0.2, 0.025), disc(0.17, 0.035)], (0.82, 0.82, 0.85))
+    b.loft("vitre", [disc(0.17, 0.035), disc(0.12, 0.05)], (0.35, 0.4, 0.45))
+    b.cap("vitre", disc(0.12, 0.05), (math.sin(math.radians(rot)), 0, math.cos(math.radians(rot))), (0.3, 0.35, 0.4))
+    _ocollider(b, cx, y0, cz, 0.6, 0.85, 0.6, rot)
 
 
 def crate(b, cx, cz, y0, size=0.45, rot=0.0):
@@ -906,9 +1016,16 @@ def shelving_unit(b, x0, z0, x1, z1, y0, face="+x", levels=4, height=1.9):
 
 def freezer(b, cx, cz, y0):
     """Congélateur horizontal (le couvercle est une entité animée séparée)."""
-    b.box("email", cx - 0.9, y0, cz - 0.45, cx + 0.9, y0 + 0.82, cz + 0.45, (0.95, 0.95, 0.95), collide=True, skip=("+y",))
-    # intérieur sombre
-    b.box("email", cx - 0.82, y0 + 0.78, cz - 0.37, cx + 0.82, y0 + 0.82, cz + 0.37, (0.25, 0.28, 0.3), skip=("-y", "+x", "-x", "+z", "-z"))
+    shell = [_ring(cx, cz, y0 + yy, 0.9, 0.45, 0.0, 10.0) for yy in (0.04, 0.82)]
+    b.loft("email", shell, (0.95, 0.95, 0.93))
+    b.cap("email", shell[0], (0, -1, 0), (0.9, 0.9, 0.88))
+    _basin(b, "email", cx, cz, 0.0, y0 + 0.82, (0.9, 0.45), (0.82, 0.37), 0.72, (0.62, 0.66, 0.68), n_out=10.0, n_in=10.0,
+           bulge=(1.0, 0.99, 0.98, 0.97, 0.96))
+    b.box("beton", cx - 0.88, y0, cz - 0.43, cx + 0.88, y0 + 0.04, cz + 0.43, (0.2, 0.2, 0.2))
+    b.box("metal", cx - 0.12, y0 + 0.72, cz - 0.47, cx + 0.12, y0 + 0.76, cz - 0.45, (0.75, 0.75, 0.78))
+    for k in range(6):
+        b.box("metal", cx + 0.5 + k * 0.05, y0 + 0.08, cz - 0.452, cx + 0.52 + k * 0.05, y0 + 0.25, cz - 0.45, (0.3, 0.3, 0.32))
+    b.colliders.append((cx - 0.9, y0, cz - 0.45, cx + 0.9, y0 + 0.82, cz + 0.45))
 
 
 def painting(b, x, y, z, w, h, facing, tex="portrait", thick=0.03):

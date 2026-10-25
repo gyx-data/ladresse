@@ -86,7 +86,13 @@ def _rdc(house, rng):
     rb.coat_rack(b, 6.42, 1.7, y0)
     point(house, "manteau", (6.45, 1.1, 1.7), "Fouiller", 0, radius=0.9)
     rb.painting(b, 7.9, 1.5, 3.8, 0.8, 1.3, "-x", tex="miroir")
-    house.parts["drap_miroir"] = make_part(house.level_roots[0], "drap", (0.05, 1.5, 1.0), (7.86, 1.5, 3.8), (1, 1, 1))
+    # drap plissé qui retombe sur le miroir (retiré par le joueur)
+    sheet = Entity(parent=house.level_roots[0], position=(7.84, 0.62, 3.8))
+    sb = MeshBuilder("drap_miroir")
+    rb.pleated_panel(sb, "drap", 0.0, 0.0, 0.0, 1.0, 1.65, axis="z", depth=0.025, folds=5, col=(0.95, 0.94, 0.9))
+    for e in sb.build(parent=sheet):
+        pass
+    house.parts["drap_miroir"] = sheet
     A["miroir"] = Vec3(7.8, 1.5, 3.8)
     point(house, "miroir", (7.7, 1.4, 3.8), "Retirer le drap", 0, radius=0.9)
     # plaquette de porte d'entrée : verrou
@@ -166,7 +172,7 @@ def _rdc(house, rng):
         b.cyl("metal", 0.14, y0 + 0.9, zz, 0.02, 0.06, 10, (0.85, 0.85, 0.88))
     A["robinet"] = Vec3(0.25, 1.2, 9.03)
     # réfrigérateur (corps + porte articulée + intérieur)
-    rb.fridge_body(b, 5.2, 11.55, y0, 0, 0.7, 0.7, 1.75)
+    rb.fridge_body(b, 5.2, 11.55, y0, 180, 0.7, 0.7, 1.75)
     b.quad("platre", (4.88, 0.05, 11.19), (5.52, 0.05, 11.19), (5.52, 1.7, 11.19), (4.88, 1.7, 11.19), (0, 0, -1), (0.25, 0.27, 0.28))
     b.obox("email", 5.2, 0.6, 11.4, 0.34, 0.03, 0.34, 0, (0.45, 0.5, 0.35))                   # assiette moisie
     b.obox("papier", 5.2, 0.63, 11.4, 0.2, 0.02, 0.16, 20, (0.8, 0.8, 0.7))                   # note
@@ -182,8 +188,16 @@ def _rdc(house, rng):
     house.parts["papier_adresse"] = pe
     point(house, "adresse_frigo", (5.35, 1.45, 11.0), "Lire le papier", 0, radius=0.7)
     # four
-    b.box("metal", 3.6, y0, 11.15, 4.4, y0 + 0.9, 11.9, (0.55, 0.55, 0.58), collide=True)
-    b.box("beton", 3.65, y0 + 0.15, 11.12, 4.35, y0 + 0.65, 11.16, (0.04, 0.04, 0.04))
+    # cuisinière émaillée : caisse arrondie, cavité, bandeau à manettes, plaques, dosseret
+    rb.rounded_box(b, "email", 4.0, 11.525, y0, 0.8, 0.9, 0.75, 180, (0.93, 0.92, 0.86), n=10.0, bevel=0.02)
+    b.colliders.append((3.6, y0, 11.15, 4.4, y0 + 0.9, 11.9))
+    b.box("beton", 3.65, y0 + 0.15, 11.13, 4.35, y0 + 0.65, 11.16, (0.04, 0.04, 0.04))
+    b.box("metal", 3.62, y0 + 0.72, 11.13, 4.38, y0 + 0.86, 11.15, (0.78, 0.78, 0.8))
+    for k in range(4):
+        b.sphere("metal", 3.72 + k * 0.17, y0 + 0.79, 11.12, 0.025, (0.15, 0.15, 0.15), lat=5, lon=10, sy=0.8)
+    for (px, pz, r) in ((3.8, 11.35, 0.09), (4.2, 11.35, 0.07), (3.8, 11.7, 0.07), (4.2, 11.7, 0.09)):
+        b.cyl("metal", px, y0 + 0.9, pz, r, 0.012, 16, (0.12, 0.12, 0.13))
+    b.box("email", 3.6, y0 + 0.9, 11.84, 4.4, y0 + 1.02, 11.9, (0.93, 0.92, 0.86))
     house.parts["four_porte"] = hinged(house, 0, (3.65, 11.1), 0.7, 0.5, 0.05, (1, 0), (0, -1), "metal", (0.65, 0.65, 0.68), y0=0.15)
     point(house, "four", (4.0, 0.5, 11.0), "Ouvrir", 0, radius=0.9)
     # table et chaises
@@ -226,15 +240,22 @@ def _rdc(house, rng):
     rb.painting(b, 15.88, 1.55, 6.5, 0.55, 0.7, "-x", tex="miroir_brise")
     rb.wall_decal(b, "griffures", 15.85, 1.2, 8.2, 0.7, 1.0, "-x", off=0.01, col=(0.7, 0.7, 0.7)) if False else None
     rb.bathtub(b, 14.4, 5.35, y0, 0, 1.6, 0.75)
-    house.parts["rideau"] = make_part(house.level_roots[0], "rideau", (1.7, 1.7, 0.03), (14.4, 1.45, 5.4), (1, 1, 1))
-    A["rideau"] = Vec3(14.4, 1.2, 5.4)
-    point(house, "rideau", (14.4, 1.2, 5.5), "Tirer le rideau", 0, radius=1.0)
+    # rideau de douche plissé (coulisse de 1,25 m en x quand on le tire) sous une tringle chromée
+    b.obox("metal", 14.85, y0 + 2.31, 5.78, 2.1, 0.025, 0.025, 0, (0.85, 0.85, 0.88))
+    curtain = Entity(parent=house.level_roots[0], position=(14.4, y0 + 0.66, 5.78))
+    cb_ = MeshBuilder("rideau")
+    rb.pleated_panel(cb_, "rideau", 0.0, 0.0, 0.0, 1.7, 1.62, axis="x", depth=0.045, folds=9, col=(1, 1, 1))
+    for e in cb_.build(parent=curtain):
+        pass
+    house.parts["rideau"] = curtain
+    A["rideau"] = Vec3(14.4, 1.2, 5.78)
+    point(house, "rideau", (14.4, 1.2, 5.9), "Tirer le rideau", 0, radius=1.0)
     point(house, "miroir_brise", (15.6, 1.5, 6.5), "Regarder le miroir brisé", 0, radius=0.9)
     b.box("beton", 15.47, y0 + 0.735, 6.42, 15.6, y0 + 0.75, 6.55, (0.7, 0.75, 0.8))         # éclat au fond de la vasque
     A["tuyauterie"] = Vec3(13.0, 1.0, 5.0)
 
     # ---------------- Buanderie ---------------------------------------
-    rb.washing_machine(b, 15.3, 11.3, y0, 0)
+    rb.washing_machine(b, 15.3, 11.3, y0, 180)                     # hublot côté pièce (le mur est en z = 12)
     rb.shelving_unit(b, 12.2, 11.2, 14.0, 11.8, y0)
     b.box("planches", 12.3, y0 + 0.6, 11.3, 13.9, y0 + 0.63, 11.7, (0.8, 0.75, 0.7))
     rb.delivery_bag(b, 13.0, 11.5, y0 + 0.63, 0, torn=False)
