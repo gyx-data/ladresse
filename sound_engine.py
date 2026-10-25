@@ -747,6 +747,78 @@ def s_end_beep(rng):
     return normalize(tone(950, 0.35, (1.0,)), 0.5)
 
 
+@snd("tuto_carillon")
+def s_tuto_chime(rng):
+    return normalize(melody([79, 84], 0.11, (1.0, 0.25, 0.1), tail=0.5), 0.32)
+
+
+@snd("tuto_ok")
+def s_tuto_ok(rng):
+    return normalize(melody([84, 88, 91], 0.07, (1.0, 0.3), tail=0.35), 0.3)
+
+
+@snd("caisse_voix_bip")
+def s_kiosk_dong(rng):
+    return normalize(melody([72, 79], 0.14, (1.0, 0.5, 0.2), tail=0.4), 0.35)
+
+
+@snd("ambiance_ville", loop=True)
+def s_city_amb(rng):
+    """Rumeur nocturne de la ville : trafic lointain, mer, grillons."""
+    d = 12.0
+    n = int(SR * d)
+    t = taxis(d)
+    rumble = lowpass(rng.standard_normal(n), 180) * (0.6 + 0.4 * np.sin(2 * np.pi * t / 6.0))
+    sea = bandpass(rng.standard_normal(n), 300, 1400) * (0.5 + 0.5 * np.sin(2 * np.pi * t / 4.0) ** 2) * 0.5
+    cr = np.zeros(n)
+    for k in range(0, n, int(SR * 0.37)):
+        m = min(n - k, int(SR * 0.06))
+        cr[k:k + m] += sine(4300 + rng.uniform(-80, 80), m / SR)[:m] * decay(m, 0.02) * 0.15
+    x = rumble * 0.7 + sea + cr
+    # bouclage sans clic
+    f = int(SR * 0.5)
+    x[:f] = x[:f] * np.linspace(0, 1, f) + x[-f:] * np.linspace(1, 0, f)
+    return normalize(x[:-f], 0.35)
+
+
+@snd("ambiance_magasin", loop=True)
+def s_shop_amb(rng):
+    """Bourdonnement des frigos et des néons, bips lointains."""
+    d = 8.0
+    n = int(SR * d)
+    t = taxis(d)
+    hum = 0.5 * np.sin(2 * np.pi * 100 * t) + 0.25 * np.sin(2 * np.pi * 200 * t) + 0.1 * np.sin(2 * np.pi * 50 * t)
+    air = lowpass(rng.standard_normal(n), 900) * 0.25
+    x = hum * 0.4 + air
+    for k in (int(SR * 2.1), int(SR * 5.6)):
+        m = int(SR * 0.08)
+        x[k:k + m] += sine(2900, m / SR)[:m] * 0.08
+    f = int(SR * 0.4)
+    x[:f] = x[:f] * np.linspace(0, 1, f) + x[-f:] * np.linspace(1, 0, f)
+    return normalize(x[:-f], 0.28)
+
+
+@snd("ambiance_resto", loop=True)
+def s_resto_amb(rng):
+    """Brouhaha de terrasse : murmures de conversations, couverts."""
+    d = 10.0
+    n = int(SR * d)
+    t = taxis(d)
+    x = np.zeros(n)
+    for _ in range(9):
+        f0 = rng.uniform(100, 230)
+        mod = (np.sin(2 * np.pi * rng.uniform(2.5, 5.0) * t + rng.uniform(0, 6)) > 0.2).astype(float)
+        mod = np.convolve(mod, np.ones(800) / 800, mode="same")
+        x += bandpass(rng.standard_normal(n), f0 * 2, f0 * 9) * mod * 0.35
+    for _ in range(14):
+        k = int(rng.uniform(0, n - SR * 0.1))
+        m = int(SR * 0.05)
+        x[k:k + m] += bandpass(rng.standard_normal(m), 3000, 8000) * decay(m, 0.01) * 0.6
+    f = int(SR * 0.5)
+    x[:f] = x[:f] * np.linspace(0, 1, f) + x[-f:] * np.linspace(1, 0, f)
+    return normalize(x[:-f], 0.3)
+
+
 @snd("scan_bip")
 def s_scan_beep(rng):
     n = int(SR * 0.09)
@@ -1282,6 +1354,74 @@ class SoundEngine:
         self.paths[name + "_m"] = mp
         return name
 
+    @staticmethod
+    def _tts_params(f0, speed):
+        from tts import tts
+        gender = "Male" if f0 < 160 else "Female"
+        match = tts.has_gender(gender)
+        # sans voix du bon genre : on transpose (et on accélère un peu pour compenser le ralentissement)
+        rate = int(max(-5, min(5, round((speed - 1.0) * 8)))) + (2 if not match and gender == "Male" else 0)
+        return gender, match, (gender if match else "Female"), rate
+
+    def prewarm_voices(self, items):
+        """items : [(texte, f0, vitesse)] — génère en arrière-plan les répliques connues (après détection du moteur)."""
+        def run():
+            try:
+                from tts import tts
+                tts._probe_done.wait(60)
+                if not tts.available:
+                    return
+                for text, f0, speed in items:
+                    _, _, vg, rate = self._tts_params(f0, speed)
+                    tts.request(text, vg, rate)
+            except Exception:
+                pass
+        import threading
+        threading.Thread(target=run, daemon=True, name="tts_prewarm").start()
+
+    def _tts_voice(self, text, f0, speed, whisper, reverse, distort):
+        """Réplique en voix réelle (si le moteur vocal du système est disponible et le fichier prêt).
+        Retourne (nom du son, vitesse de lecture) ou None."""
+        try:
+            from tts import tts, read_wav_any
+        except Exception:
+            return None
+        if not tts.available and tts._probe_done.is_set():
+            return None
+        gender, match, voice_gender, rate = self._tts_params(f0, speed)
+        raw = tts.request(text, voice_gender, rate)
+        if raw is None:
+            return None
+        base = 120.0 if match and gender == "Male" else 205.0
+        pitch = max(0.7, min(1.35, f0 / base)) if not (match and abs(f0 / base - 1.0) < 0.12) else 1.0
+        key = f"{raw}|{whisper}|{reverse}|{distort}"
+        name = "voixtts_" + _hash_text(key)
+        if name not in self.paths:
+            path = os.path.join(self.dir, name + ".wav")
+            if not os.path.exists(path):
+                try:
+                    x = read_wav_any(raw, SR)
+                except (OSError, EOFError, ValueError, wave.Error):
+                    return None
+                if len(x) < SR * 0.05:
+                    return None
+                if whisper:
+                    rng = np.random.default_rng(len(text))
+                    env = np.abs(x)
+                    env = np.convolve(env, np.ones(220) / 220.0, mode="same")
+                    x = highpass(x, 700) * 0.55 + bandpass(rng.standard_normal(len(x)), 1800, 6500) * env * 2.2
+                if distort:
+                    rng = np.random.default_rng(3)
+                    x = x * (0.6 + 0.4 * np.sin(2 * np.pi * 30 * np.arange(len(x)) / SR))
+                    x = bandpass(x, 250, 3000) + 0.05 * rng.standard_normal(len(x))
+                if reverse:
+                    x = x[::-1]
+                write_wav(path, normalize(x, 0.85))
+                write_wav(os.path.join(self.dir, name + "_m.wav"), lowpass(_read_wav(path), 550) * 1.15)
+            self.paths[name] = path
+            self.paths[name + "_m"] = os.path.join(self.dir, name + "_m.wav")
+        return name, pitch
+
     def speak(self, text, f0=120, speed=1.0, whisper=False, pos=None, volume=1.0,
               channel="voice", distort=False, reverse=False, subtitle=True, speaker=None):
         if subtitle and self.subtitle_cb and config.settings["sous_titres"]:
@@ -1289,12 +1429,21 @@ class SoundEngine:
                 self.subtitle_cb(text, speaker)
             except Exception:
                 pass
-        if not self.enabled:
+        if not self.enabled or not text:
             return None
-        name = self.voice_path(text, f0, speed, whisper, reverse, distort)
+        pitch = 1.0
+        res = None
+        try:
+            res = self._tts_voice(text, f0, speed, whisper, reverse, distort)
+        except Exception:
+            res = None
+        if res is not None:
+            name, pitch = res
+        else:
+            name = self.voice_path(text, f0, speed, whisper, reverse, distort)
         if pos is not None:
-            return self.play_at(name, pos, volume, channel=channel, ref=4.0)
-        return self.play(name, volume, channel=channel)
+            return self.play_at(name, pos, volume, pitch=pitch, channel=channel, ref=4.0)
+        return self.play(name, volume, pitch=pitch, channel=channel)
 
     # --- mise à jour -------------------------------------------------------
     def set_listener(self, pos, yaw):

@@ -203,18 +203,28 @@ class DeliveryApp(App):
         if not meals:
             label(self.root, "Aucun restaurant disponible\npour cette catégorie.", 0, 0.0, 0.6, color.gray)
             return
-        y = 0.16
+        # cartes adaptées au nombre de menus : la liste tient toujours dans l'écran du téléphone
+        top, bottom = 0.235, -0.345
+        step = min(0.19, (top - bottom) / max(1, len(meals)))
+        ch = step - 0.014
+        k_ = ch / 0.17
+        y = top - step / 2 + 0.03
         for k, m in meals:
-            rect(self.root, 0, y - 0.03, SW - 0.03, 0.17, rgb(30, 30, 36))
-            rect(self.root, -0.135, y - 0.03, 0.09, 0.09, rgb(*[int(c * 255) for c in m["color"]]), z=-0.02)
-            label(self.root, m["name"], -0.075, y + 0.02, 0.7, color.white, origin=(-0.5, 0), z=-0.03)
-            label(self.root, m["desc"], -0.075, y - 0.005, 0.5, rgb(200, 200, 205), origin=(-0.5, 0), z=-0.03)
-            label(self.root, f"{m['price']:.2f} €".replace(".", ","), -0.075, y - 0.03, 0.65, rgb(255, 170, 90), origin=(-0.5, 0), z=-0.03)
-            label(self.root, "Intensité", -0.075, y - 0.058, 0.35, rgb(160, 160, 166), origin=(-0.5, 0), z=-0.03)
-            for s in range(5):
-                star(self.root, -0.02 + s * 0.017, y - 0.058, 0.015, color.rgb32(255, 190, 40) if s < m["stars"] else rgb(70, 70, 76))
-            button(self.root, "Choisir", 0.125, y - 0.03, 0.07, 0.04, (lambda k=k: self.choose(k)), ORANGE, color.white, size=0.5, z=-0.04)
-            y -= 0.19
+            yc = y - 0.03
+            rect(self.root, 0, yc, SW - 0.03, ch, rgb(30, 30, 36))
+            rect(self.root, -0.14, yc, 0.075 * min(1.0, k_ + 0.2), 0.075 * min(1.0, k_ + 0.2), rgb(*[int(c * 255) for c in m["color"]]), z=-0.02)
+            tx = -0.092
+            mw = 0.085 - tx
+            label(self.root, m["name"], tx, yc + 0.05 * k_, 0.7, color.white, origin=(-0.5, 0), z=-0.03, max_w=mw, max_h=0.03)
+            label(self.root, m["desc"], tx, yc + 0.025 * k_, 0.5, rgb(200, 200, 205), origin=(-0.5, 0), z=-0.03, max_w=mw + 0.09,
+                  max_h=0.022)
+            label(self.root, f"{m['price']:.2f} €".replace(".", ","), tx, yc, 0.65, rgb(255, 170, 90), origin=(-0.5, 0), z=-0.03,
+                  max_w=mw)
+            label(self.root, "Intensité", tx, yc - 0.028 * k_, 0.35, rgb(160, 160, 166), origin=(-0.5, 0), z=-0.03)
+            for s_ in range(5):
+                star(self.root, -0.04 + s_ * 0.017, yc - 0.028 * k_, 0.015, color.rgb32(255, 190, 40) if s_ < m["stars"] else rgb(70, 70, 76))
+            button(self.root, "Choisir", 0.135, yc - 0.03 * k_, 0.07, 0.04, (lambda k=k: self.choose(k)), ORANGE, color.white, size=0.5, z=-0.04)
+            y -= step
 
     def choose(self, key):
         game = self.phone.game
@@ -229,6 +239,10 @@ class DeliveryApp(App):
     def _page_checkout(self):
         self._header(True)
         button(self.root, "‹", -0.17, 0.32, 0.045, 0.04, self.go_back, rgb(200, 90, 20), size=0.8, z=-0.04)
+        if self.meal not in gd.MEALS:
+            self.page = "home"
+            self._page_home()
+            return
         m = gd.MEALS[self.meal]
         label(self.root, "Paiement", -0.18, 0.25, 0.85, color.white, origin=(-0.5, 0))
         rect(self.root, 0, 0.12, SW - 0.03, 0.17, rgb(30, 30, 36))

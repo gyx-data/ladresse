@@ -94,5 +94,6 @@ class InteractionSystem:
         if it is None or it.current_prompt() is None:
             return False
         it.used = True
+        self.uses = getattr(self, "uses", 0) + 1
         it.on_use(it)
         return True

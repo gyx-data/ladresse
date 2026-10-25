@@ -11,7 +11,7 @@ from ursina import Entity, Text, Button, color, camera, Vec3, invoke, destroy
 import config
 import game_data as gd
 from sound_engine import engine as sound
-from ui_widgets import label, rect, button, clear, rgb, star, Toast, text_scale, panel, image, ProgressBar
+from ui_widgets import label, rect, button, clear, rgb, star, Toast, text_scale, panel, image, ProgressBar, set_label, text_box
 import illustrations as ill
 import typography as T
 import ui_theme as theme
@@ -302,17 +302,17 @@ class ChoiceDialog:
     def __init__(self, game):
         self.game = game
         self.root = Entity(parent=camera.ui, z=-14, enabled=False)
-        rect(self.root, 0, 0, 2.4, 1.3, rgb(0, 0, 0, 160), z=1)
-        rect(self.root, 0, 0, 0.7, 0.3, rgb(14, 14, 18, 245), z=0.5)
-        self.text = label(self.root, "", 0, 0.07, 0.9, color.white, wrap=40, z=-0.1)
-        self.yes = button(self.root, "Oui", -0.14, -0.07, 0.2, 0.06, None, rgb(60, 30, 30), size=0.9, z=-0.1)
-        self.no = button(self.root, "Non", 0.14, -0.07, 0.2, 0.06, None, rgb(30, 50, 40), size=0.9, z=-0.1)
+        rect(self.root, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 160), z=1)
+        panel(self.root, 0, 0, 0.76, 0.34, "panel", z=0.5)
+        self.text = label(self.root, "", 0, 0.06, 0.88, color.white, wrap=44, z=-0.1, max_w=0.7, max_h=0.16)
+        self.yes = button(self.root, "Oui", -0.17, -0.1, 0.3, 0.062, None, style="danger", size=0.85, z=-0.1)
+        self.no = button(self.root, "Non", 0.17, -0.1, 0.3, 0.062, None, style="dark", size=0.85, z=-0.1)
         self.visible = False
 
     def ask(self, question, on_yes, on_no, yes="Oui", no="Non"):
-        self.text.text = question
-        self.yes.text_entity.text = yes
-        self.no.text_entity.text = no
+        set_label(self.text, question)
+        self.yes.set_text(yes)
+        self.no.set_text(no)
         self.yes.on_click = lambda: self._answer(on_yes)
         self.no.on_click = lambda: self._answer(on_no)
         self.visible = True
@@ -447,6 +447,7 @@ class EndingScreen:
 
     def _advance(self):
         self.idx += 1
+        self.items.audit_skip = False
         clear(self.items)
         if self.idx >= len(self.steps):
             return
@@ -459,12 +460,13 @@ class EndingScreen:
             return
         size = 1.3 if kind == "line" else 2.2 if kind == "title" else 1.1
         col = color.white if kind != "post" else rgb(200, 190, 160)
-        self.cur = label(self.items, text, 0, 0.0, size, col, wrap=62, z=0)
+        self.cur = label(self.items, text, 0, 0.0, size, col, wrap=62, z=0, max_w=1.6, max_h=0.8)
         self.cur.color = color.rgba32(255, 255, 255, 0) if kind != "post" else rgb(200, 190, 160, 0)
         if kind == "title":
             sound.play("sourd_mort", 0.5)
 
     def _start_credits(self):
+        self.items.audit_skip = True        # le générique défile : il sort volontairement de l'écran
         st = self.game.state
         self.credit_items = []
         y = -0.6
@@ -548,13 +550,13 @@ class HUD:
         self.prompt = label(self.prompt_root, "", -0.1, 0, 0.8, color.white, origin=(-0.5, 0), z=-0.01)
         # sous-titres / pensées
         self.sub_bg = rect(r, 0, -0.33, 1.1, 0.062, rgb(0, 0, 0, 0), z=0.1, radius=0.25)
-        self.sub = label(r, "", 0, -0.33, 0.92, color.white, wrap=72, z=-0.1)
+        self.sub = label(r, "", 0, -0.33, 0.92, color.white, wrap=72, z=-0.1, max_w=1.5, max_h=0.12)
         self.sub_t = 0.0
         # notification de quête (bandeau haut centre)
         self.quest_root = Entity(parent=r, y=0.38, enabled=False)
         panel(self.quest_root, 0, 0, 0.62, 0.06, "panel", z=0.05, radius=0.4)
         rect(self.quest_root, -0.29, 0, 0.006, 0.036, rgb(255, 200, 90), z=0, radius=0.5)
-        self.quest_note = label(self.quest_root, "", 0, 0, 0.85, rgb(255, 230, 160), z=-0.1)
+        self.quest_note = label(self.quest_root, "", 0, 0, 0.85, rgb(255, 230, 160), z=-0.1, max_w=0.55, max_h=0.05)
         self.quest_t = 0.0
         self.tips = label(r, "", 0, -0.2, 0.72, rgb(205, 205, 210), wrap=80, z=-0.1)
         self.tips_t = 0.0
@@ -577,14 +579,17 @@ class HUD:
         self.obj_title.enabled = bool(text)
 
     def say(self, text, duration=3.5, speaker=None):
-        self.sub.text = (f"{speaker} : " if speaker else "") + text
+        set_label(self.sub, (f"{speaker} : " if speaker else "") + text)
         self.sub_t = duration
         self.sub.color = color.white
-        w = min(1.4, 0.08 + len(self.sub.text) * 0.0105)
-        self.sub_bg.scale_x = w
+        bx = text_box(self.sub, self.root)
+        if bx is not None:
+            self.sub_bg.scale_x = min(1.62, bx[2] - bx[0] + 0.06)
+            self.sub_bg.scale_y = bx[3] - bx[1] + 0.03
+            self.sub_bg.y = (bx[1] + bx[3]) / 2
 
     def quest(self, text, duration=4.0):
-        self.quest_note.text = text
+        set_label(self.quest_note, text)
         self.quest_t = duration
         self.quest_root.enabled = True
         sound.play("ui_open", 0.35, channel="voice")
@@ -632,7 +637,9 @@ class HUD:
                 self.tips.text = ""
         # invite
         target = game.interactions.target
-        pr = target.current_prompt() if (target is not None and not game.phone.is_open and not game.paused) else None
+        modal = game.modal_open()
+        self.quest_root.enabled = bool(self.quest_note.text.strip()) and not modal and self.quest_t > 0
+        pr = target.current_prompt() if (target is not None and not game.phone.is_open and not modal) else None
         if pr:
             k = config.settings.key("interagir").upper()
             if k != self._last_key:

@@ -21,11 +21,58 @@ from interaction_system import InteractionSystem
 from intro_cinematic import build_intro, PLAYER_START
 
 OUTSIDE_START = (11.2, 0.0, -10.4)      # à côté de la voiture garée, rue des Lilas
+
+
+def voice_text(text):
+    """Texte à prononcer : sans parenthèses, guillemets ni points de suspension isolés."""
+    import re
+    t = re.sub(r"\([^)]*\)", "", str(text))
+    t = t.replace("«", "").replace("»", "").replace("—", ",").strip()
+    return t if re.search(r"[A-Za-zÀ-ÿ]{2,}", t) else ""
+
+
+def voiced_lines():
+    """Répliques connues à préparer en voix réelle dès le démarrage : (texte, f0, vitesse)."""
+    out = []
+    for k in dir(gd):
+        v = getattr(gd, k)
+        if k.startswith("LINE_") and isinstance(v, str):
+            out.append((voice_text(v), 105, 1.0))
+    for v in getattr(gd, "MURMURS_STRESS", []):
+        out.append((voice_text(v), 100, 0.9))
+    for v in getattr(gd, "INTERACT_TEXT", {}).values():
+        if isinstance(v, str):
+            out.append((voice_text(v), 105, 1.0))
+    try:
+        from neighborhood import NPC_VOICES
+        for name, lines in gd.NPC_LINES.items():
+            f0 = NPC_VOICES.get(name, 140)
+            for ln in lines:
+                out.append((ln, f0, 1.0))
+    except Exception:
+        pass
+    try:
+        from tutorial import Tutorial
+        for st in Tutorial.STEPS:
+            out.append((st["voice"], 205, 1.0))
+    except Exception:
+        pass
+    try:
+        from shop import KIOSK_LINES
+        for ln in KIOSK_LINES.values():
+            out.append((ln, 215, 1.0))
+    except Exception:
+        pass
+    for v in getattr(gd, "IMPOSTOR_LINES", []):
+        if isinstance(v, str):
+            out.append((v, 112, 0.95))
+    return [o for o in out if o[0]]
 from inventory import Inventory, InventoryPanel
 from jumpscare_system import JumpscareSystem
 from lighting_system import LightingManager, LightSource
 from neighborhood import Neighborhood
 from achievements import Achievements
+from tutorial import Tutorial
 from room_builder import MeshBuilder
 from particle_system import ParticleManager
 from phone_system import PhoneUI
@@ -38,7 +85,7 @@ from sound_engine import engine as sound
 from texture_generator import textures
 from timers import TimerQueue
 from ui_manager import UIManager, LoadingScreen
-from ui_widgets import rect, label, rgb
+from ui_widgets import rect, label, rgb, autofit_all
 from world_state import WorldState
 
 
@@ -168,6 +215,15 @@ class GameManager:
         self.fl_cone = FlashlightCone(self.player.cone_anchor)
         self.settings_menu = SettingsMenu(self)
         self.achievements = Achievements(self)
+        self.tutorial = Tutorial(self)
+        self._voice_busy = 0.0
+        self.playtime_real = 0.0
+        try:
+            from tts import tts
+            tts.start()
+            sound.prewarm_voices(voiced_lines())
+        except Exception:
+            pass
         self.phone_light = LightSource((0, 0, 0), (0.7, 0.8, 1.0), 0.0, 4.5, kind="static", enabled=False, name="telephone")
         self.house.lights.append(self.phone_light)
         self.viewfinder = self._build_viewfinder()
@@ -335,7 +391,7 @@ class GameManager:
         except Exception:
             import crash_handler
             crash_handler.log_exception("continue_game")
-            self.say("Sauvegarde illisible : nouvelle partie.", 4.0)
+            self.say("Sauvegarde illisible : nouvelle partie.", 4.0, voice=False)
             self.new_game()
 
     def _continue_game(self):
@@ -392,6 +448,8 @@ class GameManager:
         self.lighting.lights = self.house.lights
         self.lighting.ambient_boost = 0.0
         outside = fresh and not self.is_multiplayer and settings.get("quartier", True)
+        if fresh:
+            self.tutorial.reset()
         if self.neighborhood is not None:
             self.neighborhood.destroy()
             self.neighborhood = None
@@ -425,8 +483,9 @@ class GameManager:
             self.house.set_level_visibility(0)
             self.ui.refresh_objective()
             self.timers.after(1.5, self.say, gd.LINE_OUTSIDE_START)
-            self.timers.after(6.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[0], 9.0)
-            self.timers.after(16.0, self.ui.hud.tip, gd.OUTSIDE_HINT, 9.0)
+            if not self.tutorial.enabled:
+                self.timers.after(6.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[0], 9.0)
+                self.timers.after(16.0, self.ui.hud.tip, gd.OUTSIDE_HINT, 9.0)
         elif fresh:
             self._start_house_timeline()
         else:
@@ -444,9 +503,10 @@ class GameManager:
             self.quests.on_event("game_started")
             self.timers.after(5.0, lambda: self.house.doors["front"].close(0.6, slam=False))
             self.timers.after(1.5, self.say, gd.LINE_START)
-            if not entered:
-                self.timers.after(6.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[0], 9.0)
-            self.timers.after(16.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[1], 9.0)
+            if not self.tutorial.enabled:
+                if not entered:
+                    self.timers.after(6.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[0], 9.0)
+                self.timers.after(16.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[1], 9.0)
             self.timers.after(300.0, self.events.lock_front_door)
             self.timers.after(540.0, self._force_hunger)
             self.state.set("play_started")
@@ -467,7 +527,7 @@ class GameManager:
         if not st.flag("front_locked") and st.act <= 1:
             self.timers.after(120.0, self.events.lock_front_door)
         self.quests.on_event("room_entered")
-        self.say("...")
+        self.say("...", voice=False)
 
     # ------------------------------------------------------------------
     # Sauvegarde, actes
@@ -490,8 +550,15 @@ class GameManager:
         mouse.locked = not free
         mouse.visible = free
 
-    def say(self, text, duration=None, speaker=None):
+    def say(self, text, duration=None, speaker=None, voice=True):
+        """Sous-titre ; les pensées du joueur sont aussi dites à voix basse (voix du système si disponible)."""
         d = duration if duration is not None else max(3.0, 1.5 + len(text) / 16.0)
+        if voice and speaker is None and settings.get("voix_pensees", True):
+            spoken = voice_text(text)
+            now = self.playtime_real
+            if spoken and now >= self._voice_busy:
+                self._voice_busy = now + 0.6 + len(spoken) / 15.0
+                sound.speak(spoken, f0=105, speed=1.0, volume=0.62, channel="voice", subtitle=False, speaker=gd.PLAYER_FIRST)
         self.ui.say(text, d, speaker)
 
     def _subtitle(self, text, speaker=None):
@@ -645,6 +712,13 @@ class GameManager:
                 self.set_mouse(free=True)
             else:
                 self.set_mouse(free=False)
+
+    def modal_open(self):
+        """Vrai si une fenêtre plein écran (inventaire, document, caisse, menu...) est ouverte."""
+        nb = self.neighborhood
+        return bool(self.inv_panel.visible or self.ui.docs.visible or self.ui.choice.visible or self.paused
+                    or (self.settings_menu is not None and self.settings_menu.visible) or self.ui.rating.root.enabled
+                    or (nb is not None and nb.ui_visible()) or getattr(self.achievements, "screen", None) is not None)
 
     def interact(self):
         if self.interactions.target is not None:
@@ -1010,6 +1084,12 @@ class GameManager:
 
     def _update(self, dt):
         dt = min(dt, 0.1)
+        self.playtime_real = getattr(self, "playtime_real", 0.0) + dt
+        if self._frame % 4 == 0 and self.mode != "loading":
+            try:
+                autofit_all()
+            except Exception:
+                pass
         if getattr(self, "achievements", None) is not None and self.mode != "loading":
             self.achievements.update(dt)
         if self.mode == "loading":
@@ -1098,6 +1178,8 @@ class GameManager:
         self.events.update(dt)
         if self.neighborhood is not None:
             self.neighborhood.update(dt)
+        if self.tutorial is not None:
+            self.tutorial.update(dt)
         self.assistance.update(dt)
         self.entity.update(dt)
         self.phone.update(dt)
@@ -1154,7 +1236,7 @@ class GameManager:
         st = self.state
         if self.ending_d_t is None and not st.phone_used and self.playtime >= 1200.0 and st.act <= 1 and not self.ending_active:
             self.ending_d_t = 0.0
-            self.say("La maison est étrangement calme...", 5.0)
+            self.say("La maison est étrangement calme...", 5.0, voice=False)
         if self.ending_d_t is not None and not self.ending_active:
             self.ending_d_t += dt
             for k, h in list(self.events.handles.items()):

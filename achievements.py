@@ -128,6 +128,7 @@ class Achievements:
             self.toast_t -= dt
             k = min(1.0, (4.5 - self.toast_t) / 0.35, self.toast_t / 0.35)
             self.toast.x = 0.62 + (1 - max(0.0, k)) * 0.5
+            self.toast.audit_skip = k < 0.999
             if self.toast_t <= 0:
                 self.toast.enabled = False
                 from ursina import destroy
@@ -142,9 +143,10 @@ class Achievements:
         panel(r, 0, 0, 0.42, 0.1, "card", z=0.1, radius=0.25)
         rect(r, -0.17, 0, 0.06, 0.06, rgb(226, 140, 50), z=0.05, radius=0.3)
         label(r, "★", -0.17, 0, 1.4, color.white, z=0)
-        label(r, "SUCCÈS DÉBLOQUÉ", -0.13, 0.024, 0.5, rgb(240, 170, 90), origin=(-0.5, 0), z=0)
-        label(r, title, -0.13, 0.0, 0.8, color.white, origin=(-0.5, 0), z=0)
-        label(r, desc, -0.13, -0.026, 0.5, rgb(180, 180, 190), origin=(-0.5, 0), z=0)
+        label(r, "SUCCÈS DÉBLOQUÉ", -0.13, 0.024, 0.5, rgb(240, 170, 90), origin=(-0.5, 0), z=0, max_w=0.32)
+        label(r, title, -0.13, 0.0, 0.8, color.white, origin=(-0.5, 0), z=0, max_w=0.33)
+        label(r, desc, -0.13, -0.026, 0.5, rgb(180, 180, 190), origin=(-0.5, 0), z=0, max_w=0.33)
+        r.audit_skip = True          # pendant l'animation d'entrée / sortie
         self.toast = r
         self.toast_t = 4.5
         sound.play("caisse_ok", 0.45, pitch=1.2, channel="voice")
@@ -171,9 +173,9 @@ class Achievements:
             label(r, "★" if got else "?", x - 0.3, y, 0.9, color.white if got else rgb(140, 140, 146), z=0.8)
             t = title if (got or not secret) else "Succès secret"
             d = desc if (got or not secret) else "Continuez à jouer pour le découvrir."
-            label(r, t, x - 0.27, y + 0.012, 0.66, color.white if got else rgb(170, 170, 176), origin=(-0.5, 0), z=0.8)
+            label(r, t, x - 0.27, y + 0.012, 0.66, color.white if got else rgb(170, 170, 176), origin=(-0.5, 0), z=0.8, max_w=0.58)
             label(r, d + (f"  ·  {self.unlocked[aid]}" if got else ""), x - 0.27, y - 0.016, 0.46, rgb(150, 150, 158),
-                  origin=(-0.5, 0), z=0.8)
+                  origin=(-0.5, 0), z=0.8, max_w=0.58)
 
         def close():
             destroy(r)

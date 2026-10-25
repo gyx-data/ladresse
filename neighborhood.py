@@ -42,6 +42,10 @@ SHOP_H = 3.6
 
 DAY = "21/10"
 
+# hauteur de voix (Hz) de chaque habitant : < 160 = voix d'homme
+NPC_VOICES = {"Mme Bianchi": 215, "Karim": 118, "Jean-Mi": 105, "Lucie": 225, "Théo": 122, "Nino": 98, "Sandrine": 210,
+              "Moussa": 100, "Brigadier Rossi": 110, "Gardien Martin": 128, "Inès": 230}
+
 
 def _txt_tex(text, px=96, fg=(255, 255, 255), bg=None, pad=18, bold=True, kind="sans"):
     """Texture d'enseigne (texte rendu avec Pillow)."""
@@ -656,34 +660,32 @@ class Neighborhood:
         L = gd.NPC_LINES if hasattr(gd, "NPC_LINES") else {}
         specs = [
             dict(name="Mme Bianchi", pos=(-20, 0, Z_N), path=[(-40, Z_N), (-16, Z_N)], speed=0.75, pose="walk",
-                 jacket=(0.55, 0.35, 0.45), pants=(0.25, 0.22, 0.25), f0=215, seed=3),
+                 jacket=(0.55, 0.35, 0.45), pants=(0.25, 0.22, 0.25), seed=3),
             dict(name="Karim", pos=(30, 0, Z_S), path=[(-60, Z_S), (40, Z_S), (40, Z_S + 0.6), (-60, Z_S + 0.6)], speed=3.2, pose="walk",
-                 jacket=(0.85, 0.85, 0.2), pants=(0.15, 0.15, 0.18), f0=118, seed=5),
+                 jacket=(0.85, 0.85, 0.2), pants=(0.15, 0.15, 0.18), seed=5),
             dict(name="Jean-Mi", pos=(60, 0, Z_N), path=[(100, Z_N), (56, Z_N), (56, Z_S), (100, Z_S)], speed=1.2, pose="walk",
-                 jacket=(0.2, 0.35, 0.6), f0=105, seed=6, hat="bonnet"),
-            dict(name="Lucie", pos=(-12.62, 0, RESTO[3] + 1.6), pose="sit", yaw=90, jacket=(0.75, 0.25, 0.3), f0=225, seed=7),
-            dict(name="Théo", pos=(-11.38, 0, RESTO[3] + 1.6), pose="sit", yaw=-90, jacket=(0.25, 0.45, 0.3), f0=122, seed=8),
-            dict(name="Nino", pos=(RESTO[0] + 4.0, 0, RESTO[1] + 0.8), pose="idle", yaw=0, jacket=(0.92, 0.92, 0.9), pants=(0.2, 0.2, 0.22),
-                 f0=98, seed=9),
-            dict(name="Sandrine", pos=(18.1, 0, -24.9), pose="idle", yaw=0, jacket=(0.15, 0.3, 0.65), f0=210, seed=10),
-            dict(name="Moussa", pos=(SHOP_DOOR_X + 2.2, 0, SHOP[3] - 1.6), pose="idle", yaw=180, jacket=(0.1, 0.1, 0.12), pants=(0.1, 0.1, 0.12),
-                 f0=100, seed=11),
+                 jacket=(0.2, 0.35, 0.6), seed=6, hat="bonnet"),
+            dict(name="Lucie", pos=(-12.62, 0, RESTO[3] + 1.6), pose="sit", yaw=90, jacket=(0.75, 0.25, 0.3), seed=7),
+            dict(name="Théo", pos=(-11.38, 0, RESTO[3] + 1.6), pose="sit", yaw=-90, jacket=(0.25, 0.45, 0.3), seed=8),
+            dict(name="Nino", pos=(RESTO[0] + 4.0, 0, RESTO[1] + 0.8), pose="idle", yaw=0, jacket=(0.92, 0.92, 0.9), pants=(0.2, 0.2, 0.22), seed=9),
+            dict(name="Sandrine", pos=(18.1, 0, -24.9), pose="idle", yaw=0, jacket=(0.15, 0.3, 0.65), seed=10),
+            dict(name="Moussa", pos=(SHOP_DOOR_X + 2.2, 0, SHOP[3] - 1.6), pose="idle", yaw=180, jacket=(0.1, 0.1, 0.12), pants=(0.1, 0.1, 0.12), seed=11),
             dict(name="Brigadier Rossi", pos=(self.police_pos[0] - 1.8, 0, self.police_pos[2] - 1.0), pose="idle", yaw=60,
-                 jacket=(0.12, 0.15, 0.32), pants=(0.12, 0.14, 0.28), f0=110, seed=12, hat="police"),
+                 jacket=(0.12, 0.15, 0.32), pants=(0.12, 0.14, 0.28), seed=12, hat="police"),
             dict(name="Gardien Martin", pos=(self.police_pos[0] - 1.2, 0, self.police_pos[2] + 0.4), pose="idle", yaw=-120,
-                 jacket=(0.12, 0.15, 0.32), pants=(0.12, 0.14, 0.28), f0=128, seed=13, hat="police"),
-            dict(name="Inès", pos=(-24.5, 0, ROAD_Z0 - 2.2), pose="idle", yaw=180, jacket=(0.45, 0.3, 0.6), f0=230, seed=14),
+                 jacket=(0.12, 0.15, 0.32), pants=(0.12, 0.14, 0.28), seed=13, hat="police"),
+            dict(name="Inès", pos=(-24.5, 0, ROAD_Z0 - 2.2), pose="idle", yaw=180, jacket=(0.45, 0.3, 0.6), seed=14),
         ]
         for s in specs:
             lines = L.get(s["name"], ["Bonsoir."])
             talk_cb = self._talk_nino if s["name"] == "Nino" else None
             self.npcs.append(NPC(self, s["name"], s["pos"], lines, s["jacket"], s.get("pants", (0.3, 0.32, 0.4)), s.get("path"),
-                                 s.get("speed", 1.3), s.get("pose", "idle"), s.get("yaw", 0.0), s.get("f0", 140), s.get("seed", 0),
+                                 s.get("speed", 1.3), s.get("pose", "idle"), s.get("yaw", 0.0), NPC_VOICES.get(s["name"], 140), s.get("seed", 0),
                                  s.get("hat"), talk_cb))
 
     def _talk_nino(self):
         self.counter.open()
-        sound.speak("Bonsoir ! Qu'est-ce que je vous sers ?", f0=98, pos=self.counter_pos, speaker="Nino")
+        sound.speak("Bonsoir ! Qu'est-ce que je vous sers ?", f0=NPC_VOICES["Nino"], pos=self.counter_pos, speaker="Nino")
         return True
 
     def _spawn_traffic(self):
@@ -789,8 +791,29 @@ class Neighborhood:
         self.basket.clear()
         self.theft_warnings = 0
         self._refresh_ui()
+        self._start_ambience()
+
+    def _start_ambience(self):
+        self._stop_ambience()
+        x0, z0, x1, z1 = SHOP
+        rx0, rz0, rx1, rz1 = RESTO
+        self.amb = {
+            "ville": sound.loop("ambiance_ville", 0.55, channel="music", fade_in=2.0),
+            "magasin": sound.loop("ambiance_magasin", 0.7, channel="sfx", pos=Vec3((x0 + x1) / 2, 1.5, (z0 + z1) / 2), ref=9.0),
+            "resto": sound.loop("ambiance_resto", 0.8, channel="sfx", pos=Vec3((rx0 + rx1) / 2, 1.2, rz1 + 1.5), ref=6.0),
+        }
+
+    def _stop_ambience(self):
+        for h in getattr(self, "amb", {}).values():
+            if h is not None:
+                try:
+                    h.fade_to(0.0, 1.0, stop=True)
+                except Exception:
+                    pass
+        self.amb = {}
 
     def deactivate(self):
+        self._stop_ambience()
         self.active = False
         self.outside_phase = False
         self.root.enabled = False
@@ -809,6 +832,7 @@ class Neighborhood:
             l.enabled = True
         self.active = True
         self.root.enabled = True
+        self._start_ambience()
 
     def objective(self):
         if self.basket.count:
@@ -869,7 +893,7 @@ class Neighborhood:
             sound.play_at("antivol", Vec3(SHOP_DOOR_X, 1.2, z1 - 0.9), 0.9, ref=6.0)
             line = ("Monsieur ! Le panier, ça se paie en caisse." if self.theft_warnings < 3 else
                     "Dernier avertissement. Je reprends les articles.")
-            sound.speak(line, f0=100, pos=Vec3(SHOP_DOOR_X + 2.2, 1.6, z1 - 1.6), speaker="Moussa")
+            sound.speak(line, f0=NPC_VOICES["Moussa"], pos=Vec3(SHOP_DOOR_X + 2.2, 1.6, z1 - 1.6), speaker="Moussa")
             if self.theft_warnings >= 3:
                 self.basket.clear()
                 self._refresh_ui()
@@ -884,6 +908,12 @@ class Neighborhood:
             c.update(dt, pp)
         # vue extérieure : tous les étages de la maison visibles depuis la rue
         outside = p.zone in ("dehors", "magasin", "resto")
+        city = getattr(self, "amb", {}).get("ville")
+        if city is not None:
+            target = 1.0 if p.zone == "dehors" else 0.35 if outside else 0.12
+            if abs(getattr(self, "_city_target", -1) - target) > 0.01:
+                self._city_target = target
+                city.fade_to(target, 0.8)
         if outside != getattr(self.house, "outside_view", False):
             self.house.outside_view = outside
             self.house.set_level_visibility(p.level)

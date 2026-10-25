@@ -1,0 +1,12 @@
+{
+  "port": 27303,
+  "max_players": 4,
+  "motd": "Bienvenue au 17 rue des Lilas.",
+  "time_scale": 0.5,
+  "survival_seconds": 360,
+  "tick_rate": 20,
+  "max_connections": 16,
+  "max_per_ip": 6,
+  "client_timeout": 25,
+  "udp_fallback_hz": 10
+}

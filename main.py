@@ -16,9 +16,29 @@ else:
 
 # Mode --windowed (PyInstaller) : pas de console, sys.stdout/sys.stderr valent None.
 if sys.stdout is None:
-    sys.stdout = open(os.devnull, "w")
+    sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="replace")
 if sys.stderr is None:
-    sys.stderr = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w", encoding="utf-8", errors="replace")
+# Console Windows (cp1252 / cp850) : un caractère non encodable ne doit jamais lever d'exception
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(errors="replace")
+    except Exception:
+        pass
+
+def _close_splash():
+    """Ferme l'écran de démarrage PyInstaller (sinon il resterait affiché par-dessus le jeu)."""
+    try:
+        import pyi_splash
+        pyi_splash.close()
+    except Exception:
+        pass
+
+
+if "--selftest" in sys.argv:
+    _close_splash()
+    import selftest
+    sys.exit(selftest.run())
 
 from panda3d.core import loadPrcFileData
 
@@ -85,6 +105,7 @@ def _optimize_ursina():
 
 
 app = create_app()
+_close_splash()
 _optimize_ursina()
 import typography
 typography.apply_ui_font()

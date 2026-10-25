@@ -1,35 +1,84 @@
 """Configuration du serveur multijoueur L'ADRESSE (tourne seul sur Pterodactyl, Python 3.11+)."""
+import json
 import os
 
-HOST = os.environ.get("LADRESSE_HOST", "0.0.0.0")
-PORT = int(os.environ.get("LADRESSE_PORT", "27303"))        # IP publique : 5.180.34.43
-MAX_PLAYERS = 4
+HERE = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.environ.get("LADRESSE_CONFIG", os.path.join(HERE, "server_config.json"))
+
+# Valeurs modifiables SANS toucher au code, par ordre de priorité :
+#   1. variable d'environnement LADRESSE_<NOM>   (ex. LADRESSE_PORT=27303, LADRESSE_MAX_PLAYERS=4)
+#   2. fichier server_config.json à côté de server.py   (ex. {"port": 27303, "motd": "Salut"})
+#   3. pour le port uniquement : SERVER_PORT (fourni automatiquement par Pterodactyl)
+#   4. valeur par défaut ci-dessous
+try:
+    with open(CONFIG_FILE, "r", encoding="utf-8-sig") as _f:
+        _FILE = json.load(_f)
+    if not isinstance(_FILE, dict):
+        _FILE = {}
+except (OSError, ValueError):
+    _FILE = {}
+
+CONFIG_ERRORS = []
+
+
+def _get(name, default, cast=None, lo=None, hi=None):
+    cast = cast or type(default)
+    raw = os.environ.get("LADRESSE_" + name)
+    if raw is None:
+        raw = _FILE.get(name.lower(), _FILE.get(name))
+    if raw is None:
+        return default
+    try:
+        if cast is bool:
+            v = raw if isinstance(raw, bool) else str(raw).strip().lower() in ("1", "true", "oui", "yes", "on")
+        else:
+            v = cast(raw)
+        if lo is not None and v < lo or hi is not None and v > hi:
+            raise ValueError("hors limites")
+        return v
+    except (TypeError, ValueError) as e:
+        CONFIG_ERRORS.append(f"{name} = {raw!r} ignoré ({e}) -> {default!r}")
+        return default
+
+
+def _default_port():
+    try:
+        return int(os.environ.get("SERVER_PORT", "27303"))
+    except ValueError:
+        return 27303
+
+
+HOST = _get("HOST", "0.0.0.0", str)
+PORT = _get("PORT", _default_port(), int, 1, 65535)        # IP publique : 5.180.34.43
+MAX_PLAYERS = _get("MAX_PLAYERS", 4, int, 1, 4)
 PROTOCOL_VERSION = "2.0"
-MOTD = os.environ.get("LADRESSE_MOTD", "Bienvenue au 17 rue des Lilas.")
-LOG_FILE = os.environ.get("LADRESSE_LOG", os.path.join(os.path.dirname(os.path.abspath(__file__)), "server.log"))
+MOTD = _get("MOTD", "Bienvenue au 17 rue des Lilas.", str)[:200]
+LOG_FILE = _get("LOG", os.path.join(HERE, "server.log"), str)
 
 # Robustesse réseau
-MAX_CONNECTIONS = 16           # connexions TCP simultanées (lobby + curieux)
-MAX_PER_IP = 4                 # par adresse IP
-CLIENT_TIMEOUT = 25.0          # secondes sans aucun message -> déconnexion (le client pinge toutes les 4 s)
-MAX_LINE = 16 * 1024           # taille maximale d'un message JSON
-SEND_QUEUE_MAX = 2000          # messages en attente avant de couper un client trop lent
-RATE_PER_SEC = 90.0            # messages TCP par seconde tolérés (seau à jetons)
-RATE_BURST = 180
-FLOOD_KICK = 600               # messages rejetés avant exclusion
-TICK_RATE = 20                                              # ticks par seconde
+MAX_CONNECTIONS = _get("MAX_CONNECTIONS", 16, int, 1, 512)   # connexions TCP simultanées (lobby + curieux)
+MAX_PER_IP = _get("MAX_PER_IP", 6, int, 1, 64)               # par adresse IP (amis derrière la même box)
+CLIENT_TIMEOUT = _get("CLIENT_TIMEOUT", 25.0, float, 5, 600)  # s sans message -> déconnexion (ping client : 4 s)
+MAX_LINE = _get("MAX_LINE", 16 * 1024, int, 1024, 1 << 20)   # taille maximale d'un message JSON
+SEND_QUEUE_MAX = _get("SEND_QUEUE_MAX", 2000, int, 50, 100000)
+RATE_PER_SEC = _get("RATE_PER_SEC", 90.0, float, 5, 10000)    # messages TCP par seconde tolérés (seau à jetons)
+RATE_BURST = _get("RATE_BURST", 180, int, 5, 100000)
+FLOOD_KICK = _get("FLOOD_KICK", 600, int, 10, 10 ** 7)        # messages rejetés avant exclusion
+TICK_RATE = _get("TICK_RATE", 20, int, 5, 60)                 # ticks par seconde
 TICK_DT = 1.0 / TICK_RATE
+UDP_FALLBACK_HZ = _get("UDP_FALLBACK_HZ", 10.0, float, 1, 60)  # positions par TCP si l'UDP est bloqué
 
 # Anti-triche basique : vitesse maximale tolérée (m/s) et rayon de téléportation autorisé
-MAX_SPEED = 9.5
-SPEED_TOLERANCE = 1.8
+MAX_SPEED = _get("MAX_SPEED", 9.5, float, 1, 100)
+SPEED_TOLERANCE = _get("SPEED_TOLERANCE", 1.8, float, 0, 50)
+WORLD_LIMIT = 300.0            # coordonnées absurdes rejetées (|x|, |y|, |z| > 300 m)
 
 # Mise à l'échelle du temps de la partie multijoueur (1.0 = durée solo)
-TIME_SCALE = float(os.environ.get("LADRESSE_TIME_SCALE", "0.5"))
-SURVIVAL_SECONDS = 360.0       # durée de survie après la libération de l'entité
-FIRST_CANCEL_DELAY = 30.0
-CONTACT_DELAY = 120.0
-DELIVERY_SECONDS = 480.0
+TIME_SCALE = _get("TIME_SCALE", 0.5, float, 0.01, 10)
+SURVIVAL_SECONDS = _get("SURVIVAL_SECONDS", 360.0, float, 10, 7200)   # survie après la libération de l'entité
+FIRST_CANCEL_DELAY = _get("FIRST_CANCEL_DELAY", 30.0, float, 1, 3600)
+CONTACT_DELAY = _get("CONTACT_DELAY", 120.0, float, 1, 3600)
+DELIVERY_SECONDS = _get("DELIVERY_SECONDS", 480.0, float, 10, 7200)
 
 MEALS = {
     "kebab": "silencieux", "pizza": "rampant", "sushi": "multiple", "burger": "imposteur",

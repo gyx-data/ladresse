@@ -68,6 +68,27 @@ CATALOG = [
 ]
 CATALOG_BY_ID = {a.id: a for a in CATALOG}
 
+# annonces vocales de la caisse automatique
+KIOSK_LINES = {
+    "bienvenue": "Bonjour et bienvenue. Veuillez scanner votre premier article.",
+    "vide": "Votre panier est vide.",
+    "carte": "Carte fidélité reconnue.",
+    "inconnu": "Article inattendu dans la zone d'ensachage. Veuillez patienter, un conseiller va venir vous aider.",
+    "payer": "Veuillez présenter votre carte bancaire.",
+    "merci": "Paiement accepté. Merci de votre visite, et à bientôt.",
+    "refus": "Paiement refusé.",
+    "garnier": "Bonjour, monsieur Garnier. Cela faisait longtemps.",
+    "nouvelle_carte": "Votre nouvelle carte fidélité est créée.",
+}
+
+
+def kiosk_say(key):
+    try:
+        sound.speak(KIOSK_LINES[key], f0=215, speed=1.0, volume=0.75, channel="voice", subtitle=False, speaker="Caisse")
+    except Exception:
+        pass
+
+
 RESTO_MENU = [
     ("socca", "Socca (part)", 3.50, 15, 12, "Galette de pois chiche brûlante, poivrée."),
     ("pan_bagnat", "Pan bagnat", 6.90, 30, 15, "Thon, œuf, radis, olives, huile d'olive."),
@@ -152,7 +173,8 @@ class SelfCheckout:
         self.card = None
         self.msg = ""
         self.game.set_mouse(free=True)
-        sound.play("ui_open", 0.6)
+        sound.play("caisse_voix_bip", 0.6)
+        kiosk_say("bienvenue" if self.basket.count else "vide")
         self.render()
 
     def close(self):
@@ -330,6 +352,7 @@ class SelfCheckout:
                     self.unknown_item_done = True
                     self.msg = "Article inattendu dans la zone d'ensachage. Un conseiller va venir vous aider..."
                     sound.play("antivol", 0.35)
+                    kiosk_say("inconnu")
                     self.render()
                     invoke(self._clear_msg, delay=2.5)
                     return
@@ -356,6 +379,7 @@ class SelfCheckout:
     def _scan_card(self):
         self.card = self.loyalty.active
         sound.play("scan_bip", 0.7, pitch=1.2)
+        kiosk_say("carte")
         self.msg = ""
         self.render()
 
@@ -368,6 +392,7 @@ class SelfCheckout:
         n = self.loyalty.create(gd.PLAYER_FIRST.upper() if hasattr(gd, "PLAYER_FIRST") else "CLIENT")
         self.card = n
         sound.play("caisse_ok", 0.6)
+        kiosk_say("nouvelle_carte")
         self.msg = f"Nouvelle carte créée : {Loyalty.pretty(n)} (devient votre carte par défaut)."
         self.render()
 
@@ -379,6 +404,7 @@ class SelfCheckout:
         num = (self.field.text if self.field else "").replace(" ", "")
         if num == GARNIER_CARD:
             self.page = "garnier"
+            kiosk_say("garnier")
             self.render()
             return
         if not valid_format(num):
@@ -402,6 +428,7 @@ class SelfCheckout:
 
     def _pay(self):
         self.page = "pay"
+        kiosk_say("payer")
         self.render()
 
     def _do_pay(self):
@@ -409,6 +436,7 @@ class SelfCheckout:
         lines = self.basket.as_lines(True)
         q = self.loyalty.quote(lines, self.card)
         if bank_balance(st) < q["total"]:
+            kiosk_say("refus")
             self.msg = "Paiement refusé."
             self.page = "scan"
             self.render()
@@ -426,6 +454,7 @@ class SelfCheckout:
                 self.game.inventory.add("courses", n)
         st.flags["shop_paid_total"] = round(st.flags.get("shop_paid_total", 0.0) + q["total"], 2)
         st.stats["achats"] = st.stats.get("achats", 0) + 1
+        kiosk_say("merci")
         self.basket.clear()
         self.page = "done"
         self.render()

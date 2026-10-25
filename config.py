@@ -138,6 +138,8 @@ DEFAULT_SETTINGS = {
     "bob_camera": True,               # balancement de la tête en marchant
     "difficulte": "Normal",           # Facile / Normal / Cauchemar
     "quartier": True,                 # phase d'exploration du quartier avant la maison
+    "didacticiel": True,              # didacticiel guidé et doublé
+    "voix_reelles": True,             # voix françaises du système (Windows / espeak) si disponibles
     "pause_auto": True,               # pause quand la fenêtre perd le focus
     "afficher_fps": False,
     "keys": dict(DEFAULT_KEYS),

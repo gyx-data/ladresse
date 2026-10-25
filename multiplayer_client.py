@@ -60,6 +60,11 @@ class NetClient:
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.settimeout(0.2)
+        if hasattr(socket, "SIO_UDP_CONNRESET"):
+            try:
+                self.udp.ioctl(socket.SIO_UDP_CONNRESET, False)
+            except (OSError, ValueError):
+                pass
         self.connected = True
         threading.Thread(target=self._tcp_loop, daemon=True).start()
         threading.Thread(target=self._udp_loop, daemon=True).start()
@@ -100,6 +105,8 @@ class NetClient:
                 if msg.get("type") == "welcome":
                     self.id = msg.get("id")
                     self.tok = msg.get("tok")
+                    self.welcome_t = time.time()
+                    self.last_udp = 0.0
                     self.send_udp(dict(type="hello", id=self.id))
                 elif msg.get("type") == "pong":
                     self.ping = (time.time() - msg.get("t", time.time())) * 1000.0
@@ -114,8 +121,14 @@ class NetClient:
                 data, _ = self.udp.recvfrom(2048)
             except socket.timeout:
                 continue
+            except ConnectionResetError:
+                continue
             except OSError:
-                break
+                if self._stop:
+                    break
+                time.sleep(0.05)
+                continue
+            self.last_udp = time.time()
             try:
                 msg = json.loads(data.decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
@@ -159,8 +172,22 @@ class NetClient:
         if now - self.last_move_sent < 1.0 / rate:
             return
         self.last_move_sent = now
-        if self.id is not None:
-            self.send_udp(dict(type="move", id=self.id, pos=[round(float(v), 3) for v in pos], rot=[round(float(v), 1) for v in rot]))
+        if self.id is None:
+            return
+        msg = dict(type="move", id=self.id, pos=[round(float(v), 3) for v in pos], rot=[round(float(v), 1) for v in rot])
+        # UDP bloqué (aucun paquet reçu depuis 3 s) : on passe les positions par TCP, à 10 Hz
+        if self.udp_ok():
+            self.send_udp(msg)
+        elif now - getattr(self, "_last_tcp_move", 0.0) >= 0.1:
+            self._last_tcp_move = now
+            self.send(msg)
+
+    def udp_ok(self):
+        t0 = getattr(self, "welcome_t", None)
+        if t0 is None:
+            return True
+        last = getattr(self, "last_udp", 0.0)
+        return last > 0 and time.time() - last < 3.0 or time.time() - t0 < 3.0
 
     def send_chat(self, text):
         self.send(dict(type="chat", message=text))
@@ -187,3 +214,5 @@ class NetClient:
 
     def send_ping(self):
         self.send(dict(type="ping", t=time.time()))
+        if self.id is not None:
+            self.send_udp(dict(type="hello", id=self.id))      # garde le passage UDP ouvert (NAT) et le vérifie

@@ -1,8 +1,9 @@
 """Inventaire du joueur : objets, documents trouvés, panneau Tab."""
-from ursina import Entity, Text, color, camera
+from ursina import Entity, color, camera
 
 import game_data as gd
-from ui_widgets import button
+import illustrations as ill
+from ui_widgets import button, label, rect, panel, image, clear, rgb
 
 ITEM_DEFS = {
     "pile": ("Pile", "Recharge la lampe torche ou le téléphone.", (0.9, 0.8, 0.2), True),
@@ -46,7 +47,11 @@ class Inventory:
 
 
 class InventoryPanel:
-    """Panneau d'inventaire (Tab)."""
+    """Panneau d'inventaire (Tab) : grille paginée d'objets avec icône, description et bouton « Utiliser »,
+    liste des documents trouvés à droite."""
+
+    W, H = 1.34, 0.86
+    PER_PAGE = 12
 
     def __init__(self, inventory, game):
         self.inventory = inventory
@@ -54,46 +59,84 @@ class InventoryPanel:
         self.root = Entity(parent=camera.ui, enabled=False, z=-1)
         self.visible = False
         self.rows = []
+        self.page = 0
+        self._icons = {}
         self._build()
 
     def _build(self):
-        Entity(parent=self.root, model="quad", color=color.rgba32(0, 0, 0, 215), scale=(1.1, 0.78), z=0.5)
-        Text(parent=self.root, text="INVENTAIRE", position=(-0.5, 0.34), scale=1.4, color=color.white)
-        Text(parent=self.root, text="Documents", position=(0.08, 0.30), scale=1.0, color=color.rgb32(200, 190, 150))
-        self.body = Entity(parent=self.root)
-        self.hint = Text(parent=self.root, text="[Tab] Fermer", position=(-0.5, -0.34), scale=0.8, color=color.gray)
+        r = self.root
+        rect(r, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 150), z=0.9)
+        panel(r, 0, 0, self.W, self.H, "panel", z=0.8)
+        label(r, "INVENTAIRE", -self.W / 2 + 0.05, self.H / 2 - 0.05, 1.5, color.white, origin=(-0.5, 0), z=0.5)
+        label(r, "DOCUMENTS", 0.2, self.H / 2 - 0.12, 0.6, rgb(226, 120, 90), origin=(-0.5, 0), z=0.5)
+        label(r, "OBJETS", -self.W / 2 + 0.05, self.H / 2 - 0.12, 0.6, rgb(226, 120, 90), origin=(-0.5, 0), z=0.5)
+        rect(r, 0.17, -0.02, 0.002, self.H - 0.2, rgb(80, 70, 70), z=0.5)
+        self.body = Entity(parent=r, z=0.3)
+        label(r, f"[{settings_key('inventaire')}] Fermer", self.W / 2 - 0.05, -self.H / 2 + 0.04, 0.6, color.gray, origin=(0.5, 0), z=0.5)
+
+    def _icon(self, item, col):
+        if item not in self._icons:
+            try:
+                img = ill.item_icon(item, 96)
+            except Exception:
+                img = None
+            self._icons[item] = img
+        return self._icons[item]
 
     def refresh(self):
-        for e in list(self.body.children):
-            e.disable()
-            e.parent = None
-        y = 0.25
-        for item, count in self.inventory.items():
+        clear(self.body)
+        b = self.body
+        items = self.inventory.items()
+        pages = max(1, (len(items) + self.PER_PAGE - 1) // self.PER_PAGE)
+        self.page = max(0, min(self.page, pages - 1))
+        shown = items[self.page * self.PER_PAGE:(self.page + 1) * self.PER_PAGE]
+        x0, y0 = -self.W / 2 + 0.05, self.H / 2 - 0.2
+        cw, rh = 0.39, 0.098
+        for i, (item, count) in enumerate(shown):
             name, desc, col, usable = ITEM_DEFS[item]
-            Entity(parent=self.body, model="quad", color=color.rgb32(*[int(c * 255) for c in col]), scale=(0.03, 0.03),
-                   position=(-0.5, y))
-            Text(parent=self.body, text=f"{name} x{count}" if count > 1 else name, position=(-0.47, y + 0.012), scale=0.9, color=color.white)
-            Text(parent=self.body, text=desc, position=(-0.47, y - 0.012), scale=0.6, color=color.gray)
+            cx = x0 + (i % 2) * (cw + 0.012)
+            cy = y0 - (i // 2) * rh
+            rect(b, cx + cw / 2, cy, cw, rh - 0.01, rgb(255, 255, 255, 10), z=0.2, radius=0.15)
+            img = self._icon(item, col)
+            if img is not None:
+                image(b, img, cx + 0.04, cy, 0.056, 0.056, z=0.1)
+            else:
+                rect(b, cx + 0.04, cy, 0.04, 0.04, rgb(*[int(c * 255) for c in col]), z=0.1, radius=0.3)
+            right = cx + cw - (0.1 if usable else 0.01)
+            label(b, f"{name}  x{count}" if count > 1 else name, cx + 0.078, cy + 0.016, 0.72, color.white, origin=(-0.5, 0), z=0,
+                  max_w=right - (cx + 0.078) - 0.008)
+            label(b, desc, cx + 0.078, cy - 0.016, 0.5, rgb(160, 158, 154), origin=(-0.5, 0), z=0, wrap=44,
+                  max_w=right - (cx + 0.078) - 0.008, max_h=0.04)
             if usable:
-                button(self.body, "Utiliser", -0.12, y, 0.1, 0.035, (lambda it=item: self.game.use_item(it)),
-                       color.rgba32(60, 60, 60, 220), color.white, size=0.7)
-            y -= 0.065
-        if y > 0.24:
-            Text(parent=self.body, text="(vide)", position=(-0.5, 0.25), scale=0.9, color=color.gray)
+                button(b, "Utiliser", cx + cw - 0.052, cy, 0.088, 0.04, (lambda it=item: self.game.use_item(it)), style="primary",
+                       size=0.55, z=0)
+        if not items:
+            label(b, "(vide)", x0 + 0.2, y0, 0.8, color.gray, z=0)
+        if pages > 1:
+            yb = -self.H / 2 + 0.06
+            button(b, "‹", x0 + 0.03, yb, 0.045, 0.04, lambda: self._turn(-1), style="dark", size=0.8, z=0)
+            label(b, f"{self.page + 1} / {pages}", x0 + 0.11, yb, 0.6, rgb(170, 168, 164), z=0)
+            button(b, "›", x0 + 0.19, yb, 0.045, 0.04, lambda: self._turn(1), style="dark", size=0.8, z=0)
         # documents
-        y = 0.25
+        y = self.H / 2 - 0.19
         for doc in gd.DOC_TITLES:
             if doc in self.inventory.state.docs:
-                button(self.body, gd.DOC_TITLES[doc], 0.3, y, 0.4, 0.04, (lambda d=doc: self.game.reread_doc(d)),
-                       color.rgba32(40, 40, 40, 220), color.rgb32(220, 210, 170), size=0.7)
-                y -= 0.055
+                button(b, gd.DOC_TITLES[doc], 0.42, y, 0.42, 0.045, (lambda d=doc: self.game.reread_doc(d)), style="paper", size=0.62, z=0)
+                y -= 0.054
+                if y < -self.H / 2 + 0.14:
+                    break
         found = self.inventory.state.docs_required_found
-        Text(parent=self.body, text=f"Documents de Garnier : {found}/{len(gd.REQUIRED_DOCS)}", position=(0.08, -0.3), scale=0.8,
-             color=color.rgb32(180, 170, 140))
+        label(b, f"Documents de Garnier : {found}/{len(gd.REQUIRED_DOCS)}", 0.2, -self.H / 2 + 0.1, 0.62, rgb(200, 186, 150),
+              origin=(-0.5, 0), z=0, max_w=0.42)
+
+    def _turn(self, d):
+        self.page += d
+        self.refresh()
 
     def show(self):
         self.visible = True
         self.root.enabled = True
+        self.page = 0
         self.refresh()
 
     def hide(self):
@@ -106,3 +149,8 @@ class InventoryPanel:
         else:
             self.show()
         return self.visible
+
+
+def settings_key(action):
+    from config import settings
+    return settings.key(action).upper()

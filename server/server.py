@@ -11,6 +11,7 @@ IP publique : 5.180.34.43 | Port : 27303 (TCP pour les messages d'état, UDP pou
 Protocole : JSON, un message par ligne (TCP) ou par datagramme (UDP).
 """
 import json
+import math
 import os
 import queue
 import random
@@ -34,7 +35,13 @@ def log(*a):
     global _log_file
     line = time.strftime("[%Y-%m-%d %H:%M:%S] ") + " ".join(str(x) for x in a)
     with _log_lock:
-        print(line, flush=True)
+        try:
+            print(line, flush=True)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            enc = getattr(sys.stdout, "encoding", None) or "ascii"
+            print(line.encode(enc, "replace").decode(enc, "replace"), flush=True)
+        except (OSError, ValueError):
+            pass                         # console fermée / redirigée : on écrit quand même dans le fichier
         try:
             if _log_file is None:
                 path = cfg.LOG_FILE
@@ -153,10 +160,19 @@ class GameServer:
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.bind((self.host, self.port))
         self.udp.settimeout(0.5)
+        # Windows : sans ça, un client qui ferme son port fait lever ConnectionResetError au prochain recvfrom
+        if hasattr(socket, "SIO_UDP_CONNRESET"):
+            try:
+                self.udp.ioctl(socket.SIO_UDP_CONNRESET, False)
+            except (OSError, ValueError):
+                pass
         self.running = True
         threading.Thread(target=self._accept_loop, daemon=True).start()
         threading.Thread(target=self._udp_loop, daemon=True).start()
-        log(f"L'ADRESSE — serveur démarré sur {self.host}:{self.port} (TCP+UDP), {cfg.TICK_RATE} ticks/s")
+        log(f"L'ADRESSE — serveur démarré sur {self.host}:{self.port} (TCP+UDP), {cfg.TICK_RATE} ticks/s, "
+            f"{cfg.MAX_PLAYERS} joueurs max, protocole {cfg.PROTOCOL_VERSION}")
+        for err in getattr(cfg, "CONFIG_ERRORS", []):
+            log("configuration :", err)
         self._tick_loop()
 
     def stop(self):
@@ -249,8 +265,13 @@ class GameServer:
                 data, addr = self.udp.recvfrom(2048)
             except socket.timeout:
                 continue
+            except ConnectionResetError:
+                continue
             except OSError:
-                break
+                if not self.running:
+                    break
+                time.sleep(0.05)
+                continue
             if len(data) > 1400:
                 continue
             try:
@@ -271,7 +292,12 @@ class GameServer:
                 if tok is not None and tok != ps.conn.udp_token:
                     continue
                 ps.udp_addr = addr
-                if msg.get("type") == "move":
+                if msg.get("type") == "hello":
+                    try:
+                        self.udp.sendto(b'{"type":"udp_ack"}', addr)
+                    except OSError:
+                        pass
+                elif msg.get("type") == "move":
                     try:
                         self._on_move(ps, msg)
                     except Exception as e:
@@ -296,15 +322,24 @@ class GameServer:
                 ps.conn.send(obj)
 
     def broadcast_udp(self, obj, exclude=None):
+        """Envoi rapide (positions, entité) en UDP ; repli en TCP (limité à UDP_FALLBACK_HZ) pour les joueurs
+        dont l'UDP n'arrive pas (box, pare-feu, réseau d'entreprise...)."""
         data = json.dumps(obj, separators=(",", ":")).encode("utf-8")
+        now = time.time()
+        key = (obj.get("type"), obj.get("id"))
         for ps in list(self.state.players.values()):
             if ps.id == exclude:
                 continue
             if ps.udp_addr is not None:
                 try:
                     self.udp.sendto(data, ps.udp_addr)
+                    continue
                 except OSError:
                     pass
+            last = ps.__dict__.setdefault("_tcp_fallback", {})
+            if now - last.get(key, 0.0) >= 1.0 / cfg.UDP_FALLBACK_HZ:
+                last[key] = now
+                ps.conn.send(obj)
 
     def _lobby_msg(self):
         s = self.state
@@ -365,8 +400,16 @@ class GameServer:
 
     def _on_move(self, ps, msg):
         pos = msg.get("pos")
-        if not pos or len(pos) != 3:
+        if not isinstance(pos, (list, tuple)) or len(pos) != 3:
             return
+        try:
+            pos = [float(v) for v in pos]
+            rot = [float(v) for v in (msg.get("rot") or ps.rot)][:2]
+        except (TypeError, ValueError):
+            return
+        if not all(math.isfinite(v) and abs(v) < cfg.WORLD_LIMIT for v in pos) or not all(math.isfinite(v) for v in rot):
+            return
+        msg = dict(msg, rot=[((r + 180.0) % 360.0) - 180.0 if i == 1 else max(-90.0, min(90.0, r)) for i, r in enumerate(rot)])
         now = time.time()
         dt = max(0.02, now - ps.last_move)
         d = dist3(ps.pos, pos)
@@ -574,9 +617,9 @@ class GameServer:
                 log("victoire : au moins un joueur a survécu")
 
 
-def console(server):
+def console(server, stream=None):
     """Commandes d'administration (console Pterodactyl) : help, list, kick <id>, say <texte>, reset, stop."""
-    for line in sys.stdin:
+    for line in (stream if stream is not None else sys.stdin):
         cmd, _, arg = line.strip().partition(" ")
         cmd = cmd.lower()
         try:
@@ -612,6 +655,11 @@ def console(server):
 
 
 def main():
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(errors="replace")
+        except Exception:
+            pass
     host = cfg.HOST
     port = cfg.PORT
     if len(sys.argv) > 1:

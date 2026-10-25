@@ -40,6 +40,7 @@ CAMERA = [
 GAMEPLAY = [
     ("Difficulté", "difficulte", ["Facile", "Normal", "Cauchemar"]),
     ("Explorer le quartier au début", "quartier", None),
+    ("Didacticiel guidé (voix)", "didacticiel", None),
     ("Pause auto (perte de focus)", "pause_auto", None),
     ("Afficher les FPS", "afficher_fps", None),
 ]
@@ -217,6 +218,15 @@ class SettingsMenu:
         for name, key in AUDIO:
             self._slider_row(y, name, key, 0, 100, 5, " %", on_change=lambda v: sound.apply_volumes() if hasattr(sound, "apply_volumes") else None)
             y -= 0.075
+        self._cycle_row(y, "Voix réelles du système (redémarrage)", "voix_reelles", None)
+        try:
+            from tts import tts
+            st = tts.status
+        except Exception:
+            st = "indisponible"
+        label(self.body, "Moteur vocal : " + st, 0, y - 0.06, 0.55, color.gray, max_w=self.W - 0.12)
+        label(self.body, "Astuce Windows : Paramètres > Heure et langue > Voix > ajouter une voix française.", 0, y - 0.1, 0.52,
+              rgb(120, 118, 115), max_w=self.W - 0.12)
 
     def _controls(self):
         self._slider_row(0.26, "Sensibilité de la souris", "sensibilite", 1, 30, 1)
