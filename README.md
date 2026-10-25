@@ -1,9 +1,9 @@
 # L'ADRESSE
 
-Jeu d'horreur 3D en première personne, en **Python + Ursina Engine** (Panda3D). Entièrement en français.
+Jeu d'horreur 3D (vue 1re ou 3e personne), en **Python + Ursina Engine** (Panda3D). Entièrement en français.
 Tous les assets (textures, sons, modèles, icônes) sont **générés de manière procédurale** : aucun fichier externe.
 
-> Vous êtes Adrien Morel, photographe immobilier. Une maison à Vaulx-en-Velin, un propriétaire mort depuis trois mois,
+> Vous êtes Adrien Morel, photographe immobilier. Une maison sur les hauteurs de Nice (Mont-Boron), un propriétaire mort depuis trois mois,
 > une appli de livraison qui n'aurait jamais dû vous envoyer ce message : *« Votre livreur arrive dans 2 minutes. »*
 > **L'ADRESSE n'est pas un jeu de monstre. C'est un jeu de confiance.**
 
@@ -28,9 +28,33 @@ progression) puis mis en cache dans le dossier temporaire.
 | Téléphone | T |
 | Inventaire | Tab |
 | Parler à voix haute (certaines consignes de l'assistance) | V |
+| Changer de vue (1re ↔ 3e personne, caméra d'épaule) | F5 |
 | Pause / paramètres | Échap |
 
-Toutes les touches sont reconfigurables dans *Paramètres → Contrôles*.
+Toutes les touches sont reconfigurables dans *Paramètres → Contrôles*. FOV, vue, distance et épaule de la caméra se
+règlent dans *Paramètres → Caméra* ; difficulté (Facile / Normal / Cauchemar), pause automatique et compteur FPS dans
+*Paramètres → Jeu*.
+
+## Le quartier (avant d'entrer dans la maison)
+
+Une nouvelle partie commence rue des Lilas, à côté de la voiture : le quartier du Mont-Boron est libre d'accès
+(désactivable dans *Paramètres → Jeu*).
+
+* **Carrefour City** : rayons, produits à prendre (E), portique antivol et vigile, **caisses automatiques** :
+  scanner les articles, retirer un article, prix « carte », paiement sans contact (débite le compte BNR visible dans
+  l'appli banque du téléphone), ticket de caisse.
+* **Carte fidélité** : carte par défaut **9531700001** ; chaque carte créée en caisse reçoit le numéro suivant
+  (9531700002, 9531700003…). 1 point par euro, bon de 5 € automatique à 100 points, historique, cartes
+  persistantes entre les parties (`%APPDATA%/LADRESSE/fidelite.json`). Essayez la carte 9531700000…
+* **Chez Nino** : socca, pan bagnat, pissaladière… (santé et stress).
+* Villas niçoises, voitures des voisins, circulation qui s'arrête au feu et devant vous, voiture de police avec
+  gyrophares et agents, piétons, abribus Lignes d'Azur. Parlez aux habitants (E) : ils en savent long sur le 17.
+* Achats utiles : piles, batterie externe, bougies, pansements, eau, boisson énergisante, gros sel, journal.
+
+La nuit commence vraiment quand vous franchissez la porte d'entrée.
+
+> Note : les noms d'enseignes réelles (« Carrefour City ») sont regroupés dans `shop.py` (`SHOP_NAME`, `SHOP_FULL`)
+> pour pouvoir être remplacés facilement avant une diffusion commerciale.
 
 ## Compiler LADRESSE.exe (Windows)
 
@@ -54,7 +78,21 @@ python server.py          # écoute en TCP + UDP sur 0.0.0.0:27303
 Le client est pré-rempli avec `5.180.34.43:27303` ; l'adresse se change dans l'écran *Multijoueur*.
 Le serveur gère : lobby (le premier connecté est l'hôte), IA de l'entité, messages d'assistance **différents pour
 chaque joueur**, mort / spectateur, état des portes, chat, validation des positions (anti-triche basique), 20 ticks/s.
-Variables d'environnement : `LADRESSE_HOST`, `LADRESSE_PORT`, `LADRESSE_TIME_SCALE`.
+Variables d'environnement : `LADRESSE_HOST`, `LADRESSE_PORT`, `LADRESSE_TIME_SCALE`, `LADRESSE_MOTD`, `LADRESSE_LOG`.
+
+Robustesse : file d'envoi + thread d'écriture par client (un client lent ne bloque pas le tick), limiteur de débit,
+taille maximale des messages, délai d'inactivité (25 s), limite de connexions par IP, jeton de session UDP
+anti-usurpation, version de protocole, pseudos nettoyés et uniques, journal `server.log`, arrêt propre
+(SIGTERM/SIGINT) et console d'administration : `help`, `list`, `kick <id>`, `say <texte>`, `reset`, `stop`.
+
+Le lobby propose aussi **« Héberger une partie »** : le serveur tourne alors directement dans le jeu (port 27303,
+TCP + UDP à ouvrir sur la box pour jouer par Internet).
+
+## Fiabilité
+
+* Journal d'erreurs `%APPDATA%/LADRESSE/crash.log` (les erreurs ponctuelles n'arrêtent pas le jeu).
+* Sauvegardes atomiques avec copie de secours `.bak` et validation au chargement ; paramètres vérifiés et bornés.
+* Pause automatique quand la fenêtre perd le focus ; succès persistants (`succes.json`).
 
 ## Architecture
 

@@ -11,7 +11,6 @@ from ursina import Entity, Text, Button, color, camera, Vec3, invoke, destroy
 import config
 import game_data as gd
 from sound_engine import engine as sound
-from texture_generator import textures
 from ui_widgets import label, rect, button, clear, rgb, star, Toast, text_scale, panel, image, ProgressBar
 import illustrations as ill
 import typography as T
@@ -183,30 +182,34 @@ class PauseMenu:
 
 
 class DocumentViewer:
-    """Visionneuse de documents (carnet, relevé, plan, Polaroïds...)."""
+    """Visionneuse de documents : chaque page est rendue comme un vrai papier (manuscrit, dactylographié,
+    coupure de journal) avec Pillow, puis affichée en grand ; navigation ‹ › / flèches."""
+
+    PW, PH = 0.62, 0.8
 
     def __init__(self, game):
         self.game = game
         self.root = Entity(parent=camera.ui, z=-13, enabled=False)
-        rect(self.root, 0, 0, 2.4, 1.3, rgb(0, 0, 0, 170), z=1)
-        self.paper = rect(self.root, 0, 0, 0.72, 0.86, color.white, z=0.5, texture=textures.get("papier"))
-        self.paper.color = rgb(255, 250, 235)
-        self.title = label(self.root, "", 0, 0.37, 1.1, rgb(60, 40, 30), z=-0.1)
-        self.body = Text(parent=self.root, text=" ", position=(-0.31, 0.3, -0.1), origin=(-0.5, 0.5), scale=1.0 * text_scale(),
-                         color=rgb(40, 30, 25), wordwrap=40)
-        self.page_label = label(self.root, "", 0, -0.39, 0.7, rgb(90, 70, 60), z=-0.1)
-        self.prev = button(self.root, "‹", -0.28, -0.39, 0.06, 0.05, self.prev_page, rgb(90, 70, 55, 220), size=1.0, z=-0.1)
-        self.next = button(self.root, "›", 0.28, -0.39, 0.06, 0.05, self.next_page, rgb(90, 70, 55, 220), size=1.0, z=-0.1)
-        self.close_btn = button(self.root, "Fermer [E]", 0.0, -0.46, 0.2, 0.05, self.close, rgb(60, 40, 30, 230), size=0.8, z=-0.1)
+        rect(self.root, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 190), z=1)
+        self.page_ent = None
+        self.title = label(self.root, "", 0, 0.45, 1.0, rgb(230, 220, 200), z=-0.1)
+        self.page_label = label(self.root, "", 0, -0.44, 0.65, rgb(170, 160, 150), z=-0.1)
+        self.prev = button(self.root, "‹", -0.38, 0, 0.06, 0.08, self.prev_page, style="dark", size=1.2, z=-0.1)
+        self.next = button(self.root, "›", 0.38, 0, 0.06, 0.08, self.next_page, style="dark", size=1.2, z=-0.1)
+        self.close_btn = button(self.root, f"Fermer  [{config.settings.key('interagir').upper()}]", 0.62, -0.44, 0.2, 0.05, self.close,
+                                style="primary", size=0.7, z=-0.1)
         self.pages = []
         self.idx = 0
         self.on_close = None
         self.visible = False
+        self._cache = {}
 
     def open(self, title, pages, on_close=None):
         self.pages = pages if isinstance(pages, list) else [pages]
+        self.pages = [p if (isinstance(p, str) and p.strip()) else "..." for p in self.pages]
         self.idx = 0
         self.title.text = title
+        self.kind = self._kind(title)
         self.on_close = on_close
         self.visible = True
         self.root.enabled = True
@@ -214,10 +217,49 @@ class DocumentViewer:
         sound.play("papier", 0.8)
         self.game.set_mouse(free=True)
 
+    @staticmethod
+    def _kind(title):
+        t = title.lower()
+        if "ticket" in t or "relevé" in t or "reçu" in t or "historique" in t or "crédits" in t:
+            return "typed"
+        if "journal" in t or "nice-matin" in t or "journaux" in t:
+            return "news"
+        return "hand"
+
+    def _page_image(self, text):
+        key = (self.kind, text, self.title.text)
+        if key not in self._cache:
+            try:
+                if self.kind == "typed":
+                    img = T.typed_page(text, (700, 900), 22)
+                elif self.kind == "news":
+                    img = T.newspaper_page([l for l in text.split("\n") if l.strip()], (700, 900))
+                else:
+                    img = T.handwriting_page(text, (760, 980), px=32, seed=len(text) % 97)
+            except Exception:
+                img = None
+            if len(self._cache) > 24:
+                self._cache.clear()
+            self._cache[key] = img
+        return self._cache[key]
+
     def _render(self):
-        self.body.text = self.pages[self.idx]
+        text = self.pages[self.idx]
+        if self.page_ent is not None:
+            destroy(self.page_ent)
+            self.page_ent = None
+        img = self._page_image(text)
+        if img is not None:
+            h = self.PH
+            w = h * img.width / img.height
+            self.page_ent = image(self.root, img, 0, 0, w, h, z=0.5)
+        else:       # repli texte brut
+            self.page_ent = Entity(parent=self.root)
+            panel(self.page_ent, 0, 0, self.PW, self.PH, "paper", z=0.5)
+            Text(parent=self.page_ent, text=text, position=(-0.27, 0.36, -0.1), origin=(-0.5, 0.5), scale=0.95 * text_scale(),
+                 color=rgb(40, 30, 25), wordwrap=40)
         n = len(self.pages)
-        self.page_label.text = f"Page {self.idx + 1}/{n}" if n > 1 else ""
+        self.page_label.text = f"Page {self.idx + 1} / {n}" if n > 1 else ""
         self.prev.enabled = n > 1 and self.idx > 0
         self.next.enabled = n > 1 and self.idx < n - 1
 
@@ -239,18 +281,18 @@ class DocumentViewer:
         self.visible = False
         self.root.enabled = False
         cb, self.on_close = self.on_close, None
-        self.game.set_mouse(free=False)
+        self.game.set_mouse(free=self.game.mode != "playing")
         if cb:
             cb()
 
     def on_key(self, key):
         if not self.visible:
             return
-        if key in ("e", "escape"):
+        if key in (config.settings.key("interagir"), "escape"):
             self.close()
         elif key in ("right arrow", "d"):
             self.next_page()
-        elif key in ("left arrow", "a"):
+        elif key in ("left arrow", "a", "q"):
             self.prev_page()
 
 

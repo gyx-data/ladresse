@@ -15,7 +15,8 @@ from config import settings
 from multiplayer_client import NetClient
 from character_model import CharacterModel, Nametag
 from sound_engine import engine as sound
-from ui_widgets import label, rect, button, clear, rgb
+from ui_widgets import label, rect, button, clear, rgb, panel, image
+import illustrations as ill
 
 
 class RemoteAvatar:
@@ -131,23 +132,71 @@ class MultiplayerManager:
             destroy(self.root)
         self.root = Entity(parent=camera.ui, z=-5)
         r = self.root
-        rect(r, 0, 0, 2.4, 1.3, rgb(0, 0, 0, 170), z=1)
-        label(r, "MULTIJOUEUR COOPÉRATIF", 0, 0.4, 2.4, color.white, z=0)
-        label(r, "Adresse du serveur", -0.3, 0.27, 0.8, color.gray, origin=(-0.5, 0), z=0)
-        self.field_addr = InputField(default_value=settings["mp_adresse"], parent=r, position=(0.0, 0.22), scale=(0.62, 0.05), character_limit=40)
-        label(r, "Pseudo", -0.3, 0.15, 0.8, color.gray, origin=(-0.5, 0), z=0)
-        self.field_name = InputField(default_value=settings["mp_pseudo"], parent=r, position=(0.0, 0.1), scale=(0.62, 0.05), character_limit=16)
-        self.connect_btn = button(r, "Se connecter", 0, 0.01, 0.3, 0.06, self.do_connect, rgb(30, 70, 40, 240), size=1.0, z=-0.1)
-        self.status = label(r, "Déconnecté", 0, -0.06, 0.8, rgb(200, 190, 150), z=0)
-        label(r, "Joueurs dans le lobby", -0.3, -0.13, 0.8, color.gray, origin=(-0.5, 0), z=0)
+        rect(r, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 190), z=1)
+        panel(r, 0, 0, 1.3, 0.84, "panel", z=0.9)
+        label(r, "COOPÉRATIF EN LIGNE", -0.6, 0.37, 1.6, color.white, origin=(-0.5, 0), z=0)
+        label(r, "2 à 4 joueurs · chacun reçoit SES messages d'assistance… et ils se contredisent.", -0.6, 0.325, 0.62,
+              rgb(170, 166, 160), origin=(-0.5, 0), z=0)
+        # colonne gauche : connexion
+        x = -0.34
+        label(r, "ADRESSE DU SERVEUR", x - 0.26, 0.25, 0.55, rgb(226, 120, 90), origin=(-0.5, 0), z=0)
+        self.field_addr = InputField(default_value=settings["mp_adresse"], parent=r, position=(x, 0.21, -0.05), scale=(0.52, 0.05),
+                                     character_limit=40)
+        label(r, "PSEUDO", x - 0.26, 0.15, 0.55, rgb(226, 120, 90), origin=(-0.5, 0), z=0)
+        self.field_name = InputField(default_value=settings["mp_pseudo"], parent=r, position=(x, 0.11, -0.05), scale=(0.52, 0.05),
+                                     character_limit=16)
+        self.connect_btn = button(r, "Se connecter", x - 0.13, 0.03, 0.25, 0.055, self.do_connect, style="success", size=0.8, z=-0.1)
+        button(r, "Héberger une partie", x + 0.13, 0.03, 0.25, 0.055, self.host_local, style="blue", size=0.7, z=-0.1)
+        self.status_dot = rect(r, x - 0.25, -0.04, 0.016, 0.016, rgb(200, 60, 50), z=0, radius=0.5)
+        self.status = label(r, "Déconnecté", x - 0.23, -0.04, 0.7, rgb(210, 200, 170), origin=(-0.5, 0), z=0)
+        self.ping_lbl = label(r, "", x + 0.26, -0.04, 0.6, rgb(150, 150, 156), origin=(0.5, 0), z=0)
+        tips = ("Serveur officiel : " + f"{config.SERVER_HOST}:{config.SERVER_PORT}",
+                "« Héberger » lance un serveur sur ce PC (port " + str(config.SERVER_PORT) + ") : vos amis entrent votre IP.",
+                "Pensez à ouvrir le port TCP + UDP sur votre box pour jouer par Internet.")
+        y = -0.12
+        for t in tips:
+            label(r, t, x - 0.26, y, 0.5, rgb(130, 128, 125), origin=(-0.5, 0), z=0, wrap=60)
+            y -= 0.045
+        # colonne droite : joueurs
+        label(r, "JOUEURS DANS LE LOBBY", 0.08, 0.25, 0.55, rgb(226, 120, 90), origin=(-0.5, 0), z=0)
+        self.count_lbl = label(r, "0 / 4", 0.58, 0.25, 0.55, rgb(150, 150, 156), origin=(0.5, 0), z=0)
         self.list_root = Entity(parent=r)
-        self.start_btn = button(r, "Lancer la partie", 0.0, -0.36, 0.34, 0.06, self.do_start, rgb(70, 40, 30, 240), size=1.0, z=-0.1)
+        self.start_btn = button(r, "Lancer la partie", 0.33, -0.3, 0.32, 0.06, self.do_start, style="primary", size=0.85, z=-0.1)
         self.start_btn.enabled = False
-        button(r, "Retour", 0.0, -0.45, 0.24, 0.05, self.back, rgb(30, 30, 36, 240), size=0.9, z=-0.1)
+        button(r, "Retour", -0.52, -0.36, 0.18, 0.05, self.back, style="dark", size=0.75, z=-0.1)
         if self.connected:
             self.status.text = "Connecté"
             self._refresh_players()
+        else:
+            self._refresh_players()
         g.set_mouse(free=True)
+
+    def host_local(self):
+        """Lance le serveur dédié dans ce processus (thread) puis s'y connecte."""
+        if getattr(self, "_local_server", None) is None:
+            try:
+                import importlib.util
+                import os
+                import sys
+                import threading
+                base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+                sdir = os.path.join(base, "server")
+                if sdir not in sys.path:
+                    sys.path.append(sdir)
+                os.environ.setdefault("LADRESSE_LOG", os.path.join(config.app_data_dir(), "server.log"))
+                spec = importlib.util.spec_from_file_location("ladresse_server", os.path.join(sdir, "server.py"))
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                srv = mod.GameServer("0.0.0.0", config.SERVER_PORT)
+                threading.Thread(target=srv.start, daemon=True).start()
+                self._local_server = srv
+            except Exception as e:
+                self.status.text = f"Impossible d'héberger : {e}"
+                return
+        self.field_addr.text = f"127.0.0.1:{config.SERVER_PORT}"
+        self.status.text = "Serveur local lancé, connexion..."
+        from ursina import invoke
+        invoke(self.do_connect, delay=0.6)
 
     def back(self):
         self.disconnect()
@@ -188,18 +237,29 @@ class MultiplayerManager:
         if not self.lobby_open or self.root is None:
             return
         clear(self.list_root)
-        y = -0.19
+        y = 0.18
         for p in self.players.values():
-            tag = "  (hôte)" if p["id"] == self.host else ""
-            me = "  <- vous" if p["id"] == self.client.id else ""
             c = p.get("color", [1, 1, 1])
-            rect(self.list_root, -0.33, y, 0.025, 0.025, rgb(int(c[0] * 255), int(c[1] * 255), int(c[2] * 255)), z=-0.05)
-            label(self.list_root, p["name"] + tag + me, -0.29, y, 0.9, color.white, origin=(-0.5, 0), z=-0.05)
-            y -= 0.05
+            col = (int(c[0] * 255), int(c[1] * 255), int(c[2] * 255))
+            me = p["id"] == self.client.id
+            rect(self.list_root, 0.33, y, 0.52, 0.075, rgb(255, 255, 255, 22 if me else 10), z=0.5, radius=0.18)
+            image(self.list_root, ill.avatar(col, 96), 0.12, y, 0.06, 0.06, z=0.3)
+            label(self.list_root, p["name"] + ("  (vous)" if me else ""), 0.17, y + 0.012, 0.8, color.white, origin=(-0.5, 0), z=0.2)
+            label(self.list_root, "Hôte" if p["id"] == self.host else "Prêt", 0.17, y - 0.018, 0.5,
+                  rgb(240, 190, 90) if p["id"] == self.host else rgb(120, 200, 140), origin=(-0.5, 0), z=0.2)
+            if p["id"] == self.host:
+                image(self.list_root, ill.icon_crown(48), 0.56, y, 0.035, 0.035, z=0.2)
+            y -= 0.088
+        for _ in range(len(self.players), 4):
+            rect(self.list_root, 0.33, y, 0.52, 0.075, rgb(255, 255, 255, 5), z=0.5, radius=0.18)
+            label(self.list_root, "En attente d'un joueur…", 0.33, y, 0.62, rgb(110, 110, 116), z=0.2)
+            y -= 0.088
+        self.count_lbl.text = f"{len(self.players)} / 4"
         is_host = self.client.id is not None and self.client.id == self.host
         self.start_btn.enabled = is_host
+        self.status_dot.color = rgb(80, 200, 110) if self.connected else rgb(200, 60, 50)
         if not is_host and self.connected:
-            label(self.list_root, "En attente de l'hôte...", 0, -0.37, 0.8, color.gray, z=-0.05)
+            label(self.list_root, "En attente du lancement par l'hôte…", 0.33, -0.3, 0.62, rgb(150, 150, 156), z=-0.05)
 
     # ------------------------------------------------------------------
     # Boucle
@@ -231,6 +291,10 @@ class MultiplayerManager:
         if self.ping_t <= 0 and self.connected:
             self.ping_t = 4.0
             self.client.send_ping()
+            if self.lobby_open and self.root is not None and getattr(self, "ping_lbl", None) is not None:
+                pg = getattr(self.client, "ping", None)
+                self.ping_lbl.text = f"{int(pg)} ms" if pg else ""
+                self.status_dot.color = rgb(80, 200, 110)
 
     def _avatar_steps(self, a, dt):
         if not a.alive:
@@ -409,14 +473,24 @@ class MultiplayerManager:
         g.mode = "gameover"
         g.player.frozen = True
         self.over_ui = Entity(parent=camera.ui, z=-20)
-        rect(self.over_ui, 0, 0, 2.4, 1.3, rgb(0, 0, 0, 235), z=1)
+        rect(self.over_ui, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 235), z=1)
+        panel(self.over_ui, 0, 0, 0.9, 0.6, "panel", z=0.8)
         if result == "win":
-            label(self.over_ui, "Au moins un d'entre vous a survécu.", 0, 0.1, 1.8, color.white, z=0)
-            label(self.over_ui, "Livraison refusée.", 0, 0.0, 1.2, rgb(200, 190, 150), z=0)
+            label(self.over_ui, "LIVRAISON REFUSÉE", 0, 0.2, 2.2, color.white, z=0)
+            label(self.over_ui, "Au moins un d'entre vous a survécu jusqu'à l'aube.", 0, 0.12, 0.85, rgb(200, 190, 150), z=0)
         else:
-            label(self.over_ui, "Livraison effectuée.", 0, 0.1, 3.0, color.white, z=0)
-            label(self.over_ui, "Personne n'a survécu.", 0, 0.0, 1.2, rgb(200, 120, 120), z=0)
-        button(self.over_ui, "Menu principal", 0, -0.15, 0.3, 0.07, self._leave, rgb(30, 30, 34, 240), size=1.0, z=-0.1)
+            label(self.over_ui, "LIVRAISON EFFECTUÉE", 0, 0.2, 2.2, rgb(230, 80, 70), z=0)
+            label(self.over_ui, "Personne n'a survécu.", 0, 0.12, 0.85, rgb(200, 120, 120), z=0)
+        y = 0.03
+        for pid, p in self.players.items():
+            alive = (pid == self.client.id and not self.dead) or (pid in self.avatars and self.avatars[pid].alive)
+            c = p.get("color", [1, 1, 1])
+            image(self.over_ui, ill.avatar((int(c[0] * 255), int(c[1] * 255), int(c[2] * 255)), 96, dead=not alive), -0.2, y, 0.05, 0.05, z=0)
+            label(self.over_ui, p.get("name", "?"), -0.16, y, 0.8, color.white, origin=(-0.5, 0), z=0)
+            label(self.over_ui, "survivant" if alive else "livré", 0.25, y, 0.7, rgb(120, 200, 140) if alive else rgb(220, 90, 80),
+                  origin=(0.5, 0), z=0)
+            y -= 0.06
+        button(self.over_ui, "Menu principal", 0, -0.23, 0.3, 0.065, self._leave, style="primary", size=0.9, z=-0.1)
         g.set_mouse(free=True)
 
     def _leave(self):
