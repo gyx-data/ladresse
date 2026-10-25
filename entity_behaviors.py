@@ -13,7 +13,6 @@ from ursina import Entity, Vec3
 import game_data as gd
 from config import LEVEL_Y
 from entity_ai import EntityPuppet
-from room_builder import MeshBuilder
 from sound_engine import engine as sound
 from texture_generator import textures
 from shaders import horror_shader

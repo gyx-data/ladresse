@@ -7,7 +7,7 @@ import math
 import random
 from collections import deque
 
-from ursina import Entity, Vec3, invoke, curve, color, destroy
+from ursina import Entity, Vec3, invoke, curve
 
 import game_data as gd
 from interaction_system import Interactable
@@ -255,7 +255,6 @@ class HouseEvents:
 
     def h_journaux(self, it):
         st = self.state
-        first = "journaux" not in st.opened
         st.opened.add("journaux")
         st.add_item("adresse_erreur")
         self.game.quests.on_event("address_found", key="erreur")
@@ -550,8 +549,6 @@ class HouseEvents:
                 break
         self.mirror_avatar.z = max(3.4, min(4.2, z))
         self.mirror_avatar.scale_y = 0.6 if p.crouching else 1.0
-        dist = abs(p.pos[0] - 7.9)
-        self.mirror_avatar.scale_z = 1.0
         if self.mirror_t > 7.0:
             self.mirror_active = False
             self.mirror_avatar.enabled = False

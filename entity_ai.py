@@ -10,8 +10,6 @@ import random
 
 from ursina import Entity, Vec3
 
-import config
-from config import LEVEL_Y
 from house_generator import NavGrid
 from room_builder import MeshBuilder
 from shaders import shader_state
@@ -85,7 +83,7 @@ class EntityPuppet:
         self.parts["arm_r"] = _limb(r, (0.055, 1.0, 0.055), (0.2, 1.55, 0), col)
         self.parts["leg_l"] = _limb(r, (0.1, 0.88, 0.1), (-0.09, 0.88, 0), col)
         self.parts["leg_r"] = _limb(r, (0.1, 0.88, 0.1), (0.09, 0.88, 0), col)
-        self.parts["bag"] = _block(r, (0.42, 0.46, 0.24), (0, 1.3, -0.2), (1, 1, 1), "sac_quickeats", 0.15, 0.45)
+        self.parts["bag"] = _block(r, (0.29, 0.46, 0.22), (0, 1.3, -0.2), (1, 1, 1), "sac_quickeats", 0.15, 0.45)
 
     def _build_impostor(self):
         r = self.root
@@ -241,6 +239,8 @@ class EntityAI:
         self.fov_deg = 62.0
         self.disabled_rooms = {"condamnee", "cave_acces", "sous_sol"}
         self.world_root = Entity(name="entite")
+        self.remote = False
+        self.light_attracted = False
 
     # ------------------------------------------------------------------
     # Mise en place
@@ -377,8 +377,11 @@ class EntityAI:
                 w += 3.0
             if r.id in self.visited_rooms[-4:]:
                 w *= 0.25
-            if r.id == "grenier" and not self.game.state.flag("grenier_visit_ok", True):
-                w *= 0.3
+            # préfère les chemins sombres, évite les zones éclairées (sauf mauvais choix sur les lumières)
+            lit = any(l.is_lit and l.kind in ("neon", "tv", "candle") and r.level == h.level_at(l.pos[1]) and r.contains(l.pos[0], l.pos[2])
+                      for l in h.lights)
+            if lit:
+                w *= 2.5 if self.light_attracted else 0.3
             weights.append(w)
         room = self.rng.choices(rooms, weights)[0]
         cells = self.room_cache.get(room.id)
@@ -400,6 +403,9 @@ class EntityAI:
         p = game.player
         self.state_t += dt
         self.dist_to_player = math.hypot(self.pos[0] - p.pos[0], self.pos[2] - p.pos[2]) + abs(self.pos[1] - p.pos[1]) * 2.0
+        if self.remote:
+            self._remote_step(dt)
+            return
         if game.state.flag("ending_started"):
             return
         # dormante : le joueur est au sous-sol
@@ -422,6 +428,45 @@ class EntityAI:
         self._effects(dt)
         if not self.arriving and not self.killing:
             self._check_kill()
+
+    # --- multijoueur : entité pilotée par le serveur ---------------------
+    def remote_update(self, m):
+        kind = m.get("kind")
+        if kind and kind != self.kind:
+            self.spawn(kind, m["pos"])
+            self.active = True
+        if self.behavior is None:
+            return
+        self.remote = True
+        self.active = True
+        pos = Vec3(*m["pos"])
+        self._remote_target = pos
+        self.yaw = m.get("yaw", self.yaw)
+        new_state = m.get("state", self.state)
+        if new_state != self.state:
+            self.set_state(new_state)
+        self.cur_speed = m.get("speed", 0.0)
+        self.moving = self.cur_speed > 0.05
+        vis = bool(m.get("visible", True))
+        if vis != self.visible:
+            self.set_visible(vis)
+        ghosts = m.get("ghosts", [])
+        b = self.behavior
+        if hasattr(b, "ghosts"):
+            for i, g in enumerate(b.ghosts):
+                if i < len(ghosts):
+                    g["active"] = True
+                    g["pos"] = Vec3(*ghosts[i])
+                    g["yaw"] = self.yaw
+                else:
+                    g["active"] = False
+
+    def _remote_step(self, dt):
+        tgt = getattr(self, "_remote_target", None)
+        if tgt is not None:
+            self.pos = self.pos + (tgt - self.pos) * min(1.0, dt * 8.0)
+        self._update_visuals(dt)
+        self._effects(dt)
 
     # --- états ----------------------------------------------------------
     def _speed_for(self, state):
@@ -558,7 +603,6 @@ class EntityAI:
             return
         self.moving = False
         self.ambush_wait += dt
-        p = self.game.player
         if self.sees_player and self.dist_to_player < 4.5:
             self.set_state("chase")
             return
@@ -635,12 +679,10 @@ class EntityAI:
         dxz = math.hypot(self.pos[0] - p.pos[0], self.pos[2] - p.pos[2])
         same_level = dy < 2.2
         sees = False
-        detected_by = None
         if same_level and not p.dead:
             los = house.wall_count(eye_e, eye_p) == 0
             if dxz < 2.0 * math.sqrt(self.detection_mult) and (los or dxz < 1.2):
                 sees = True
-                detected_by = "proximite"
             elif los:
                 vis = min(1.0, p.visibility() * self.detection_mult)
                 reach = self.sight_range_base + 14.0 * vis
@@ -656,7 +698,6 @@ class EntityAI:
                         fov = 180.0
                 if dxz < reach and ang < fov and self.behavior.can_see(self):
                     sees = True
-                    detected_by = "vue"
         self.sees_player = sees
         if sees and self.state != "chase":
             self.noise_seen_t = self.game.player.time

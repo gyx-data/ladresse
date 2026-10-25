@@ -4,13 +4,9 @@ Un plan (`Shot`) construit sa propre mise en scène (géométrie, lumières, son
 caméra via une `CameraTrack` et se nettoie à la fin. Le moteur enchaîne les plans avec des
 fondus au noir et permet de passer la séquence (Échap / Espace maintenus).
 """
-import math
 
 from ursina import Entity, Vec3, camera, color, Text, scene, destroy
 
-from config import settings
-from sound_engine import engine as sound
-from ui_widgets import rgb
 
 
 def smooth(t):

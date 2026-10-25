@@ -67,6 +67,8 @@ class QuestSystem:
 
     def step(self, qid, key):
         q = self.quests[qid]
+        if qid == "commander" and not q.active and not q.complete:
+            self.start(qid, silent=True)
         if not q.active or key in q.done_steps:
             return
         if key not in [k for k, _ in q.steps]:
@@ -83,7 +85,7 @@ class QuestSystem:
     # ------------------------------------------------------------------
     def current_objective(self):
         """Texte de l'objectif affiché dans le HUD."""
-        for qid in MAIN_ORDER:
+        for qid in reversed(MAIN_ORDER):
             q = self.quests[qid]
             if q.active and not q.complete:
                 lbl = q.step_label()

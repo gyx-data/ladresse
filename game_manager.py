@@ -13,7 +13,7 @@ import game_data as gd
 from config import settings
 from assistance_system import AssistanceSystem
 from cinematic_engine import CinematicEngine
-from effects import EffectsManager, PhotoSystem, SkyDome
+from effects import EffectsManager, PhotoSystem, SkyDome, FlashlightCone
 from entity_ai import EntityAI
 from house_events import HouseEvents
 from house_generator import House
@@ -159,6 +159,7 @@ class GameManager:
         self.events.setup()
         self.particles = ParticleManager(self)
         self.sky = SkyDome()
+        self.fl_cone = FlashlightCone(self.player.vm)
         self.settings_menu = SettingsMenu(self)
         self.phone_light = LightSource((0, 0, 0), (0.7, 0.8, 1.0), 0.0, 4.5, kind="static", enabled=False, name="telephone")
         self.house.lights.append(self.phone_light)
@@ -360,6 +361,7 @@ class GameManager:
         self.mode = "playing"
         self.paused = False
         self.camera_mode = False
+        self.ui.menu.hide()
         p = self.player
         self.effects.menu_mode = False
         self.effects.set_fade(0.0)
@@ -655,9 +657,10 @@ class GameManager:
         st.entity_type = gd.MEALS[meal]["entity"]
         self.quests.on_event("order_confirmed")
         self.set_act(2)
-        self.timers.after(30.0, self.cancel_order)
         if self.net:
             self.net.send_order(meal, gd.ADDRESSES[address_key]["label"])
+        else:
+            self.timers.after(30.0, self.cancel_order)
 
     def cancel_order(self):
         st = self.state
@@ -798,10 +801,22 @@ class GameManager:
             self.net.send_death(cause)
         if cause == "door_open":
             kind = "porte"
+        done = self._mp_spectate if self.is_multiplayer else self.show_game_over
         if scared:
-            self.show_game_over()
+            done()
         else:
-            self.jumpscare.trigger(kind or "generic", on_done=self.show_game_over)
+            self.jumpscare.trigger(kind or "generic", on_done=done)
+
+    def _mp_spectate(self):
+        """Multijoueur : le joueur mort devient spectateur."""
+        self.effects.set_fade(0.0)
+        self.player.frozen = False
+        if self.mp is not None:
+            self.mp.dead = True
+            self.mp.spectate_id = None
+            if hasattr(self.mp, "_spec_init"):
+                del self.mp._spec_init
+        self.ui.say("Livraison effectuée. Vous êtes spectateur.", 5.0)
 
     def show_game_over(self):
         self.mode = "gameover"
@@ -962,6 +977,7 @@ class GameManager:
         shader_state.cam_pos = cam_pos
         self.lighting.update(dt, cam_pos)
         self.sky.update()
+        self.fl_cone.update(p.flashlight, self.phone.is_open)
         self.events.update(dt)
         self.assistance.update(dt)
         self.entity.update(dt)

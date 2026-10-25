@@ -84,8 +84,7 @@ void main() {
     Lf /= max(df, 0.001);
     float cosang = dot(-Lf, fl_dir);
     float spot = smoothstep(fl_params.x, fl_params.y, cosang);
-    float attf = clamp(1.0 - df / fl_params.w, 0.0, 1.0);
-    attf *= attf;
+    float attf = clamp(1.0 - df / fl_params.w, 0.0, 1.0) / (1.0 + 0.14 * df * df);
     float ndl = max(dot(N, Lf), 0.0) * 0.75 + 0.25;
     light += fl_color * fl_params.z * spot * attf * ndl;
 
@@ -103,6 +102,7 @@ void main() {
     }
 
     vec3 rgb = base.rgb * light + base.rgb * emit;
+    rgb = rgb / (1.0 + rgb * 0.30) * 1.18;     // compression douce des hautes lumières
 
     // Brouillard exponentiel
     float dist = distance(wpos, cam_pos);

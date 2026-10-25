@@ -2,14 +2,12 @@
 
 Tout est construit avec des entités Ursina rattachées à `camera.ui`.
 """
-import math
 import random
 
-from ursina import Entity, Text, Button, color, camera, mouse, Vec3, Vec2, application, invoke, curve, held_keys, destroy
+from ursina import Entity, Text, Button, color, camera, Vec3, invoke, destroy
 
 import config
 import game_data as gd
-from config import settings
 from sound_engine import engine as sound
 from texture_generator import textures
 from ui_widgets import label, rect, button, clear, rgb, star, Toast, text_scale

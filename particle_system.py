@@ -4,7 +4,7 @@ brume au sous-sol, pluie (vue par les fenêtres non condamnées), cendres de la 
 import math
 import random
 
-from ursina import Entity, Vec3, color, camera, scene
+from ursina import Entity, Vec3, color
 
 import config
 from texture_generator import textures

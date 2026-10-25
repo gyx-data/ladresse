@@ -8,7 +8,7 @@ import math
 import random
 
 from PIL import Image, ImageDraw
-from ursina import Entity, Vec3, camera, color, destroy, Mesh
+from ursina import Entity, Vec3, camera, color
 
 import game_data as gd
 from cinematic_engine import CameraTrack, Shot, smooth
@@ -17,7 +17,7 @@ from room_builder import MeshBuilder
 import room_builder as rb
 from shaders import horror_shader
 from sound_engine import engine as sound
-from texture_generator import _font, textures
+from texture_generator import _font
 
 PLAYER_START = (7.0, 0.0, 0.8)
 
@@ -218,7 +218,6 @@ class PhoneShot(Shot):
     fade_out = 1.0
 
     def setup(self):
-        g = self.game
         ox = 400.0
         b = MeshBuilder("bureau_tel")
         b.box("bois_meuble", ox - 1.2, -0.05, -1.0, ox + 1.2, 0.0, 1.0, (0.7, 0.62, 0.55), tile=0.8)

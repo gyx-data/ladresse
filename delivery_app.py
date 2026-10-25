@@ -3,10 +3,10 @@ import math
 import re
 import unicodedata
 
-from ursina import color, Entity
+from ursina import color
 
 import game_data as gd
-from phone_system import App, SW, SH
+from phone_system import App, SW
 from sound_engine import engine as sound
 from texture_generator import textures
 from ui_widgets import label, rect, button, clear, rgb, star
@@ -313,7 +313,7 @@ class DeliveryApp(App):
     def _update_tracking(self):
         a = self.phone.game.assistance
         remaining, phase = a.eta_seconds(), a.phase
-        total = gd.DELIVERY_TOTAL_SECONDS
+        total = a.total()
         t = 1.0 - max(0.0, min(1.0, remaining / total)) if remaining is not None else 0.0
         if phase >= 4:
             # le livreur ne bouge plus : devant la porte

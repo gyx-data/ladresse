@@ -6,7 +6,7 @@ Séquence : flash blanc (0,05 s) → image du jumpscare (0,5 s) → écran noir 
 import math
 import random
 
-from ursina import Entity, camera, color, invoke, destroy, Vec3
+from ursina import Entity, camera, color, invoke, destroy
 
 from config import settings
 from sound_engine import engine as sound

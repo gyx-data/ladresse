@@ -1,8 +1,8 @@
 """Inventaire du joueur : objets, documents trouvés, panneau Tab."""
-from ursina import Entity, Text, Button, color, camera, Vec2, Vec3, mouse
+from ursina import Entity, Text, color, camera
 
-import config
 import game_data as gd
+from ui_widgets import button
 
 ITEM_DEFS = {
     "pile": ("Pile", "Recharge la lampe torche ou le téléphone.", (0.9, 0.8, 0.2), True),
@@ -67,10 +67,8 @@ class InventoryPanel:
             Text(parent=self.body, text=f"{name} x{count}" if count > 1 else name, position=(-0.47, y + 0.012), scale=0.9, color=color.white)
             Text(parent=self.body, text=desc, position=(-0.47, y - 0.012), scale=0.6, color=color.gray)
             if usable:
-                b = Button(parent=self.body, text="Utiliser", scale=(0.1, 0.035), position=(-0.12, y), color=color.rgba32(60, 60, 60, 220),
-                           text_color=color.white)
-                b.text_entity.scale = 0.7
-                b.on_click = (lambda it=item: self.game.use_item(it))
+                button(self.body, "Utiliser", -0.12, y, 0.1, 0.035, (lambda it=item: self.game.use_item(it)),
+                       color.rgba32(60, 60, 60, 220), color.white, size=0.7)
             y -= 0.065
         if y > 0.24:
             Text(parent=self.body, text="(vide)", position=(-0.5, 0.25), scale=0.9, color=color.gray)
@@ -78,10 +76,8 @@ class InventoryPanel:
         y = 0.25
         for doc in gd.DOC_TITLES:
             if doc in self.inventory.state.docs:
-                b = Button(parent=self.body, text=gd.DOC_TITLES[doc], scale=(0.4, 0.04), position=(0.3, y), color=color.rgba32(40, 40, 40, 220),
-                           text_color=color.rgb32(220, 210, 170))
-                b.text_entity.scale = 0.7
-                b.on_click = (lambda d=doc: self.game.reread_doc(d))
+                button(self.body, gd.DOC_TITLES[doc], 0.3, y, 0.4, 0.04, (lambda d=doc: self.game.reread_doc(d)),
+                       color.rgba32(40, 40, 40, 220), color.rgb32(220, 210, 170), size=0.7)
                 y -= 0.055
         found = self.inventory.state.docs_required_found
         Text(parent=self.body, text=f"Documents de Garnier : {found}/{len(gd.REQUIRED_DOCS)}", position=(0.08, -0.3), scale=0.8,

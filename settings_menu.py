@@ -1,5 +1,5 @@
 """Menu des paramètres : graphismes, audio, contrôles (remapping), accessibilité."""
-from ursina import Entity, Text, color, camera, window, application, mouse
+from ursina import Entity, color, camera, window, application
 
 import config
 from config import settings
@@ -180,7 +180,6 @@ class SettingsMenu:
         self._slider_row(0.12, "FOV (60-110)", "fov", 60, 110, 5)
         label(self.body, "Remapping des touches (cliquer puis appuyer sur la touche)", -0.45, 0.05, 0.7, color.gray, origin=(-0.5, 0))
         y = -0.01
-        col = 0
         for i, (act, name) in enumerate(config.KEY_LABELS.items()):
             x = -0.45 + (i % 2) * 0.5
             yy = y - (i // 2) * 0.06

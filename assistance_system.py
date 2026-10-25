@@ -21,6 +21,7 @@ class AssistanceSystem:
         self.reset()
 
     def reset(self):
+        self.ts = 1.0             # échelle de temps (adresse piège : le livreur arrive plus vite)
         self.phase = 0            # 0 repos, 1 attente contact, 2 contact, 3 attente, 4 arrivée, 5 libéré
         self.t0 = None            # instant « livreur en chemin » (temps de jeu)
         self.release_t0 = None
@@ -45,10 +46,13 @@ class AssistanceSystem:
     def now(self):
         return self.game.timers.t
 
+    def total(self):
+        return gd.DELIVERY_TOTAL_SECONDS * self.ts
+
     def eta_seconds(self):
         if self.t0 is None:
             return None
-        return max(0.0, gd.DELIVERY_TOTAL_SECONDS - (self.now() - self.t0))
+        return max(0.0, self.total() - (self.now() - self.t0))
 
     def tracking_available(self):
         return self.t0 is not None and self.phase < 5
@@ -103,19 +107,21 @@ class AssistanceSystem:
     def start_delivery(self):
         self.phase = 3
         self.t0 = self.now()
+        self.ts = 0.8 if self.game.state.address == "piege" else 1.0
         self.status_text = "Votre livreur est en chemin."
         self.game.set_act(3)
         self.game.save_checkpoint("livreur_en_chemin")
         if self.remote:
             return
+        ts = self.ts
         for pid in (1, 2, 3):
             sch = gd.PAIR_SCHEDULE[pid]
-            self.timers.after(sch["a"], self._send_option, pid, "A")
-            self.timers.after(sch["b"], self._send_option, pid, "B")
+            self.timers.after(sch["a"] * ts, self._send_option, pid, "A")
+            self.timers.after(sch["b"] * ts, self._send_option, pid, "B")
             if sch["window_end"]:
-                self.timers.after(sch["window_end"], self.evaluate, pid)
+                self.timers.after(sch["window_end"] * ts, self.evaluate, pid)
         for (remaining, notif, app_text) in gd.ASSIST_PHASE4:
-            when = gd.DELIVERY_TOTAL_SECONDS - remaining
+            when = (gd.DELIVERY_TOTAL_SECONDS - remaining) * ts
             self.timers.after(when, self._phase4, remaining, notif, app_text)
 
     def _send_option(self, pid, opt):
@@ -135,6 +141,11 @@ class AssistanceSystem:
         if opt == "B":
             w["start"] = self.now()
             w["talk_start"] = self.now()
+            sch = gd.PAIR_SCHEDULE[pid]
+            if pid not in self.pairs_done and sch["window_end"]:
+                self.timers.after((sch["window_end"] - sch["b"]) * 0.5, self.evaluate, pid)
+            elif pid == 3:
+                self.timers.after(35.0, self.evaluate, 3)
 
     # ------------------------------------------------------------------
     # Évaluation continue des fenêtres
@@ -202,6 +213,7 @@ class AssistanceSystem:
         if pid == 1:
             if not good:
                 ent.detection_mult *= 1.5
+                ent.light_attracted = True
             else:
                 ent.detection_mult *= 0.9
         elif pid == 2:
@@ -227,7 +239,7 @@ class AssistanceSystem:
     # Phase 4 : le livreur arrive
     # ------------------------------------------------------------------
     def _phase4(self, remaining, notif, app_text):
-        if self.remote or remaining in self._phase4_done:
+        if remaining in self._phase4_done:
             return
         self._phase4_done.add(remaining)
         game = self.game
@@ -295,12 +307,13 @@ class AssistanceSystem:
         self.status_text = "Livraison effectuée."
         game.phone.notify("QuickEats", gd.ASSIST_PHASE4[-1][1], "icone_quickeats", sound_on=True)
         game.on_delivery_done()
-        # paires de la phase de survie
+        # paires de la phase de survie (en multijoueur, le serveur envoie les messages)
         for pid in (4, 5):
             sch = gd.PAIR_SCHEDULE[pid]
-            self.timers.after(sch["a"], self._send_option, pid, "A")
-            self.timers.after(sch["b"], self._send_option, pid, "B")
-            self.timers.after(sch["window_end"], self.evaluate, pid)
+            if not self.remote:
+                self.timers.after(sch["a"], self._send_option, pid, "A")
+                self.timers.after(sch["b"], self._send_option, pid, "B")
+            self.timers.after(sch["window_end"] * (0.5 if self.remote else 1.0), self.evaluate, pid)
         self.timers.after(12.0, self._rating_message)
 
     def _rating_message(self):
@@ -311,7 +324,7 @@ class AssistanceSystem:
     # ------------------------------------------------------------------
     def to_dict(self):
         now = self.now()
-        return dict(phase=self.phase, status=self.status_text,
+        return dict(phase=self.phase, status=self.status_text, ts=self.ts,
                     elapsed=None if self.t0 is None else now - self.t0,
                     rel=None if self.release_t0 is None else now - self.release_t0,
                     pairs_done=sorted(self.pairs_done), salt_left=max(0.0, self.salt_circle_until - now))
@@ -320,6 +333,7 @@ class AssistanceSystem:
         """Recrée la chronologie restante à partir du temps écoulé."""
         self.reset()
         self.phase = d.get("phase", 0)
+        self.ts = d.get("ts", 1.0)
         self.status_text = d.get("status", "")
         self.pairs_done = set(d.get("pairs_done", []))
         now = self.now()
@@ -333,16 +347,16 @@ class AssistanceSystem:
                     continue
                 sch = gd.PAIR_SCHEDULE[pid]
                 for opt in ("a", "b"):
-                    if sch[opt] > el:
-                        self.timers.after(sch[opt] - el, self._send_option, pid, opt.upper())
-                if sch["window_end"] and sch["window_end"] > el:
-                    self.timers.after(sch["window_end"] - el, self.evaluate, pid)
+                    if sch[opt] * self.ts > el:
+                        self.timers.after(sch[opt] * self.ts - el, self._send_option, pid, opt.upper())
+                if sch["window_end"] and sch["window_end"] * self.ts > el:
+                    self.timers.after(sch["window_end"] * self.ts - el, self.evaluate, pid)
             for (remaining, notif, app_text) in gd.ASSIST_PHASE4:
-                when = gd.DELIVERY_TOTAL_SECONDS - remaining
+                when = (gd.DELIVERY_TOTAL_SECONDS - remaining) * self.ts
                 if when > el:
                     self.timers.after(when - el, self._phase4, remaining, notif, app_text)
         elif self.phase == 5 and rel is not None:
-            self.t0 = now - gd.DELIVERY_TOTAL_SECONDS - rel
+            self.t0 = now - self.total() - rel
             self.release_t0 = now - rel
             for pid in (4, 5):
                 if pid in self.pairs_done:

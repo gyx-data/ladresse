@@ -3,15 +3,14 @@ applications Messages / Appareil photo / Lampe / Appels. QuickEats et la banque 
 delivery_app.py et bank_app.py.
 """
 import math
-import random
 
-from ursina import Entity, Text, color, camera, mouse, Vec3, curve, destroy
+from ursina import Entity, color, camera, mouse, curve
 
 import config
 import game_data as gd
 from sound_engine import engine as sound
 from texture_generator import textures
-from ui_widgets import label, rect, button, clear, rgb, star, Toast
+from ui_widgets import label, rect, button, clear, rgb, Toast
 
 SW, SH = 0.40, 0.78           # taille de l'écran
 PHONE_Y = -0.03
@@ -124,7 +123,7 @@ class MessagesApp(App):
                     continue
                 last = c["msgs"][-1].text if c["msgs"] else ""
                 last = (last[:34] + "...") if len(last) > 34 else last
-                b = button(self.root, "", 0, y, SW - 0.02, 0.1, lambda cid=cid: self.open_conv(cid), rgb(34, 34, 40, 235))
+                button(self.root, "", 0, y, SW - 0.02, 0.1, lambda cid=cid: self.open_conv(cid), rgb(34, 34, 40, 235))
                 label(self.root, c["name"], -0.17, y + 0.022, 0.8, color.white, origin=(-0.5, 0), z=-0.05)
                 label(self.root, last, -0.17, y - 0.02, 0.5, color.gray, origin=(-0.5, 0), z=-0.05)
                 if c["unread"]:
@@ -249,7 +248,7 @@ class TorchApp(App):
         on = self.phone.model.torch_on
         rect(self.root, 0, 0, SW, SH, rgb(18, 18, 22))
         label(self.root, "Lampe du téléphone", 0, 0.28, 0.95, color.white)
-        b = button(self.root, "ALLUMÉE" if on else "ÉTEINTE", 0, 0.0, 0.22, 0.22, self.toggle,
+        button(self.root, "ALLUMÉE" if on else "ÉTEINTE", 0, 0.0, 0.22, 0.22, self.toggle,
                    rgb(240, 200, 40) if on else rgb(60, 60, 66), color.black if on else color.white, size=0.9)
         label(self.root, "Éclairage faible d'appoint", 0, -0.2, 0.55, color.gray)
 

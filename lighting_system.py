@@ -209,7 +209,7 @@ class Flashlight:
             outer = min(0.97, 1 - (1 - outer) * shrink)
             inner = min(0.99, outer + 0.05)
             rng *= (0.55 + 0.45 * shrink)
-        strength = (3.1 - 0.9 * self.zoom) * inten * self.mult
+        strength = (2.6 - 0.7 * self.zoom) * inten * self.mult
         # Couleur : blanc chaud -> jaune-orangé quand la batterie faiblit
         t = 1.0 - max(0.0, min(1.0, self.battery / 35.0))
         col = Vec3(1.0, 0.97 - 0.30 * t, 0.88 - 0.62 * t)

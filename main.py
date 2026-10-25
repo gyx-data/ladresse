@@ -62,7 +62,24 @@ def create_app():
     return app
 
 
+def _optimize_ursina():
+    """Ursina parcourt toutes les entités à chaque frame (update/input). Les entités « plain » et les
+    textes n'ont pas besoin de ça (tout est piloté par GameManager) : on les ignore pour gagner
+    plusieurs millisecondes par frame. Les boutons et champs de saisie restent actifs."""
+    from ursina import Entity
+    from ursina.shaders import unlit_shader
+    Entity.default_shader = unlit_shader
+    original = Entity.__init__
+
+    def fast_init(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        if type(self).__name__ in ("Entity", "Text"):
+            self.ignore = True
+    Entity.__init__ = fast_init
+
+
 app = create_app()
+_optimize_ursina()
 
 from game_manager import GameManager
 

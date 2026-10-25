@@ -880,7 +880,6 @@ def s_vanish(rng):
 @snd("flash_clone")
 def s_clone_flash(rng):
     n = int(SR * 0.5)
-    t = taxis(0.5)
     x = np.sin(2 * np.pi * np.cumsum(np.linspace(2200, 300, n)) / SR) * decay(n, 0.15)
     x += 0.4 * highpass(rng.standard_normal(n), 2000) * decay(n, 0.05)
     return normalize(x, 0.7)

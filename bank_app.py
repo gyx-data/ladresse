@@ -2,7 +2,7 @@
 from ursina import color
 
 import game_data as gd
-from phone_system import App, SW, SH
+from phone_system import App, SW
 from ui_widgets import label, rect, button, clear, rgb
 
 BLUE = rgb(26, 70, 180)
