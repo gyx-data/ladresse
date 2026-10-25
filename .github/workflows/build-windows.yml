@@ -1,0 +1,67 @@
+name: Build Windows exe
+
+on:
+  push:
+    branches: [ "claude/wonderful-goldberg-1p85x4", "main", "master" ]
+    paths-ignore: [ "**.md" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Dépendances (versions figées)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Auto-test depuis les sources
+        run: python main.py --selftest
+
+      - name: Test de robustesse du serveur
+        run: python tests/server_stress_test.py
+
+      - name: Compilation PyInstaller
+        run: python build.py
+
+      - name: Auto-test de l'exécutable compilé
+        shell: pwsh
+        run: |
+          $env:PYTHONUTF8 = ""
+          $p = Start-Process -FilePath "dist\LADRESSE.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content -Encoding UTF8 "$env:APPDATA\LADRESSE\selftest.txt"
+          if ($p.ExitCode -ne 0) { Write-Error "Auto-test de l'exe en échec ($($p.ExitCode))"; exit 1 }
+
+      - name: Archive du serveur (Pterodactyl)
+        shell: pwsh
+        run: |
+          Compress-Archive -Force -DestinationPath dist\LADRESSE-serveur.zip -Path `
+            server\server.py, server\server_config.py, server\server_config.example.json, server\LISEZMOI_SERVEUR.md
+          Get-FileHash dist\LADRESSE.exe, dist\LADRESSE-serveur.zip -Algorithm SHA256 | Format-List
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LADRESSE-windows
+          path: |
+            dist/LADRESSE.exe
+            dist/LADRESSE-serveur.zip
+          if-no-files-found: error
+          retention-days: 90
