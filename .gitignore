@@ -5,3 +5,7 @@ dist/
 *.spec
 .venv/
 build_assets/
+
+# journaux
+*.log
+*.log.old
