@@ -252,13 +252,16 @@ class EntityAI:
         self.despawn()
         self.kind = kind
         self.nightmare = nightmare
+        self.speed_mult = 1.0
+        self.detection_mult = 1.0
+        self.aggression = 0.0
         self.behavior = make_behavior(kind, self)
         self.puppets = self.behavior.build_puppets(self)
         self.pos = Vec3(*pos)
         if nightmare:
-            self.speed_mult *= 1.3
-            self.detection_mult *= 1.4
-            self.aggression += 0.2
+            self.speed_mult = 1.3
+            self.detection_mult = 1.4
+            self.aggression = 0.2
         self.behavior.on_spawn(self)
         self.active = False
         self.set_visible(False)

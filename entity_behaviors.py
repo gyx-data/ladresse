@@ -214,7 +214,7 @@ class Rampant(Behavior):
     kind = "rampant"
     speeds = {"patrol": 1.8, "alert": 2.8, "chase": 5.0}
     puppet_kind = "rampant"
-    HIDE_SPOTS = [(1.35, 3.0, 3.0), (14.0, 3.0, 11.3), (14.4, 0.0, 4.95), (3.1, 0.0, 5.45), (1.0, 3.0, 7.4), (7.2, 6.0, 10.8)]
+    HIDE_SPOTS = [(1.35, 3.0, 3.0), (14.0, 3.0, 10.9), (14.4, 0.0, 5.35), (3.1, 0.0, 5.45), (1.0, 3.0, 7.4), (7.2, 6.0, 10.8)]
 
     def on_spawn(self, ai):
         ai.hear_mult = 1.3
