@@ -23,6 +23,7 @@ os.environ["LADRESSE_TIME_SCALE"] = "0.04"
 import main as M                                   # crée la fenêtre et le GameManager
 from ursina import application, Vec3
 from main import app, game
+import config                                      # noqa: E402
 
 failures = []
 
@@ -251,13 +252,11 @@ def scenario():
         game.ui.rating.root.enabled = False
     check(True, "les quatre fins s'enchaînent")
 
-    # --- multijoueur : serveur + second client simulé ---
+    # --- multijoueur : relais + hôte (ce jeu) + second joueur simulé ---
     import server as S
-    srv = S.GameServer("127.0.0.1", 27997)
-    threading.Thread(target=srv.start, daemon=True).start()
-    time.sleep(0.4)
-    sock = socket.create_connection(("127.0.0.1", 27997))
-    sock.sendall((json.dumps({"type": "connect", "name": "Bob"}) + "\n").encode())
+    srv = S.RelayServer("127.0.0.1", 27997)
+    srv.start(block=False)
+    time.sleep(0.3)
     game.ending_active = False
     game.ui.ending.stop()
     game.state.flags.pop("ending_started", None)
@@ -265,11 +264,33 @@ def scenario():
     game.show_multiplayer()
     yield from wait(5)
     mp = game.mp
+    mp.client.close()
     mp.client.connect("127.0.0.1", 27997, "Hote")
+    for _ in range(20):
+        yield
+    mp.client.create_room("Smoke", 4)
+    for _ in range(20):
+        yield
+    code = (mp.room or {}).get("id")
+    sock = socket.create_connection(("127.0.0.1", 27997))
+    sock.sendall((json.dumps({"type": "hello", "name": "Bob", "proto": "3.0"}) + "\n").encode())
+    sock.sendall((json.dumps({"type": "join", "room": code, "game": config.VERSION}) + "\n").encode())
     for _ in range(30):
         yield
-    check(mp.connected and len(mp.players) == 2, "lobby multijoueur : deux joueurs connectés")
+    check(mp.client.is_host and len(mp.players) == 2, "salon multijoueur : hôte + un joueur")
+    mp.do_start()
+    for _ in range(40):
+        yield
+    check(mp.in_game and len(mp.avatars) == 1, "partie lancée chez l'hôte, avatar du second joueur créé")
+    sock.sendall((json.dumps({"type": "to", "to": "all", "d": {"type": "move", "pos": [7.5, 0.0, 2.0], "rot": [0, 90], "s": 1}}) + "\n").encode())
+    for _ in range(40):
+        yield
+    av = next(iter(mp.avatars.values()), None)
+    check(av is not None and abs(av.root.position[2] - 2.0) < 0.3, "position du second joueur reçue et interpolée")
     sock.close()
+    for _ in range(20):
+        yield
+    check(not mp.avatars, "départ du second joueur pris en compte")
     srv.stop()
     mp.disconnect()
     game.to_main_menu()

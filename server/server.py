@@ -1,20 +1,21 @@
-"""Serveur multijoueur principal de L'ADRESSE.
+"""Serveur relais multijoueur de L'ADRESSE.
 
-Tourne sur un serveur Pterodactyl (Python 3.11, aucune dépendance) :  ``python server.py``
-IP publique : 5.180.34.43 | Port : 27303 (TCP pour les messages d'état, UDP pour les positions)
+Tourne sur Pterodactyl (Python 3.8+, aucune dépendance) :  ``python server.py``
+IP publique : 5.180.34.43 | Port : 27326 (TCP pour les messages, UDP pour les positions)
 
-* 2 à 4 joueurs dans la même maison ;
-* tick rate : 20 ticks/s ;
-* IA de l'entité côté serveur, messages d'assistance distribués individuellement,
-  mort / spectateur, validation des positions (anti-triche basique).
+Le relais ne fait tourner AUCUNE partie : chaque partie tourne chez le joueur qui a créé le salon (l'hôte).
+Le relais :
+  * gère les salons : créer (nom, limite de joueurs, mot de passe facultatif), lister, rejoindre, quitter ;
+  * fait suivre les paquets entre les joueurs d'un même salon (TCP fiable ou UDP rapide, repli TCP si l'UDP est bloqué) ;
+  * protège le serveur : limites de débit, de taille, de connexions, délais d'inactivité.
+Comme il ignore les règles du jeu, une mise à jour du jeu ne demande pas de mettre le serveur à jour.
 
-Protocole : JSON, un message par ligne (TCP) ou par datagramme (UDP).
+Protocole : JSON, un message par ligne (TCP) ou par datagramme (UDP). Voir LISEZMOI_SERVEUR.md.
 """
+import itertools
 import json
-import math
 import os
 import queue
-import random
 import secrets
 import signal
 import socket
@@ -24,7 +25,6 @@ import time
 import unicodedata
 
 import server_config as cfg
-from game_state import GameState, EntityState, dist3
 
 _log_lock = threading.Lock()
 _log_file = None
@@ -41,7 +41,7 @@ def log(*a):
             enc = getattr(sys.stdout, "encoding", None) or "ascii"
             print(line.encode(enc, "replace").decode(enc, "replace"), flush=True)
         except (OSError, ValueError):
-            pass                         # console fermée / redirigée : on écrit quand même dans le fichier
+            pass
         try:
             if _log_file is None:
                 path = cfg.LOG_FILE
@@ -54,10 +54,14 @@ def log(*a):
             pass
 
 
+def clean_text(text, limit, default=""):
+    text = "".join(ch for ch in str(text) if unicodedata.category(ch)[0] != "C").strip()
+    return " ".join(text.split())[:limit] or default
+
+
 def clean_name(name, taken):
-    """Pseudo affichable : sans caractères de contrôle, 1 à 16 caractères, unique dans la salle."""
-    name = "".join(ch for ch in str(name) if unicodedata.category(ch)[0] not in ("C",)).strip()
-    name = " ".join(name.split())[:16] or "Joueur"
+    """Pseudo affichable : 1 à 16 caractères, unique dans le salon."""
+    name = clean_text(name, 16, "Joueur")
     base, n = name, 2
     while name.lower() in taken:
         suffix = f"#{n}"
@@ -66,17 +70,20 @@ def clean_name(name, taken):
     return name
 
 
-class Connection:
-    """Connexion TCP d'un client.
+ROOM_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-    Les envois passent par une file + un thread d'écriture dédié : un client lent ou bloqué ne peut
-    pas ralentir le tick du serveur. Si sa file déborde, il est déconnecté.
-    """
+
+class Connection:
+    """Connexion TCP d'un joueur. Envois via une file + thread d'écriture : un client lent ne bloque personne."""
+
+    _ids = itertools.count(1)
 
     def __init__(self, sock, addr):
         self.sock = sock
         self.addr = addr
-        self.pid = None
+        self.id = next(Connection._ids)
+        self.name = None
+        self.room = None
         self.alive = True
         self.buf = b""
         self.q = queue.Queue(maxsize=cfg.SEND_QUEUE_MAX)
@@ -85,6 +92,10 @@ class Connection:
         self.last_refill = time.time()
         self.flood_strikes = 0
         self.udp_token = secrets.token_hex(8)
+        self.udp_addr = None
+        self.udp_tokens = float(cfg.UDP_RATE_PER_SEC)
+        self.udp_refill = time.time()
+        self.fallback = {}
         self.writer = threading.Thread(target=self._writer, daemon=True)
         self.writer.start()
 
@@ -115,7 +126,6 @@ class Connection:
                 break
 
     def allow(self):
-        """Limiteur de débit (seau à jetons)."""
         now = time.time()
         self.tokens = min(cfg.RATE_BURST, self.tokens + (now - self.last_refill) * cfg.RATE_PER_SEC)
         self.last_refill = now
@@ -123,6 +133,15 @@ class Connection:
             self.tokens -= 1.0
             return True
         self.flood_strikes += 1
+        return False
+
+    def allow_udp(self):
+        now = time.time()
+        self.udp_tokens = min(cfg.UDP_RATE_PER_SEC, self.udp_tokens + (now - self.udp_refill) * cfg.UDP_RATE_PER_SEC)
+        self.udp_refill = now
+        if self.udp_tokens >= 1.0:
+            self.udp_tokens -= 1.0
+            return True
         return False
 
     def close(self):
@@ -137,30 +156,52 @@ class Connection:
             pass
 
 
-class GameServer:
+class Room:
+    def __init__(self, code, name, host, max_players, password, game):
+        self.code = code
+        self.name = name
+        self.host = host                  # id de connexion de l'hôte
+        self.members = {}                 # id -> Connection (ordre d'arrivée)
+        self.max = max_players
+        self.password = password
+        self.game = game                  # version du jeu de l'hôte (les joueurs doivent avoir la même)
+        self.phase = "lobby"              # lobby | playing
+        self.created = time.time()
+
+    def host_name(self):
+        c = self.members.get(self.host)
+        return c.name if c is not None else "?"
+
+    def info(self):
+        return dict(id=self.code, name=self.name, host_name=self.host_name(), players=len(self.members), max=self.max,
+                    phase=self.phase, locked=bool(self.password), game=self.game)
+
+    def roster(self):
+        return [dict(id=c.id, name=c.name) for c in self.members.values()]
+
+
+class RelayServer:
     def __init__(self, host=cfg.HOST, port=cfg.PORT):
         self.host, self.port = host, port
-        self.state = GameState()
         self.lock = threading.RLock()
-        self.conns = []
+        self.conns = {}
+        self.rooms = {}
         self.running = False
         self.tcp = None
         self.udp = None
-        self.last_tcp_entity = 0.0
-        self._last_tick = time.time()
+        self.stats = dict(tcp_in=0, udp_in=0, udp_out=0)
 
     # ------------------------------------------------------------------
     # Démarrage
     # ------------------------------------------------------------------
-    def start(self):
+    def start(self, block=True):
         self.tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.tcp.bind((self.host, self.port))
-        self.tcp.listen(8)
+        self.tcp.listen(32)
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.bind((self.host, self.port))
         self.udp.settimeout(0.5)
-        # Windows : sans ça, un client qui ferme son port fait lever ConnectionResetError au prochain recvfrom
         if hasattr(socket, "SIO_UDP_CONNRESET"):
             try:
                 self.udp.ioctl(socket.SIO_UDP_CONNRESET, False)
@@ -169,16 +210,19 @@ class GameServer:
         self.running = True
         threading.Thread(target=self._accept_loop, daemon=True).start()
         threading.Thread(target=self._udp_loop, daemon=True).start()
-        log(f"L'ADRESSE — serveur démarré sur {self.host}:{self.port} (TCP+UDP), {cfg.TICK_RATE} ticks/s, "
-            f"{cfg.MAX_PLAYERS} joueurs max, protocole {cfg.PROTOCOL_VERSION}")
+        log(f"L'ADRESSE — relais démarré sur {self.host}:{self.port} (TCP+UDP), protocole {cfg.PROTOCOL_VERSION}, "
+            f"{cfg.MAX_ROOMS} salons max, {cfg.MAX_ROOM_PLAYERS} joueurs max par salon")
         for err in getattr(cfg, "CONFIG_ERRORS", []):
             log("configuration :", err)
-        self._tick_loop()
+        if block:
+            self._watchdog_loop()
 
     def stop(self):
         self.running = False
-        time.sleep(0.3)                # laisse partir les derniers messages (avis de redémarrage)
-        for c in list(self.conns):
+        time.sleep(0.3)
+        with self.lock:
+            conns = list(self.conns.values())
+        for c in conns:
             c.close()
         for s in (self.tcp, self.udp):
             try:
@@ -186,8 +230,17 @@ class GameServer:
             except Exception:
                 pass
 
+    def _watchdog_loop(self):
+        try:
+            while self.running:
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            log("arrêt du serveur")
+        finally:
+            self.stop()
+
     # ------------------------------------------------------------------
-    # Réseau
+    # TCP
     # ------------------------------------------------------------------
     def _accept_loop(self):
         while self.running:
@@ -196,12 +249,12 @@ class GameServer:
             except OSError:
                 break
             with self.lock:
-                per_ip = sum(1 for c in self.conns if c.addr[0] == addr[0])
+                per_ip = sum(1 for c in self.conns.values() if c.addr[0] == addr[0])
                 too_many = len(self.conns) >= cfg.MAX_CONNECTIONS or per_ip >= cfg.MAX_PER_IP
             if too_many:
                 log("connexion refusée (limite atteinte) :", addr)
                 try:
-                    sock.sendall(b'{"type":"error","message":"Serveur occup\\u00e9, r\\u00e9essayez plus tard."}\n')
+                    sock.sendall(b'{"type":"error","code":"busy","message":"Serveur occup\\u00e9, r\\u00e9essayez plus tard."}\n')
                     sock.close()
                 except OSError:
                     pass
@@ -211,15 +264,14 @@ class GameServer:
             sock.settimeout(1.0)
             conn = Connection(sock, addr)
             with self.lock:
-                self.conns.append(conn)
+                self.conns[conn.id] = conn
             threading.Thread(target=self._client_loop, args=(conn,), daemon=True).start()
 
     def _client_loop(self, conn):
-        log("connexion de", conn.addr)
         try:
             while self.running and conn.alive:
                 try:
-                    chunk = conn.sock.recv(4096)
+                    chunk = conn.sock.recv(16384)
                 except socket.timeout:
                     if time.time() - conn.last_recv > cfg.CLIENT_TIMEOUT:
                         log(conn.addr, ": délai dépassé (aucun message)")
@@ -250,19 +302,193 @@ class GameServer:
                         continue
                     if not isinstance(msg, dict):
                         continue
+                    self.stats["tcp_in"] += 1
                     with self.lock:
                         try:
                             self.handle(conn, msg)
-                        except Exception as e:          # message malformé : on l'ignore, le client reste connecté
+                        except Exception as e:
                             log("erreur de traitement", msg.get("type"), ":", repr(e))
         finally:
             with self.lock:
                 self._disconnect(conn)
 
+    def _disconnect(self, conn):
+        if self.conns.pop(conn.id, None) is None:
+            return
+        conn.close()
+        if conn.room is not None:
+            self._leave_room(conn, quiet=True)
+        if conn.name:
+            log(f"{conn.name} (#{conn.id}) s'est déconnecté")
+
+    # ------------------------------------------------------------------
+    # Messages
+    # ------------------------------------------------------------------
+    def _err(self, conn, code, message):
+        conn.send(dict(type="error", code=code, message=message))
+
+    def handle(self, conn, msg):
+        t = msg.get("type")
+        if t == "ping":
+            conn.send(dict(type="pong", t=msg.get("t"), rooms=len(self.rooms)))
+            return
+        if t == "hello":
+            ver = str(msg.get("proto", ""))
+            if ver.split(".")[0] != cfg.PROTOCOL_VERSION.split(".")[0]:
+                self._err(conn, "proto", f"Version réseau incompatible (serveur {cfg.PROTOCOL_VERSION}). Mettez le jeu à jour.")
+                return
+            conn.name = clean_text(msg.get("name", ""), 16, "Joueur")
+            conn.send(dict(type="hello_ok", id=conn.id, tok=conn.udp_token, motd=cfg.MOTD, proto=cfg.PROTOCOL_VERSION,
+                           max_players=cfg.MAX_ROOM_PLAYERS))
+            log(f"{conn.name} (#{conn.id}) connecté depuis {conn.addr[0]}")
+            return
+        if conn.name is None:
+            self._err(conn, "hello", "Présentez-vous d'abord (hello).")
+            return
+        if t == "list":
+            rooms = sorted(self.rooms.values(), key=lambda r: (r.phase != "lobby", -len(r.members), r.created))
+            conn.send(dict(type="rooms", rooms=[r.info() for r in rooms]))
+        elif t == "create":
+            self._create(conn, msg)
+        elif t == "join":
+            self._join(conn, msg)
+        elif t == "leave":
+            if conn.room is not None:
+                self._leave_room(conn)
+            conn.send(dict(type="left"))
+        elif t == "room_state":
+            r = conn.room
+            if r is not None and r.host == conn.id and msg.get("phase") in ("lobby", "playing"):
+                r.phase = msg["phase"]
+                self._broadcast_room(r)
+        elif t == "kick":
+            r = conn.room
+            target = self.conns.get(msg.get("id"))
+            if r is not None and r.host == conn.id and target is not None and target.room is r and target is not conn:
+                target.send(dict(type="room_closed", reason="Vous avez été exclu par l'hôte."))
+                self._leave_room(target, quiet=True)
+        elif t == "to":
+            self._relay_tcp(conn, msg.get("to"), msg.get("d"))
+
+    def _create(self, conn, msg):
+        if conn.room is not None:
+            self._leave_room(conn)
+        if len(self.rooms) >= cfg.MAX_ROOMS:
+            self._err(conn, "rooms_full", "Trop de parties en cours sur le serveur. Réessayez dans un instant.")
+            return
+        mine = sum(1 for r in self.rooms.values() if r.members.get(r.host) is not None and r.members[r.host].addr[0] == conn.addr[0])
+        if mine >= cfg.MAX_ROOMS_PER_IP:
+            self._err(conn, "rooms_ip", "Trop de parties créées depuis cette connexion.")
+            return
+        try:
+            mx = int(msg.get("max", 4))
+        except (TypeError, ValueError):
+            mx = 4
+        mx = max(1, min(cfg.MAX_ROOM_PLAYERS, mx))
+        name = clean_text(msg.get("name", ""), 32, f"Partie de {conn.name}")
+        password = str(msg.get("password", "") or "")[:32]
+        game = clean_text(msg.get("game", ""), 20, "?")
+        code = None
+        while code is None or code in self.rooms:
+            code = "".join(secrets.choice(ROOM_CHARS) for _ in range(5))
+        r = Room(code, name, conn.id, mx, password, game)
+        self.rooms[code] = r
+        r.members[conn.id] = conn
+        conn.room = r
+        log(f"salon {code} « {name} » créé par {conn.name} ({mx} joueurs max, jeu {game}{', privé' if password else ''})")
+        self._broadcast_room(r)
+
+    def _join(self, conn, msg):
+        code = str(msg.get("room", "")).strip().upper()[:8]
+        r = self.rooms.get(code)
+        if r is None:
+            self._err(conn, "gone", "Cette partie n'existe plus.")
+            return
+        if conn.room is r:
+            self._broadcast_room(r)
+            return
+        if r.phase != "lobby":
+            self._err(conn, "started", "La partie a déjà commencé.")
+            return
+        if len(r.members) >= r.max:
+            self._err(conn, "full", f"Partie complète ({r.max} joueurs).")
+            return
+        if r.password and str(msg.get("password", "")) != r.password:
+            self._err(conn, "password", "Mot de passe incorrect.")
+            return
+        game = clean_text(msg.get("game", ""), 20, "?")
+        if game != r.game:
+            self._err(conn, "version", f"Version du jeu différente (hôte : {r.game}, vous : {game}).")
+            return
+        if conn.room is not None:
+            self._leave_room(conn)
+        conn.name = clean_name(conn.name, {c.name.lower() for c in r.members.values()})
+        r.members[conn.id] = conn
+        conn.room = r
+        log(f"{conn.name} a rejoint le salon {r.code}")
+        self._broadcast_room(r)
+
+    def _leave_room(self, conn, quiet=False):
+        r = conn.room
+        conn.room = None
+        if r is None:
+            return
+        r.members.pop(conn.id, None)
+        if not r.members:
+            self.rooms.pop(r.code, None)
+            log(f"salon {r.code} fermé (vide)")
+            return
+        if r.host == conn.id:
+            if r.phase == "lobby":
+                r.host = next(iter(r.members))
+                log(f"salon {r.code} : {r.host_name()} devient l'hôte")
+            else:
+                # la partie tournait chez l'hôte : elle ne peut pas continuer sans lui
+                for m in list(r.members.values()):
+                    m.send(dict(type="room_closed", reason="L'hôte a quitté la partie."))
+                    m.room = None
+                r.members.clear()
+                self.rooms.pop(r.code, None)
+                log(f"salon {r.code} fermé (départ de l'hôte)")
+                return
+        self._broadcast_room(r)
+
+    def _broadcast_room(self, r):
+        info, roster = r.info(), r.roster()
+        for m in list(r.members.values()):
+            m.send(dict(type="room", room=info, players=roster, host=r.host, you=m.id))
+
+    # ------------------------------------------------------------------
+    # Relais des paquets
+    # ------------------------------------------------------------------
+    def _targets(self, src, to):
+        r = src.room
+        if r is None:
+            return []
+        if to in ("all", "others", None):
+            return [m for m in r.members.values() if m is not src]
+        if to == "host":
+            h = r.members.get(r.host)
+            return [h] if h is not None and h is not src else []
+        ids = to if isinstance(to, list) else [to]
+        out = []
+        for i in ids[:64]:
+            m = r.members.get(i) if isinstance(i, int) else None
+            if m is not None and m is not src:
+                out.append(m)
+        return out
+
+    def _relay_tcp(self, src, to, d):
+        if not isinstance(d, dict):
+            return
+        out = dict(type="from", **{"from": src.id}, d=d)
+        for m in self._targets(src, to):
+            m.send(out)
+
     def _udp_loop(self):
         while self.running:
             try:
-                data, addr = self.udp.recvfrom(2048)
+                data, addr = self.udp.recvfrom(4096)
             except socket.timeout:
                 continue
             except ConnectionResetError:
@@ -280,371 +506,87 @@ class GameServer:
                 continue
             if not isinstance(msg, dict):
                 continue
+            self.stats["udp_in"] += 1
             with self.lock:
-                pid = msg.get("id")
-                ps = self.state.players.get(pid)
-                if ps is None or ps.conn is None:
-                    continue
-                # anti-usurpation : même IP que la connexion TCP et jeton de session (si fourni par le client)
-                if addr[0] != ps.conn.addr[0]:
-                    continue
-                tok = msg.get("tok")
-                if tok is not None and tok != ps.conn.udp_token:
-                    continue
-                ps.udp_addr = addr
-                if msg.get("type") == "hello":
-                    try:
-                        self.udp.sendto(b'{"type":"udp_ack"}', addr)
-                    except OSError:
-                        pass
-                elif msg.get("type") == "move":
-                    try:
-                        self._on_move(ps, msg)
-                    except Exception as e:
-                        log("erreur UDP :", repr(e))
-
-    def _disconnect(self, conn):
-        if conn in self.conns:
-            self.conns.remove(conn)
-        conn.close()
-        if conn.pid is not None and conn.pid in self.state.players:
-            name = self.state.players[conn.pid].name
-            self.state.remove_player(conn.pid)
-            log(f"{name} s'est déconnecté")
-            self.broadcast(self._lobby_msg())
-            self._check_end()
-            if not self.state.players:
-                self.state = GameState()      # salle vide : on remet la partie à zéro
-
-    def broadcast(self, obj, exclude=None):
-        for ps in list(self.state.players.values()):
-            if ps.id != exclude:
-                ps.conn.send(obj)
-
-    def broadcast_udp(self, obj, exclude=None):
-        """Envoi rapide (positions, entité) en UDP ; repli en TCP (limité à UDP_FALLBACK_HZ) pour les joueurs
-        dont l'UDP n'arrive pas (box, pare-feu, réseau d'entreprise...)."""
-        data = json.dumps(obj, separators=(",", ":")).encode("utf-8")
-        now = time.time()
-        key = (obj.get("type"), obj.get("id"))
-        for ps in list(self.state.players.values()):
-            if ps.id == exclude:
-                continue
-            if ps.udp_addr is not None:
                 try:
-                    self.udp.sendto(data, ps.udp_addr)
+                    self._on_udp(msg, addr)
+                except Exception as e:
+                    log("erreur UDP :", repr(e))
+
+    def _on_udp(self, msg, addr):
+        src = self.conns.get(msg.get("i"))
+        # anti-usurpation : jeton de session et même IP que la connexion TCP
+        if src is None or msg.get("k") != src.udp_token or addr[0] != src.addr[0]:
+            return
+        src.udp_addr = addr
+        if msg.get("h"):
+            try:
+                self.udp.sendto(b'{"ack":1}', addr)
+            except OSError:
+                pass
+            return
+        d = msg.get("d")
+        if not isinstance(d, dict) or not src.allow_udp():
+            return
+        targets = self._targets(src, msg.get("to"))
+        if not targets:
+            return
+        data = json.dumps({"f": src.id, "d": d}, separators=(",", ":")).encode("utf-8")
+        now = time.time()
+        key = (src.id, d.get("type"))
+        for m in targets:
+            if m.udp_addr is not None and now - m.last_recv < cfg.CLIENT_TIMEOUT:
+                try:
+                    self.udp.sendto(data, m.udp_addr)
+                    self.stats["udp_out"] += 1
                     continue
                 except OSError:
                     pass
-            last = ps.__dict__.setdefault("_tcp_fallback", {})
-            if now - last.get(key, 0.0) >= 1.0 / cfg.UDP_FALLBACK_HZ:
-                last[key] = now
-                ps.conn.send(obj)
-
-    def _lobby_msg(self):
-        s = self.state
-        return dict(type="lobby", players=[p.info() for p in s.players.values()], host=s.host, phase=s.phase)
-
-    # ------------------------------------------------------------------
-    # Messages clients
-    # ------------------------------------------------------------------
-    def handle(self, conn, msg):
-        s = self.state
-        t = msg.get("type")
-        if t == "connect":
-            if conn.pid is not None:
-                return
-            ver = msg.get("version")
-            if ver is not None and str(ver).split(".")[0] != str(cfg.PROTOCOL_VERSION).split(".")[0]:
-                conn.send(dict(type="error", message=f"Version incompatible (serveur {cfg.PROTOCOL_VERSION}). Mettez le jeu à jour."))
-                return
-            if s.phase != "lobby":
-                conn.send(dict(type="error", message="Partie déjà en cours."))
-                return
-            taken = {p.name.lower() for p in s.players.values()}
-            ps = s.add_player(clean_name(msg.get("name", "Joueur"), taken), conn)
-            if ps is None:
-                conn.send(dict(type="error", message="Serveur plein (4 joueurs maximum)."))
-                return
-            conn.pid = ps.id
-            log(f"{ps.name} (id {ps.id}) a rejoint le lobby")
-            conn.send(dict(type="welcome", id=ps.id, players=[p.info() for p in s.players.values()], host=s.host,
-                           tok=conn.udp_token, version=cfg.PROTOCOL_VERSION, motd=cfg.MOTD))
-            self.broadcast(self._lobby_msg())
-            return
-        ps = s.players.get(conn.pid)
-        if ps is None:
-            return
-        if t == "start":
-            if ps.id == s.host and s.phase == "lobby" and len(s.players) >= 1:
-                self._start_game()
-        elif t == "move":
-            self._on_move(ps, msg)
-        elif t == "interact":
-            self._on_interact(ps, msg)
-        elif t == "chat":
-            self._on_chat(ps, msg)
-        elif t == "order":
-            self._on_order(ps, msg)
-        elif t == "choice":
-            ps.choices[msg.get("pair_id")] = msg.get("choice")
-        elif t == "noise":
-            pos = msg.get("pos", ps.pos)
-            s.noises.append((pos, float(msg.get("radius", 4.0)), s.t, ps.id))
-            ps.noise = min(15.0, float(msg.get("radius", 4.0)))
-            ps.noise_t = s.t
-        elif t == "death":
-            self._kill(ps, msg.get("cause", "entity_contact"))
-        elif t == "ping":
-            conn.send(dict(type="pong", t=msg.get("t"), players=len(s.players)))
-
-    def _on_move(self, ps, msg):
-        pos = msg.get("pos")
-        if not isinstance(pos, (list, tuple)) or len(pos) != 3:
-            return
-        try:
-            pos = [float(v) for v in pos]
-            rot = [float(v) for v in (msg.get("rot") or ps.rot)][:2]
-        except (TypeError, ValueError):
-            return
-        if not all(math.isfinite(v) and abs(v) < cfg.WORLD_LIMIT for v in pos) or not all(math.isfinite(v) for v in rot):
-            return
-        msg = dict(msg, rot=[((r + 180.0) % 360.0) - 180.0 if i == 1 else max(-90.0, min(90.0, r)) for i, r in enumerate(rot)])
-        now = time.time()
-        dt = max(0.02, now - ps.last_move)
-        d = dist3(ps.pos, pos)
-        # anti-triche basique : vitesse plausible
-        if d > cfg.MAX_SPEED * dt + cfg.SPEED_TOLERANCE and ps.alive and self.state.phase != "lobby":
-            ps.conn.send(dict(type="correct", pos=ps.pos))
-            return
-        ps.pos = [float(pos[0]), float(pos[1]), float(pos[2])]
-        ps.rot = msg.get("rot", ps.rot)
-        ps.last_move = now
-        out = dict(type="player_move", id=ps.id, pos=[round(v, 2) for v in ps.pos], rot=[round(v, 1) for v in ps.rot])
-        self.broadcast_udp(out, exclude=ps.id)
-
-    def _on_interact(self, ps, msg):
-        target = str(msg.get("target", ""))
-        if target.startswith("door_"):
-            did = target[5:]
-            cur = self.state.doors.get(did, False)
-            new = bool(msg.get("open", not cur))
-            self.state.doors[did] = new
-            self.broadcast(dict(type="door_state", door_id=did, open=new, by=ps.id))
-        else:
-            self.broadcast(dict(type="interact", target=target, by=ps.id), exclude=ps.id)
-
-    def _on_chat(self, ps, msg):
-        text = "".join(ch for ch in str(msg.get("message", "")) if unicodedata.category(ch)[0] != "C").strip()[:200]
-        if not text:
-            return
-        if not ps.alive and random.random() < 0.3:
-            # l'entité intercepte et modifie les messages des morts
-            words = text.split()
-            random.shuffle(words)
-            text = " ".join(words) + " ... il est derrière toi"
-        self.broadcast(dict(type="chat", id=ps.id, name=ps.name, message=text, dead=not ps.alive))
-
-    def _on_order(self, ps, msg):
-        s = self.state
-        meal = str(msg.get("meal", ""))
-        addr = str(msg.get("address", "")).lower().strip()
-        if s.phase != "explore" or meal not in cfg.MEALS:
-            return
-        if not any(addr.startswith(a) for a in cfg.ADDRESSES_OK):
-            ps.conn.send(dict(type="order_result", ok=False, message="Adresse non reconnue"))
-            return
-        s.meal = meal
-        s.address = addr
-        s.phase = "ordered"
-        kind = cfg.MEALS[meal]
-        nightmare = addr.startswith(cfg.NIGHTMARE_ADDRESS)
-        s.entity = EntityState(kind, nightmare)
-        log(f"{ps.name} a commandé {meal} -> entité {kind}{' (cauchemar)' if nightmare else ''}")
-        self.broadcast(dict(type="order_result", ok=True, meal=meal, entity=kind, by=ps.id))
-        s.schedule(cfg.FIRST_CANCEL_DELAY, self._ev_cancel)
-
-    # ------------------------------------------------------------------
-    # Déroulé de la partie
-    # ------------------------------------------------------------------
-    def _start_game(self):
-        s = self.state
-        s.phase = "explore"
-        s.t = 0.0
-        for ps in s.players.values():
-            ps.alive = True
-            ps.pos = [7.0 + (ps.id - 2.5) * 0.4, 0.0, 0.8]
-        log("la partie commence")
-        self.broadcast(dict(type="start", players=[p.info() for p in s.players.values()]))
-
-    def _ev_cancel(self):
-        self.broadcast(dict(type="game_event", event="order_cancelled"))
-        self.state.schedule(cfg.CONTACT_DELAY - cfg.FIRST_CANCEL_DELAY, self._ev_contact)
-
-    def _ev_contact(self):
-        s = self.state
-        s.schedule(90.0, self._ev_delivery_start)
-        self.broadcast(dict(type="game_event", event="assistance_contact"))
-        for ps in s.players.values():
-            ps.conn.send(dict(type="assistance_msg", text="Bonjour. Nous avons constaté un problème avec votre commande. Veuillez ne pas quitter les lieux.", pair_id=0, option="-"))
-
-    def _ev_delivery_start(self):
-        s = self.state
-        s.phase = "countdown"
-        s.t_delivery = s.t
-        self.broadcast(dict(type="game_event", event="delivery_started", countdown=int(cfg.DELIVERY_SECONDS)))
-        for pid_, (ta, tb) in cfg.PAIR_SCHEDULE.items():
-            s.schedule(ta, self._send_pair, pid_, 0)
-            s.schedule(tb, self._send_pair, pid_, 1)
-        for remaining in (120, 60, 30, 0):
-            s.schedule(cfg.DELIVERY_SECONDS - remaining, self._ev_countdown, remaining)
-        # messages de paranoïa individuels
-        for k in range(3):
-            s.schedule(60 + k * 110 + random.uniform(0, 30), self._send_paranoia)
-
-    def _send_pair(self, pair_id, idx):
-        s = self.state
-        for ps in s.players.values():
-            order = s.assistance_for(ps.id, pair_id)
-            opt, text = order[idx]
-            ps.conn.send(dict(type="assistance_msg", text=text, pair_id=pair_id, option=opt))
-
-    def _send_paranoia(self):
-        s = self.state
-        for ps in s.players.values():
-            text = s.paranoia_for(ps.id)
-            if text:
-                ps.conn.send(dict(type="assistance_msg", text=text, pair_id=0, option="-"))
-
-    def _ev_countdown(self, remaining):
-        s = self.state
-        self.broadcast(dict(type="game_event", event="delivery_arriving", countdown=remaining))
-        if remaining == 120:
-            pass
-        elif remaining == 60:
-            for _ in range(3):
-                self.broadcast(dict(type="event", name="knock"))
-        elif remaining == 30:
-            ent = s.entity
-            if ent is not None:
-                ent.active = True
-                ent.visible = True
-                ent.speed_mult *= 0.6          # arrivée lente
-        elif remaining == 0:
-            ent = s.entity
-            if ent is not None:
-                ent.speed_mult /= 0.6
-            s.phase = "survival"
-            s.t_release = s.t
-            self.broadcast(dict(type="game_event", event="delivery_done", countdown=0))
-            for pid_, (ta, tb) in cfg.PAIR_SCHEDULE_AFTER_RELEASE.items():
-                s.schedule(ta, self._send_pair, pid_, 0)
-                s.schedule(tb, self._send_pair, pid_, 1)
-
-    def _kill(self, ps, cause):
-        if not ps.alive:
-            return
-        ps.alive = False
-        log(f"{ps.name} est mort ({cause})")
-        self.broadcast(dict(type="player_death", id=ps.id, cause=cause))
-        self.broadcast(dict(type="event", name="jumpscare", target=ps.id))
-        self._check_end()
-
-    def _check_end(self):
-        s = self.state
-        if s.phase in ("lobby", "over") or not s.players:
-            return
-        if s.phase in ("survival", "countdown") and not s.alive_players():
-            s.phase = "over"
-            s.winner = False
-            self.broadcast(dict(type="game_over", result="lose"))
-            log("tous les joueurs sont morts")
-
-    # ------------------------------------------------------------------
-    # Boucle de tick
-    # ------------------------------------------------------------------
-    def _tick_loop(self):
-        try:
-            while self.running:
-                t0 = time.time()
-                dt = min(0.25, t0 - self._last_tick)
-                self._last_tick = t0
-                with self.lock:
-                    try:
-                        self._tick(dt)
-                    except Exception as e:             # un tick raté ne doit jamais arrêter la salle
-                        log("erreur de tick :", repr(e))
-                sleep = cfg.TICK_DT - (time.time() - t0)
-                if sleep > 0:
-                    time.sleep(sleep)
-        except KeyboardInterrupt:
-            log("arrêt du serveur")
-        finally:
-            self.stop()
-
-    def _tick(self, dt):
-        s = self.state
-        if s.phase in ("lobby", "over"):
-            return
-        s.t += dt
-        for (_, fn, args) in s.due():
-            try:
-                fn(*args)
-            except Exception as e:                    # un événement raté ne doit pas tuer le serveur
-                log("erreur d'événement :", e)
-        s.noises = [n for n in s.noises if s.t - n[2] < 1.0]
-        for ps in s.players.values():
-            if s.t - ps.noise_t > 1.0:
-                ps.noise = 0.0
-        ent = s.entity
-        if ent is not None and ent.active:
-            if s.phase == "survival" and s.t_release is not None and ent.state == "patrol" and not ent.path:
-                pass
-            killed = ent.update(dt, list(s.players.values()), s.noises)
-            snap = ent.snapshot()
-            self.broadcast_udp(snap)
-            if s.t - self.last_tcp_entity > 0.5:
-                self.last_tcp_entity = s.t
-                self.broadcast(snap)
-            if killed is not None and s.phase == "survival":
-                self._kill(killed, "entity_contact")
-        # victoire : au moins un joueur survit jusqu'à la fin du délai de survie
-        if s.phase == "survival" and s.t_release is not None and s.t - s.t_release > cfg.SURVIVAL_SECONDS * cfg.TIME_SCALE:
-            if s.alive_players():
-                s.phase = "over"
-                s.winner = True
-                self.broadcast(dict(type="game_over", result="win"))
-                log("victoire : au moins un joueur a survécu")
+            # UDP bloqué chez ce joueur : repli TCP, à fréquence limitée
+            if now - m.fallback.get(key, 0.0) >= 1.0 / cfg.UDP_FALLBACK_HZ:
+                m.fallback[key] = now
+                m.send(dict(type="from", **{"from": src.id}, d=d))
 
 
 def console(server, stream=None):
-    """Commandes d'administration (console Pterodactyl) : help, list, kick <id>, say <texte>, reset, stop."""
+    """Commandes d'administration (console Pterodactyl)."""
     for line in (stream if stream is not None else sys.stdin):
         cmd, _, arg = line.strip().partition(" ")
         cmd = cmd.lower()
         try:
             with server.lock:
                 if cmd == "help":
-                    log("commandes : list | kick <id> | say <texte> | reset | stop")
-                elif cmd == "list":
-                    st = server.state
-                    log(f"phase={st.phase} joueurs={len(st.players)} connexions={len(server.conns)}")
-                    for p in st.players.values():
-                        log(f"  #{p.id} {p.name} {'(hôte)' if p.id == st.host else ''} {'vivant' if p.alive else 'mort'} {p.conn.addr}")
+                    log("commandes : list | rooms | kick <id> | close <salon> | say <texte> | stats | stop")
+                elif cmd in ("list", "rooms"):
+                    log(f"connexions={len(server.conns)} salons={len(server.rooms)}")
+                    for r in server.rooms.values():
+                        log(f"  [{r.code}] « {r.name} » {r.phase} {len(r.members)}/{r.max} jeu {r.game}"
+                            f"{' privé' if r.password else ''} — hôte {r.host_name()}")
+                        for c in r.members.values():
+                            log(f"      #{c.id} {c.name} {c.addr[0]} {'UDP' if c.udp_addr else 'TCP seul'}")
+                    if cmd == "list":
+                        idle = [c for c in server.conns.values() if c.room is None]
+                        if idle:
+                            log("  hors salon : " + ", ".join(f"#{c.id} {c.name or '?'}" for c in idle))
                 elif cmd == "kick" and arg.isdigit():
-                    p = server.state.players.get(int(arg))
-                    if p is not None:
-                        p.conn.send(dict(type="error", message="Vous avez été exclu par l'administrateur."))
-                        p.conn.close()
-                        log("exclu :", p.name)
+                    c = server.conns.get(int(arg))
+                    if c is not None:
+                        server._err(c, "kicked", "Vous avez été exclu par l'administrateur.")
+                        c.close()
+                        log("exclu :", c.name)
+                elif cmd == "close" and arg:
+                    r = server.rooms.get(arg.strip().upper())
+                    if r is not None:
+                        for m in list(r.members.values()):
+                            m.send(dict(type="room_closed", reason="Partie fermée par l'administrateur."))
+                            m.room = None
+                        server.rooms.pop(r.code, None)
+                        log("salon fermé :", r.code)
                 elif cmd == "say" and arg:
-                    server.broadcast(dict(type="chat", id=0, name="Serveur", message=arg[:200]))
-                elif cmd == "reset":
-                    for p in list(server.state.players.values()):
-                        p.conn.send(dict(type="error", message="La salle a été réinitialisée."))
-                        p.conn.close()
-                    server.state = GameState()
-                    log("salle réinitialisée")
+                    for c in list(server.conns.values()):
+                        c.send(dict(type="notice", message=arg[:200]))
+                elif cmd == "stats":
+                    log(f"messages TCP reçus {server.stats['tcp_in']}, UDP reçus {server.stats['udp_in']}, UDP relayés {server.stats['udp_out']}")
                 elif cmd in ("stop", "quit", "exit"):
                     server.running = False
                     return
@@ -660,7 +602,6 @@ def main():
             _s.reconfigure(errors="replace")
         except Exception:
             pass
-    host = cfg.HOST
     port = cfg.PORT
     if len(sys.argv) > 1:
         try:
@@ -668,12 +609,14 @@ def main():
         except ValueError:
             log("port invalide :", sys.argv[1])
             sys.exit(2)
-    server = GameServer(host, port)
+    server = RelayServer(cfg.HOST, port)
 
     def _graceful(signum, frame):
         log(f"signal {signum} reçu : arrêt propre")
         try:
-            server.broadcast(dict(type="error", message="Le serveur redémarre. Reconnectez-vous dans un instant."))
+            with server.lock:
+                for c in list(server.conns.values()):
+                    c.send(dict(type="room_closed", reason="Le serveur redémarre. Reconnectez-vous dans un instant."))
         except Exception:
             pass
         server.running = False

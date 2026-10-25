@@ -1,14 +1,14 @@
-"""État de la partie côté serveur : joueurs, portes, entité (IA simplifiée sur graphe de points
-de passage), distribution individuelle des messages d'assistance.
+"""État d'une partie multijoueur, tenu par l'HÔTE (le joueur qui a créé le salon) : joueurs, portes,
+entité (IA simplifiée sur graphe de points de passage), messages d'assistance individuels.
 
-Pur Python (aucune dépendance) : tourne sur Pterodactyl avec Python 3.11.
+Pur Python, sans Ursina : exécuté dans un thread de l'hôte (coop_host.py).
 """
 import heapq
 import math
 import random
 import time
 
-import server_config as cfg
+import coop_rules as cfg
 
 # ---------------------------------------------------------------------------
 # Graphe de navigation simplifié de la maison (niveau, position)
@@ -78,8 +78,9 @@ def find_path(start, goal):
 
 
 class PlayerState:
-    def __init__(self, pid, name, conn):
+    def __init__(self, pid, name, conn, slot=0):
         self.id = pid
+        self.slot = slot              # rang d'arrivée : couleur, ordre des messages d'assistance
         self.name = name
         self.conn = conn
         self.pos = [7.0, 0.0, 0.8]
@@ -87,7 +88,7 @@ class PlayerState:
         self.alive = True
         self.last_move = time.time()
         self.udp_addr = None
-        self.color = cfg.JACKET_COLORS[(pid - 1) % len(cfg.JACKET_COLORS)]
+        self.color = cfg.JACKET_COLORS[slot % len(cfg.JACKET_COLORS)]
         self.noise = 0.0
         self.noise_t = 0.0
         self.choices = {}
@@ -275,7 +276,8 @@ class EntityState:
 class GameState:
     """Partie en cours : lobby → exploration → commande → attente → survie."""
 
-    def __init__(self):
+    def __init__(self, max_players=None):
+        self.max_players = max_players or cfg.MAX_PLAYERS
         self.players = {}
         self.host = None
         self.phase = "lobby"     # lobby | explore | ordered | countdown | survival | over
@@ -292,18 +294,15 @@ class GameState:
         self.winner = None
 
     # --- joueurs --------------------------------------------------------
-    def next_id(self):
-        used = set(self.players)
-        for i in range(1, cfg.MAX_PLAYERS + 1):
-            if i not in used:
-                return i
-        return None
-
-    def add_player(self, name, conn):
-        pid = self.next_id()
-        if pid is None:
+    def add_player(self, pid, name, conn):
+        """pid = identifiant attribué par le relais (unique dans le salon)."""
+        if pid in self.players:
+            return self.players[pid]
+        if len(self.players) >= self.max_players:
             return None
-        ps = PlayerState(pid, name[:16] or f"Joueur{pid}", conn)
+        used = {p.slot for p in self.players.values()}
+        slot = next(i for i in range(len(self.players) + 1) if i not in used)
+        ps = PlayerState(pid, name[:16] or "Joueur", conn, slot)
         self.players[pid] = ps
         if self.host is None:
             self.host = pid
@@ -332,7 +331,8 @@ class GameState:
         a, b = cfg.PAIRS[pair_id]
         order = [("A", a), ("B", b)]
         # un joueur sur deux reçoit les options dans l'ordre inverse
-        if (pid + pair_id) % 2 == 0:
+        ps = self.players.get(pid)
+        if ((ps.slot if ps else pid) + pair_id) % 2 == 0:
             order.reverse()
         return order
 

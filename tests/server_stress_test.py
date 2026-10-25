@@ -1,46 +1,34 @@
-"""Test de robustesse du serveur multijoueur (sans le jeu) : python tests/server_stress_test.py
+"""Test de robustesse du serveur RELAIS et de la partie tenue par l'hôte (sans Ursina).
 
-Démarre un vrai serveur sur un port libre et l'attaque avec des clients simulés : pseudos piégés, serveur
-plein, mauvaise version, JSON invalide, lignes géantes, flood, usurpation UDP, coordonnées NaN, client
-qui ne lit jamais, client sans UDP (repli TCP), déconnexions brutales, commandes console, et une partie
-complète accélérée jusqu'au « game_over ». Affiche « SERVER STRESS OK » si tout passe.
+    python tests/server_stress_test.py      -> « SERVER STRESS OK » ou la liste des échecs
 """
 import io
 import json
 import os
 import socket
 import sys
+import tempfile
 import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "server"))
-os.environ["LADRESSE_TIME_SCALE"] = "0.01"
-os.environ["LADRESSE_LOG"] = os.path.join(os.environ.get("TMPDIR", "/tmp") if os.name != "nt" else os.environ.get("TEMP", "."),
-                                          "ladresse_stress_server.log")
-os.environ["LADRESSE_CLIENT_TIMEOUT"] = "6"
+os.environ["APPDATA"] = tempfile.mkdtemp(prefix="ladresse_stress_")
+os.environ["LADRESSE_LOG"] = os.path.join(os.environ["APPDATA"], "server.log")
+os.environ["LADRESSE_MAX_ROOMS_PER_IP"] = "50"
+os.environ["LADRESSE_MAX_PER_IP"] = "64"
 
 import server as srv            # noqa: E402
+import config                   # noqa: E402
 
-errors = []
-logged = []
-_orig_log = srv.log
-
-
-def _log(*a):
-    line = " ".join(str(x) for x in a)
-    logged.append(line)
-    _orig_log(*a)
-
-
-srv.log = _log
 failures = []
 
 
-def check(cond, label):
-    print(("  OK   " if cond else "  FAIL ") + label, flush=True)
+def check(cond, name):
+    print(("  OK   " if cond else "  FAIL ") + name, flush=True)
     if not cond:
-        failures.append(label)
+        failures.append(name)
 
 
 def free_port():
@@ -51,207 +39,313 @@ def free_port():
     return p
 
 
-class Client:
-    def __init__(self, port, name=None, version="2.0", udp=True):
-        self.sock = socket.create_connection(("127.0.0.1", port), timeout=5)
-        self.sock.settimeout(5)
+class Raw:
+    """Client brut (TCP + UDP) pour piloter le relais."""
+
+    def __init__(self, port, name=None, proto="3.0"):
         self.port = port
+        self.s = socket.create_connection(("127.0.0.1", port), timeout=3)
+        self.s.settimeout(0.05)
+        self.u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.u.bind(("127.0.0.1", 0))
+        self.u.settimeout(0.05)
         self.buf = b""
         self.msgs = []
-        self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) if udp else None
-        if self.udp:
-            self.udp.settimeout(0.2)
-        self.id = None
-        self.tok = None
-        self.alive = True
-        threading.Thread(target=self._rx, daemon=True).start()
-        threading.Thread(target=self._pinger, daemon=True).start()
-        if self.udp:
-            threading.Thread(target=self._rx_udp, daemon=True).start()
+        self.udp_msgs = []
+        self.id = self.tok = None
         if name is not None:
-            m = dict(type="connect", name=name)
-            if version is not None:
-                m["version"] = version
-            self.send(m)
+            self.send(type="hello", name=name, proto=proto)
+            m = self.wait("hello_ok")
+            if m:
+                self.id, self.tok = m["id"], m["tok"]
 
-    def _rx(self):
-        while self.alive:
-            try:
-                d = self.sock.recv(65536)
-            except socket.timeout:
-                continue
-            except OSError:
-                break
-            if not d:
-                break
-            self.buf += d
-            while b"\n" in self.buf:
-                line, self.buf = self.buf.split(b"\n", 1)
-                try:
-                    m = json.loads(line)
-                except ValueError:
-                    continue
-                if m.get("type") == "welcome":
-                    self.id, self.tok = m["id"], m.get("tok")
-                    if self.udp:
-                        self.send_udp(dict(type="hello", id=self.id, tok=self.tok))
-                self.msgs.append(m)
-        self.alive = False
-
-    def _pinger(self):
-        while self.alive:
-            time.sleep(2.0)
-            if self.id is not None and getattr(self, "reading", True):
-                self.send(dict(type="ping", t=0))
-
-    def _rx_udp(self):
-        while self.alive:
-            try:
-                d, _ = self.udp.recvfrom(4096)
-            except socket.timeout:
-                continue
-            except OSError:
-                if not self.alive:
-                    break
-                continue
-            try:
-                m = json.loads(d)
-                m["_udp"] = True
-                self.msgs.append(m)
-            except ValueError:
-                pass
-
-    def send(self, obj):
-        self.raw((json.dumps(obj) + "\n").encode())
+    def send(self, **obj):
+        self.s.sendall((json.dumps(obj) + "\n").encode())
 
     def raw(self, data):
-        try:
-            self.sock.sendall(data)
-        except OSError:
-            self.alive = False
+        self.s.sendall(data)
 
-    def send_udp(self, obj):
-        self.udp.sendto(json.dumps(obj).encode(), ("127.0.0.1", self.port))
+    def pump(self, t=0.15):
+        end = time.time() + t
+        while time.time() < end:
+            try:
+                d = self.s.recv(65536)
+                if not d:
+                    break
+                self.buf += d
+                while b"\n" in self.buf:
+                    line, self.buf = self.buf.split(b"\n", 1)
+                    self.msgs.append(json.loads(line))
+            except socket.timeout:
+                pass
+            except OSError:
+                break
+            try:
+                d, _ = self.u.recvfrom(4096)
+                self.udp_msgs.append(json.loads(d))
+            except (socket.timeout, OSError):
+                pass
 
-    def wait(self, pred, timeout=5.0):
-        t = time.time()
-        while time.time() - t < timeout:
-            for m in list(self.msgs):
-                if pred(m):
+    def wait(self, typ, t=2.0, pred=None):
+        end = time.time() + t
+        while time.time() < end:
+            for m in self.msgs:
+                if m.get("type") == typ and (pred is None or pred(m)):
+                    self.msgs.remove(m)
                     return m
-            time.sleep(0.02)
+            self.pump(0.05)
         return None
 
+    def udp(self, **obj):
+        self.u.sendto(json.dumps(obj).encode(), ("127.0.0.1", self.port))
+
     def close(self):
-        self.alive = False
-        for s in (self.sock, self.udp):
+        for x in (self.s, self.u):
             try:
-                if s:
-                    s.close()
+                x.close()
             except OSError:
                 pass
+
+
+def relay_tests(port, server):
+    print("== relais ==")
+    bad = Raw(port, "Vieux", proto="2.0")
+    check(bad.wait("error", pred=lambda m: m.get("code") == "proto") is not None, "ancien client refusé (protocole)")
+    bad.close()
+    anon = Raw(port)
+    anon.send(type="list")
+    check(anon.wait("error", pred=lambda m: m.get("code") == "hello") is not None, "list sans hello refusé")
+    anon.close()
+
+    a = Raw(port, "Alice")
+    check(a.id is not None and a.tok, "hello -> identifiant + jeton UDP")
+    a.send(type="create", name="Maison\x00 hantée", max=99, game="1.0")
+    r = a.wait("room")
+    check(r is not None and r["host"] == a.id and r["room"]["max"] == server_cfg().MAX_ROOM_PLAYERS, "création + limite bornée")
+    check(r is not None and "\x00" not in r["room"]["name"], "nom de salon nettoyé")
+    code = r["room"]["id"] if r else None
+
+    b = Raw(port, "Alice")
+    b.send(type="list")
+    lst = b.wait("rooms")
+    check(lst is not None and any(x["id"] == code and x["players"] == 1 for x in lst["rooms"]), "la partie apparaît dans la liste")
+    b.send(type="join", room=code, game="0.9")
+    check(b.wait("error", pred=lambda m: m.get("code") == "version") is not None, "version du jeu différente refusée")
+    b.send(type="join", room="ZZZZZ", game="1.0")
+    check(b.wait("error", pred=lambda m: m.get("code") == "gone") is not None, "salon inexistant")
+    b.send(type="join", room=code, game="1.0")
+    rb = b.wait("room")
+    check(rb is not None and len(rb["players"]) == 2, "rejoindre une partie")
+    check(rb is not None and [p["name"] for p in rb["players"]] == ["Alice", "Alice#2"], "pseudo en double renommé")
+    check(a.wait("room", pred=lambda m: len(m["players"]) == 2) is not None, "l'hôte voit le nouveau joueur")
+
+    # relais TCP
+    b.send(type="to", to="host", d={"type": "order", "meal": "pizza"})
+    m = a.wait("from")
+    check(m is not None and m["from"] == b.id and m["d"]["meal"] == "pizza", "relais joueur -> hôte")
+    a.send(type="to", to="all", d={"type": "game_event", "event": "x"})
+    m = b.wait("from")
+    check(m is not None and m["from"] == a.id, "relais hôte -> tous")
+    b.send(type="to", to="all", d="pas un objet")
+    b.pump(0.2)
+    check(not [x for x in a.msgs if x.get("type") == "from"], "charge utile invalide ignorée")
+
+    # UDP
+    for c in (a, b):
+        c.udp(i=c.id, k=c.tok, h=1)
+    a.pump(0.3)
+    b.pump(0.3)
+    check(any(x.get("ack") for x in a.udp_msgs) and any(x.get("ack") for x in b.udp_msgs), "UDP : accusé de réception")
+    b.udp(i=b.id, k=b.tok, to="all", d={"type": "move", "pos": [1, 0, 2], "s": 1})
+    a.pump(0.3)
+    check(any(x.get("f") == b.id and x["d"].get("type") == "move" for x in a.udp_msgs), "UDP : position relayée")
+    a.udp_msgs.clear()
+    b.udp(i=b.id, k="faux", to="all", d={"type": "move", "pos": [9, 9, 9]})
+    b.udp(i=a.id, k=b.tok, to="all", d={"type": "move", "pos": [9, 9, 9]})
+    a.pump(0.3)
+    check(not any(x.get("d", {}).get("pos") == [9, 9, 9] for x in a.udp_msgs), "UDP : usurpation ignorée")
+
+    # joueur sans UDP : repli TCP
+    c = Raw(port, "Carl")
+    c.send(type="join", room=code, game="1.0")
+    c.wait("room")
+    b.udp(i=b.id, k=b.tok, to="all", d={"type": "move", "pos": [3, 0, 3], "s": 2})
+    m = c.wait("from", pred=lambda m: m["d"].get("type") == "move")
+    check(m is not None and m["from"] == b.id, "UDP bloqué : repli TCP")
+
+    # salon privé, complet
+    h = Raw(port, "Hugo")
+    h.send(type="create", name="Privée", max=2, password="sel", game="1.0")
+    code2 = h.wait("room")["room"]["id"]
+    d = Raw(port, "Dana")
+    d.send(type="join", room=code2, password="poivre", game="1.0")
+    check(d.wait("error", pred=lambda m: m.get("code") == "password") is not None, "mauvais mot de passe refusé")
+    d.send(type="join", room=code2, password="sel", game="1.0")
+    check(d.wait("room") is not None, "bon mot de passe accepté")
+    e = Raw(port, "Eve")
+    e.send(type="join", room=code2, password="sel", game="1.0")
+    check(e.wait("error", pred=lambda m: m.get("code") == "full") is not None, "partie complète refusée")
+    e.send(type="list")
+    lst = e.wait("rooms")
+    info = [x for x in lst["rooms"] if x["id"] == code2][0]
+    check(info["locked"] and info["players"] == 2 and "password" not in info, "liste : privée, sans fuite du mot de passe")
+
+    # exclusion par l'hôte
+    h.send(type="kick", id=d.id)
+    check(d.wait("room_closed") is not None, "exclusion par l'hôte")
+    d.send(type="kick", id=h.id)
+    h.pump(0.2)
+    check(server.rooms.get(code2) is not None and h.id in server.rooms[code2].members, "un non-hôte ne peut pas exclure")
+
+    # partie lancée : plus de nouveaux joueurs ; départ de l'hôte -> salon fermé
+    a.send(type="room_state", phase="playing")
+    a.wait("room", pred=lambda m: m["room"]["phase"] == "playing")
+    e.send(type="join", room=code, game="1.0")
+    check(e.wait("error", pred=lambda m: m.get("code") == "started") is not None, "partie en cours : rejoindre refusé")
+    a.close()
+    check(b.wait("room_closed", t=3) is not None and c.wait("room_closed", t=3) is not None, "départ de l'hôte en jeu : salon fermé pour tous")
+    time.sleep(0.2)
+    check(code not in server.rooms, "salon supprimé")
+
+    # départ de l'hôte dans le salon d'attente : un autre joueur devient hôte
+    b.pump(0.2)
+    c.pump(0.2)
+    b.msgs.clear()
+    c.msgs.clear()
+    b.send(type="create", name="Relève", max=4, game="1.0")
+    code3 = b.wait("room")["room"]["id"]
+    c.send(type="join", room=code3, game="1.0")
+    c.wait("room")
+    b.close()
+    m = c.wait("room", t=3, pred=lambda m: m["host"] == c.id)
+    check(m is not None, "départ de l'hôte au salon : passation")
+
+    # robustesse
+    f = Raw(port, "Flood")
+    f.raw(b"{pas du json}\n" + b"[1,2]\n" + b'{"type":"inconnu"}\n')
+    f.send(type="ping", t=1)
+    check(f.wait("pong") is not None, "messages malformés ignorés, connexion conservée")
+    f.raw(b"x" * (server_cfg().MAX_LINE + 10))
+    time.sleep(1.5)
+    f.pump(0.2)
+    try:
+        f.s.sendall(b'{"type":"ping"}\n')
+        f.pump(0.5)
+        alive = bool(f.wait("pong", t=0.5))
+    except OSError:
+        alive = False
+    check(not alive, "ligne géante : déconnexion")
+    g = Raw(port, "Spam")
+    try:
+        for _ in range(3000):
+            g.raw(b'{"type":"ping","t":1}\n')
+    except OSError:
+        pass
+    time.sleep(1.0)
+    check(len(server.conns) < 12, "flood limité")
+    for x in (c, d, e, h, g):
+        x.close()
+
+    buf = io.StringIO("help\nlist\nrooms\nstats\nsay bonjour\nclose ZZZZZ\nkick 99999\nbizarre\n")
+    console_out = []
+    orig = srv.log
+    srv.log = lambda *a: console_out.append(" ".join(str(x) for x in a))
+    try:
+        srv.console(server, buf)
+    finally:
+        srv.log = orig
+    check(any("commandes" in x for x in console_out) and any("connexions=" in x for x in console_out), "console : help / list / stats")
+
+
+def server_cfg():
+    return srv.cfg
+
+
+def host_tests(port):
+    """Deux vrais clients du jeu : l'hôte fait tourner la partie, le second joueur la suit."""
+    print("== partie chez l'hôte ==")
+    from multiplayer_client import NetClient
+    import coop_rules
+    coop_rules.FIRST_CANCEL_DELAY = 0.2
+    coop_rules.TIME_SCALE = 1.0
+    host, peer = NetClient(), NetClient()
+    host.connect("127.0.0.1", port, "Hôte")
+    peer.connect("127.0.0.1", port, "Invité")
+    got = {"h": [], "p": []}
+
+    def drain(t=0.4):
+        end = time.time() + t
+        while time.time() < end:
+            got["h"] += host.poll()
+            got["p"] += peer.poll()
+            time.sleep(0.02)
+
+    def find(who, typ, pred=None, t=2.0):
+        end = time.time() + t
+        while time.time() < end:
+            for m in got[who]:
+                if m.get("type") == typ and (pred is None or pred(m)):
+                    got[who].remove(m)
+                    return m
+            drain(0.05)
+        return None
+
+    drain(0.3)
+    host.create_room("Test hôte", 4)
+    room = find("h", "room")
+    check(room is not None and host.is_host and host.host_session is not None, "créer -> on devient hôte, la partie tourne en local")
+    peer.join_room(room["room"]["id"])
+    check(find("p", "room") is not None and not peer.is_host, "second joueur dans le salon")
+    drain(0.3)
+    check(len(host.host_session.state.players) == 2, "l'hôte connaît les deux joueurs")
+    host.send_start()
+    sh, sp = find("h", "start"), find("p", "start")
+    check(sh is not None and sp is not None and len(sp["players"]) == 2, "lancement reçu par les deux joueurs")
+    for _ in range(5):
+        peer.send_move((7.2, 0.0, 1.5), (0, 45))
+        time.sleep(0.06)
+    mv = find("h", "move", pred=lambda m: m.get("_from") == peer.id)
+    check(mv is not None and mv["pos"][2] == 1.5, "position du joueur reçue par l'hôte (directement)")
+    ps = host.host_session.state.players[peer.id]
+    check(abs(ps.pos[2] - 1.5) < 1e-6, "l'hôte suit la position pour l'IA")
+    peer.send_order("pizza", "17 rue des Lilas")
+    oh, op = find("h", "order_result"), find("p", "order_result")
+    check(oh is not None and op is not None and op["entity"] == "rampant", "commande traitée par l'hôte, résultat diffusé")
+    check(find("p", "game_event", pred=lambda m: m.get("event") == "order_cancelled", t=3) is not None, "évènement programmé diffusé")
+    peer.send_chat("on est où ?")
+    ch = find("h", "chat")
+    check(ch is not None and ch["name"] == "Invité", "chat relayé par l'hôte")
+    # un joueur ne peut pas se faire passer pour l'hôte
+    peer.relay("all", {"type": "game_over", "result": "win"})
+    drain(0.4)
+    check(not [m for m in got["h"] if m.get("type") == "game_over"], "messages de jeu d'un non-hôte ignorés")
+    peer.send_death("test")
+    d = find("h", "player_death")
+    check(d is not None and d["id"] == peer.id, "mort d'un joueur diffusée")
+    peer.close()
+    time.sleep(0.5)
+    drain(0.5)
+    check(peer.id is None and len(host.host_session.state.players) == 1, "départ d'un joueur retiré de la partie")
+    check(not host.host_session.errors, f"aucune erreur dans la partie de l'hôte {host.host_session.errors[:2]}")
+    host.close()
 
 
 def main():
     port = free_port()
-    server = srv.GameServer("127.0.0.1", port)
-    threading.Thread(target=server.start, daemon=True).start()
-    time.sleep(0.5)
-
-    # --- pseudos, places, version ---
-    a = Client(port, "Hôte\x00\x07   <b>")
-    b = Client(port, "Bob")
-    c = Client(port, "bob")
-    d = Client(port, "x" * 200, udp=False)
-    time.sleep(0.6)
-    names = sorted(p["name"] for p in (a.wait(lambda m: m.get("type") == "lobby" and len(m.get("players", [])) == 4) or {}).get("players", []))
-    check(len(names) == 4, f"4 joueurs dans le lobby : {names}")
-    check(any(n.startswith("bob#") or n.startswith("Bob#") for n in names), "pseudos dupliqués rendus uniques")
-    check(all(len(n) <= 16 and "\x00" not in n for n in names), "pseudos nettoyés (contrôle, longueur)")
-    e = Client(port, "Cinquième")
-    check(e.wait(lambda m: m.get("type") == "error" and "plein" in m.get("message", "")) is not None, "5e joueur : serveur plein")
-    e.close()
-    v = Client(port, "Vieux", version="1.0")
-    check(v.wait(lambda m: m.get("type") == "error" and "Version" in m.get("message", "")) is not None, "version incompatible refusée")
-    v.close()
-
-    # --- messages invalides : le serveur survit ---
-    junk = Client(port)
-    junk.raw(b"pas du json\n[1,2,3]\n\"chaine\"\n{\"type\": 42}\n{\"type\":\"move\",\"pos\":\"abc\"}\n\xff\xfe\n")
-    junk.raw(b"{" * (40 * 1024))
-    time.sleep(1.0)
-    check(not junk.alive or True, "JSON invalide / ligne géante : traité sans planter")
-    junk.close()
-    t0 = time.time()
-    a.send(dict(type="ping", t=t0))
-    check(a.wait(lambda m: m.get("type") == "pong" and m.get("t") == t0) is not None, "serveur toujours réactif après les attaques")
-
-    # --- flood ---
-    f = Client(port)
-    burst = (json.dumps(dict(type="ping", t=1)) + "\n").encode() * 3000
-    f.raw(burst)
-    time.sleep(1.5)
-    t1 = time.time()
-    b.send(dict(type="ping", t=t1))
-    check(b.wait(lambda m: m.get("type") == "pong" and m.get("t") == t1, 3) is not None, "flood d'un client : les autres ne sont pas gênés")
-    f.close()
-
-    # --- partie ---
-    host = a if a.id == server.state.host else next(x for x in (a, b, c, d) if x.id == server.state.host)
-    host.send(dict(type="start"))
-    check(host.wait(lambda m: m.get("type") == "start") is not None, "lancement de la partie par l'hôte")
+    server = srv.RelayServer("127.0.0.1", port)
+    server.start(block=False)
     time.sleep(0.3)
-    # positions : UDP normal + repli TCP pour le client sans UDP (d)
-    for k in range(10):
-        a.send_udp(dict(type="move", id=a.id, tok=a.tok, pos=[7 + k * 0.1, 0, 1], rot=[0, 10]))
-        time.sleep(0.05)
-    got_udp = b.wait(lambda m: m.get("type") == "player_move" and m.get("id") == a.id and m.get("_udp"), 2)
-    got_tcp = d.wait(lambda m: m.get("type") == "player_move" and m.get("id") == a.id and not m.get("_udp"), 2)
-    check(got_udp is not None, "positions relayées en UDP")
-    check(got_tcp is not None, "repli TCP pour un joueur dont l'UDP est bloqué")
-    # usurpation et valeurs absurdes
-    before = list(server.state.players[b.id].pos)
-    a.send_udp(dict(type="move", id=b.id, tok=a.tok, pos=[50, 0, 50], rot=[0, 0]))
-    a.send_udp(dict(type="move", id=a.id, tok=a.tok, pos=[float("nan"), 0, 0], rot=[0, 0]))
-    a.send(dict(type="move", pos=[1e9, 0, 0], rot=[0, 0]))
-    a.send(dict(type="move", pos=[7, 0, "x"], rot=[0, 0]))
-    time.sleep(0.4)
-    check(server.state.players[b.id].pos == before, "usurpation UDP (mauvais jeton) ignorée")
-    pa = server.state.players[a.id].pos
-    check(all(abs(v) < 300 for v in pa) and all(v == v for v in pa), "coordonnées NaN / infinies / texte rejetées")
-    # chat : caractères de contrôle et longueur
-    a.send(dict(type="chat", message="salut\x00\x1b[31m" + "!" * 500))
-    m = b.wait(lambda m: m.get("type") == "chat")
-    check(m is not None and len(m["message"]) <= 200 and "\x00" not in m["message"], "chat nettoyé et limité")
-    # client qui ne lit jamais (file d'envoi) : le tick continue
-    slow = c
-    slow.reading = False
-    slow.alive = False      # arrête de lire (le socket reste ouvert)
-    ticks0 = server.state.t
-    host.send(dict(type="order", meal="burger", address="17 rue des Lilas, 06300 Nice"))
-    check(host.wait(lambda m: m.get("type") == "order_result" and m.get("ok")) is not None, "commande acceptée (adresse niçoise)")
-    time.sleep(2.0)
-    check(server.state.t - ticks0 > 1.5, "le tick n'est pas bloqué par un client lent")
-    # déconnexion brutale d'un joueur en pleine partie
-    b.sock.close()
-    time.sleep(0.5)
-    check(b.id not in server.state.players, "déconnexion brutale gérée")
-    # partie accélérée jusqu'à la fin (joueurs immobiles, l'entité finit par les trouver ou ils survivent)
-    end = host.wait(lambda m: m.get("type") == "game_over", 60)
-    check(end is not None, f"partie complète jusqu'au game_over ({end.get('result') if end else '—'})")
-    # console d'administration
-    srv.console(server, io.StringIO("help\nlist\nsay Bonsoir\nkick 99\ncommande_inconnue\n"))
-    check(any("commandes" in l for l in logged), "console : help / list / say / kick")
-    # erreurs internes
-    bad = [l for l in logged if "erreur de tick" in l or "erreur de traitement" in l and "move" not in l or "erreur d'événement" in l]
-    check(not bad, f"aucune erreur interne ({bad[:2]})")
+    try:
+        relay_tests(port, server)
+        host_tests(port)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        failures.append("exception")
     server.running = False
-    time.sleep(0.6)
-    for x in (a, c, d, host):
-        x.close()
-    print("SERVER STRESS " + ("OK" if not failures else "ÉCHEC : " + ", ".join(failures)), flush=True)
-    return 0 if not failures else 1
+    print("SERVER STRESS OK" if not failures else f"SERVER STRESS : {len(failures)} échec(s) : {failures}", flush=True)
+    sys.exit(1 if failures else 0)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
