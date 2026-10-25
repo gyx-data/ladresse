@@ -152,7 +152,7 @@ class MessagesApp(App):
                 total += item[2] + 0.015
             y = 0.25
             for msg, lines, h in reversed(visible):
-                x0 = 0.18 - 0.28 if not msg.mine else 0.02
+                x0 = -0.185 if not msg.mine else -0.075
                 bgc = rgb(52, 120, 64) if msg.mine else rgb(58, 58, 66)
                 rect(self.root, x0 + 0.13, y - h / 2, 0.27, h, bgc)
                 for i, ln in enumerate(lines):
@@ -479,6 +479,14 @@ def _wrap(text, width):
     words = text.split(" ")
     lines, cur = [], ""
     for w in words:
+        while len(w) > width:
+            if cur:
+                lines.append(cur)
+                cur = ""
+            lines.append(w[:width])
+            w = w[width:]
+        if not w:
+            continue
         if len(cur) + len(w) + 1 <= width:
             cur = (cur + " " + w).strip()
         else:
