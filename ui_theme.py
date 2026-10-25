@@ -15,18 +15,29 @@ SS = 3
 
 STYLES = {
     # fond (haut, bas), contour, texte, survol (haut, bas), rayon relatif, ombre
-    "dark":    dict(top=(34, 34, 40, 235), bot=(18, 18, 22, 240), border=(78, 78, 90, 255), text=(236, 234, 228), hover_top=(58, 54, 52, 245), hover_bot=(32, 28, 28, 250), hover_border=(176, 70, 60, 255), radius=0.28),
-    "ghost":   dict(top=(0, 0, 0, 0), bot=(0, 0, 0, 0), border=(0, 0, 0, 0), text=(214, 212, 206), hover_top=(255, 255, 255, 22), hover_bot=(255, 255, 255, 10), hover_border=(200, 80, 70, 255), radius=0.3),
-    "primary": dict(top=(255, 140, 40, 255), bot=(226, 84, 10, 255), border=(255, 190, 120, 255), text=(255, 255, 255), hover_top=(255, 166, 70, 255), hover_bot=(240, 100, 24, 255), hover_border=(255, 220, 160, 255), radius=0.3),
+    # Palette horreur : noir charbon, os, sang séché. Coins presque droits, grain, lueur rouge au survol.
+    "dark":    dict(top=(18, 14, 15, 228), bot=(7, 5, 6, 238), border=(62, 42, 42, 255), text=(222, 214, 200), hover_top=(46, 10, 12, 242), hover_bot=(16, 3, 4, 248), hover_border=(170, 24, 22, 255), radius=0.06),
+    "ghost":   dict(top=(0, 0, 0, 0), bot=(0, 0, 0, 0), border=(0, 0, 0, 0), text=(200, 192, 180), hover_top=(110, 8, 10, 46), hover_bot=(50, 0, 0, 22), hover_border=(150, 20, 20, 255), radius=0.06),
+    "primary": dict(top=(118, 12, 14, 255), bot=(52, 3, 5, 255), border=(168, 30, 28, 255), text=(238, 230, 216), hover_top=(150, 18, 18, 255), hover_bot=(70, 5, 7, 255), hover_border=(226, 64, 54, 255), radius=0.06),
     "success": dict(top=(60, 190, 100, 255), bot=(30, 138, 66, 255), border=(130, 230, 160, 255), text=(255, 255, 255), hover_top=(84, 212, 124, 255), hover_bot=(40, 156, 78, 255), hover_border=(190, 250, 210, 255), radius=0.3),
-    "danger":  dict(top=(204, 52, 52, 255), bot=(140, 24, 28, 255), border=(240, 120, 110, 255), text=(255, 255, 255), hover_top=(226, 72, 70, 255), hover_bot=(160, 34, 36, 255), hover_border=(255, 170, 160, 255), radius=0.3),
+    "danger":  dict(top=(88, 6, 8, 255), bot=(34, 1, 2, 255), border=(150, 22, 20, 255), text=(240, 222, 210), hover_top=(124, 10, 12, 255), hover_bot=(50, 2, 3, 255), hover_border=(220, 50, 44, 255), radius=0.06),
+    "toggle_on": dict(top=(130, 14, 16, 255), bot=(70, 5, 7, 255), border=(190, 40, 34, 255), text=(240, 232, 220), hover_top=(150, 18, 18, 255), hover_bot=(80, 6, 8, 255), hover_border=(226, 64, 54, 255), radius=0.5),
     "phone":   dict(top=(48, 50, 60, 255), bot=(34, 36, 44, 255), border=(70, 74, 90, 255), text=(240, 240, 246), hover_top=(66, 70, 84, 255), hover_bot=(46, 50, 62, 255), hover_border=(130, 150, 220, 255), radius=0.3),
-    "key":     dict(top=(70, 70, 78, 255), bot=(40, 40, 46, 255), border=(150, 150, 160, 255), text=(250, 250, 250), hover_top=(86, 86, 96, 255), hover_bot=(52, 52, 60, 255), hover_border=(220, 220, 230, 255), radius=0.22),
+    "key":     dict(top=(44, 40, 40, 255), bot=(20, 18, 18, 255), border=(120, 110, 104, 255), text=(232, 224, 210), hover_top=(60, 30, 30, 255), hover_bot=(28, 12, 12, 255), hover_border=(190, 50, 44, 255), radius=0.14),
     "paper":   dict(top=(230, 216, 184, 255), bot=(204, 186, 150, 255), border=(120, 92, 60, 255), text=(40, 30, 24), hover_top=(244, 230, 198, 255), hover_bot=(218, 200, 164, 255), hover_border=(160, 60, 40, 255), radius=0.18),
     "blue":    dict(top=(60, 120, 240, 255), bot=(26, 70, 190, 255), border=(150, 190, 255, 255), text=(255, 255, 255), hover_top=(84, 142, 255, 255), hover_bot=(36, 86, 210, 255), hover_border=(200, 220, 255, 255), radius=0.3),
-    "card":    dict(top=(40, 42, 52, 255), bot=(30, 32, 40, 255), border=(58, 62, 78, 255), text=(240, 240, 246), hover_top=(52, 56, 70, 255), hover_bot=(38, 42, 54, 255), hover_border=(110, 130, 200, 255), radius=0.12),
-    "panel":   dict(top=(18, 18, 22, 235), bot=(10, 10, 14, 240), border=(70, 66, 74, 255), text=(236, 234, 228), hover_top=(18, 18, 22, 235), hover_bot=(10, 10, 14, 240), hover_border=(70, 66, 74, 255), radius=0.05),
+    "card":    dict(top=(24, 19, 20, 245), bot=(12, 9, 10, 250), border=(56, 40, 40, 255), text=(226, 218, 204), hover_top=(40, 16, 17, 250), hover_bot=(18, 6, 7, 252), hover_border=(160, 26, 24, 255), radius=0.06),
+    "panel":   dict(top=(13, 10, 11, 240), bot=(4, 3, 4, 246), border=(56, 36, 36, 255), text=(226, 218, 204), hover_top=(13, 10, 11, 240), hover_bot=(4, 3, 4, 246), hover_border=(56, 36, 36, 255), radius=0.02),
 }
+
+# Styles « propres » des applis du téléphone (marque QuickEats, alertes) : l'appareil reste réaliste
+STYLES["brand"] = dict(top=(255, 140, 40, 255), bot=(226, 84, 10, 255), border=(255, 190, 120, 255), text=(255, 255, 255), hover_top=(255, 166, 70, 255), hover_bot=(240, 100, 24, 255), hover_border=(255, 220, 160, 255), radius=0.3)
+STYLES["alert"] = dict(top=(204, 52, 52, 255), bot=(140, 24, 28, 255), border=(240, 120, 110, 255), text=(255, 255, 255), hover_top=(226, 72, 70, 255), hover_bot=(160, 34, 36, 255), hover_border=(255, 170, 160, 255), radius=0.3)
+
+# styles d'ambiance : grain, rayures et lueur rouge au survol ; les autres (téléphone, borne...) restent « propres »
+GRIM = ("dark", "ghost", "primary", "danger", "card", "panel", "toggle_on", "key")
+GLOSSY = ("success", "blue", "phone", "brand", "alert")
+HOVER_GLOW = (190, 18, 16)
 
 _cache = {}
 
@@ -61,6 +72,18 @@ def rounded_rect_image(w, h, style="dark", state="normal", radius=None, shadow=T
     if state == "pressed":
         c0, c1 = c1, c0
     arr = (c0 * (1 - g) + c1 * g) * np.ones((1, W, 1))
+    if style in GRIM:
+        rng = np.random.default_rng((w * 7919 + h * 104729) % (2 ** 32))
+        grain = rng.normal(1.0, 0.07, (H, W))
+        # taches sombres diffuses (crasse) et éraflures horizontales plus claires
+        blot = np.array(Image.fromarray((rng.random((max(2, H // 40), max(2, W // 40))) * 255).astype(np.uint8))
+                        .resize((W, H), Image.BICUBIC)).astype(float) / 255.0
+        grain *= 1.0 - 0.22 * np.clip(blot - 0.45, 0, 1) * 2
+        for _ in range(max(1, W // 120)):
+            yy = int(rng.integers(0, H))
+            x0 = int(rng.integers(0, W))
+            grain[yy:yy + SS, x0:x0 + int(rng.integers(W // 10, W // 3))] *= 1.25
+        arr[..., :3] *= grain[..., None]
     body = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
     out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if shadow and style not in ("ghost",):
@@ -74,7 +97,9 @@ def rounded_rect_image(w, h, style="dark", state="normal", radius=None, shadow=T
     if border[3] > 0:
         d.rounded_rectangle(box, radius=r, outline=border, width=max(1, int(1.6 * SS)))
     # reflet interne en haut
-    if style in ("dark", "primary", "success", "danger", "blue", "phone", "key"):
+    if glow is None and style in GRIM and style != "panel":
+        glow = HOVER_GLOW
+    if style in GLOSSY:
         hl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         hd = ImageDraw.Draw(hl)
         hd.rounded_rectangle([box[0] + 3 * SS, box[1] + 2 * SS, box[2] - 3 * SS, box[1] + (box[3] - box[1]) * 0.45], radius=r, fill=(255, 255, 255, 22))

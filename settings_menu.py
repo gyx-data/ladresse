@@ -6,6 +6,7 @@ Toutes les valeurs sont appliquées immédiatement et sauvegardées à la fermet
 from ursina import Entity, color, camera, window, application
 
 import config
+import typography as T
 from config import settings
 from sound_engine import engine as sound
 from ui_widgets import label, rect, button, clear, rgb, panel, UISlider, UIToggle
@@ -115,7 +116,7 @@ class SettingsMenu:
         r = self.root
         rect(r, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 200), z=2)
         panel(r, 0, 0, self.W, self.H, "panel", z=1.5)
-        label(r, "PARAMÈTRES", -self.W / 2 + 0.05, self.H / 2 - 0.05, 1.7, color.white, origin=(-0.5, 0), z=1)
+        label(r, "PARAMÈTRES", -self.W / 2 + 0.05, self.H / 2 - 0.05, 2.4, rgb(226, 218, 204), origin=(-0.5, 0), z=1, font=T.F_HORROR)
         rect(r, 0, self.H / 2 - 0.135, self.W - 0.06, 0.002, rgb(80, 70, 70), z=1)
         self.tab_buttons = []
         tw = (self.W - 0.08) / len(TABS)
@@ -123,7 +124,7 @@ class SettingsMenu:
             b = button(r, t, -self.W / 2 + 0.04 + tw * (i + 0.5), self.H / 2 - 0.1, tw - 0.012, 0.046, (lambda i=i: self.set_tab(i)),
                        style="ghost", size=0.62, z=0.9)
             self.tab_buttons.append(b)
-        self.tab_marker = rect(r, 0, self.H / 2 - 0.128, tw - 0.03, 0.005, rgb(226, 90, 60), z=0.8, radius=0.5)
+        self.tab_marker = rect(r, 0, self.H / 2 - 0.128, tw - 0.03, 0.005, rgb(170, 22, 20), z=0.8, radius=0.5)
         self.tw = tw
         self.body = Entity(parent=r, z=0.5)
         button(r, "Retour", self.W / 2 - 0.13, -self.H / 2 + 0.05, 0.2, 0.055, self.close, style="primary", size=0.8, z=0.9)
@@ -167,7 +168,7 @@ class SettingsMenu:
 
     def _cycle_row(self, y, name, key, options, on_change=None):
         self._row_bg(y)
-        label(self.body, name, -self.W / 2 + 0.07, y, 0.82, color.white, origin=(-0.5, 0))
+        label(self.body, name, -self.W / 2 + 0.07, y, 0.82, rgb(226, 218, 204), origin=(-0.5, 0), font=T.F_TYPE)
         if options is None:
             def tog(v):
                 settings[key] = v
@@ -175,7 +176,7 @@ class SettingsMenu:
                     on_change(v)
             UIToggle(self.body, self.W / 2 - 0.12, y, bool(settings.get(key, False)), tog)
             return
-        val = label(self.body, fmt(settings.get(key)), self.W / 2 - 0.2, y, 0.8, rgb(255, 214, 150), z=-0.02)
+        val = label(self.body, fmt(settings.get(key)), self.W / 2 - 0.2, y, 0.8, rgb(226, 218, 204), z=-0.02, font=T.F_TYPE)
 
         def step(d):
             c = settings.get(key)
@@ -190,8 +191,8 @@ class SettingsMenu:
 
     def _slider_row(self, y, name, key, lo, hi, step_v, suffix="", on_change=None):
         self._row_bg(y)
-        label(self.body, name, -self.W / 2 + 0.07, y, 0.82, color.white, origin=(-0.5, 0))
-        val = label(self.body, f"{settings[key]}{suffix}", self.W / 2 - 0.06, y, 0.8, rgb(255, 214, 150), origin=(0.5, 0), z=-0.02)
+        label(self.body, name, -self.W / 2 + 0.07, y, 0.82, rgb(226, 218, 204), origin=(-0.5, 0), font=T.F_TYPE)
+        val = label(self.body, f"{settings[key]}{suffix}", self.W / 2 - 0.06, y, 0.8, rgb(226, 218, 204), origin=(0.5, 0), z=-0.02, font=T.F_TYPE)
 
         def change(v):
             if isinstance(settings[key], float):
@@ -237,7 +238,7 @@ class SettingsMenu:
         for i, (act, name) in enumerate(config.KEY_LABELS.items()):
             x = -self.W / 2 + 0.07 + (i % 2) * (self.W / 2 - 0.02)
             yy = y - (i // 2) * 0.054
-            label(self.body, name, x, yy, 0.64, color.white, origin=(-0.5, 0))
+            label(self.body, name, x, yy, 0.64, rgb(226, 218, 204), origin=(-0.5, 0), font=T.F_TYPE)
             b = button(self.body, settings.key(act).upper(), x + self.W / 2 - 0.18, yy, 0.15, 0.042, None, style="key", size=0.58)
             b.on_click = (lambda a=act, b=b: self.start_remap(a, b))
 

@@ -10,6 +10,7 @@ import time
 from ursina import Entity, camera, color
 
 import config
+import typography as T
 from sound_engine import engine as sound
 from ui_widgets import label, rect, button, rgb, panel
 
@@ -141,9 +142,9 @@ class Achievements:
         _, title, desc, _ = BY_ID[aid]
         r = Entity(parent=camera.ui, z=-30, position=(1.1, 0.36))
         panel(r, 0, 0, 0.42, 0.1, "card", z=0.1, radius=0.25)
-        rect(r, -0.17, 0, 0.06, 0.06, rgb(226, 140, 50), z=0.05, radius=0.3)
+        rect(r, -0.17, 0, 0.06, 0.06, rgb(140, 16, 16), z=0.05, radius=0.3)
         label(r, "★", -0.17, 0, 1.4, color.white, z=0)
-        label(r, "SUCCÈS DÉBLOQUÉ", -0.13, 0.024, 0.5, rgb(240, 170, 90), origin=(-0.5, 0), z=0, max_w=0.32)
+        label(r, "SUCCÈS DÉBLOQUÉ", -0.13, 0.024, 0.5, rgb(200, 40, 36), origin=(-0.5, 0), z=0, max_w=0.32, font=T.F_TYPE)
         label(r, title, -0.13, 0.0, 0.8, color.white, origin=(-0.5, 0), z=0, max_w=0.33)
         label(r, desc, -0.13, -0.026, 0.5, rgb(180, 180, 190), origin=(-0.5, 0), z=0, max_w=0.33)
         r.audit_skip = True          # pendant l'animation d'entrée / sortie
@@ -161,19 +162,19 @@ class Achievements:
         rect(r, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 210), z=2)
         panel(r, 0, 0, 1.4, 0.88, "panel", z=1.5)
         n = len(self.unlocked)
-        label(r, "SUCCÈS", -0.65, 0.39, 1.7, color.white, origin=(-0.5, 0), z=1)
-        label(r, f"{n} / {len(ACHIEVEMENTS)} débloqués", 0.65, 0.39, 0.8, rgb(240, 170, 90), origin=(0.5, 0), z=1)
+        label(r, "SUCCÈS", -0.65, 0.385, 2.4, rgb(226, 218, 204), origin=(-0.5, 0), z=1, font=T.F_HORROR)
+        label(r, f"{n} / {len(ACHIEVEMENTS)} débloqués", 0.65, 0.39, 0.8, rgb(200, 40, 36), origin=(0.5, 0), z=1, font=T.F_TYPE)
         for i, (aid, title, desc, secret) in enumerate(ACHIEVEMENTS):
             col, row = i % 2, i // 2
             x = -0.34 + col * 0.68
             y = 0.3 - row * 0.072
             got = aid in self.unlocked
             rect(r, x, y, 0.66, 0.064, rgb(255, 255, 255, 14 if got else 6), z=1, radius=0.2)
-            rect(r, x - 0.3, y, 0.042, 0.042, rgb(226, 140, 50) if got else rgb(60, 60, 66), z=0.9, radius=0.3)
+            rect(r, x - 0.3, y, 0.042, 0.042, rgb(140, 16, 16) if got else rgb(60, 60, 66), z=0.9, radius=0.3)
             label(r, "★" if got else "?", x - 0.3, y, 0.9, color.white if got else rgb(140, 140, 146), z=0.8)
             t = title if (got or not secret) else "Succès secret"
             d = desc if (got or not secret) else "Continuez à jouer pour le découvrir."
-            label(r, t, x - 0.27, y + 0.012, 0.66, color.white if got else rgb(170, 170, 176), origin=(-0.5, 0), z=0.8, max_w=0.58)
+            label(r, t, x - 0.27, y + 0.012, 0.66, color.white if got else rgb(170, 170, 176), origin=(-0.5, 0), z=0.8, max_w=0.58, font=T.F_TYPE)
             label(r, d + (f"  ·  {self.unlocked[aid]}" if got else ""), x - 0.27, y - 0.016, 0.46, rgb(150, 150, 158),
                   origin=(-0.5, 0), z=0.8, max_w=0.58)
 

@@ -660,7 +660,10 @@ class GameManager:
         if self.mode == "lobby" and self.mp is not None:
             self.mp.on_key(key)
             return
-        if self.mode in ("menu", "gameover", "ending"):
+        if self.mode == "menu":
+            self.ui.menu.on_key(key)
+            return
+        if self.mode in ("gameover", "ending"):
             return
         if self.mode == "cinematic":
             return

@@ -4,6 +4,7 @@ Tout est construit avec des entités Ursina rattachées à `camera.ui`.
 """
 import random
 
+import numpy as np
 from PIL import Image
 
 from ursina import Entity, Text, Button, color, camera, Vec3, invoke, destroy
@@ -58,27 +59,122 @@ class LoadingScreen:
         self.root.enabled = True
 
 
+BONE = (226, 218, 204)
+BLOOD = (176, 16, 16)
+
+MENU_WHISPERS = [
+    "Ne laissez entrer personne.",
+    "Il connaît déjà votre adresse.",
+    "Les volets sont cloués de l'intérieur.",
+    "Personne n'est jamais ressorti du 17.",
+    "Il frappe toujours trois fois.",
+    "Votre commande est en route.",
+]
+
+
+def _grain_image(size=256, seed=0):
+    rng = np.random.default_rng(seed)
+    v = rng.integers(0, 255, (size, size), dtype=np.uint8)
+    a = (rng.random((size, size)) ** 4 * 34).astype(np.uint8)
+    arr = np.dstack([v, v, v, a])
+    return Image.fromarray(arr, "RGBA")
+
+
+def _vignette_image(w=512, h=288):
+    yy, xx = np.mgrid[0:h, 0:w]
+    dx, dy = (xx / w - 0.5) * 2, (yy / h - 0.5) * 2
+    r = np.sqrt(dx * dx * 0.8 + dy * dy)
+    a = np.clip((r - 0.55) / 0.8, 0, 1) ** 1.6 * 245
+    arr = np.zeros((h, w, 4), dtype=np.uint8)
+    arr[..., 0], arr[..., 3] = 6, a.astype(np.uint8)
+    return Image.fromarray(arr, "RGBA")
+
+
+class MenuItem(Button):
+    """Entrée de menu sans cadre : texte d'horreur couleur os, rouge sang au survol avec entaille et tremblement."""
+
+    def __init__(self, parent, text, x, y, on_click, size=2.1, w=0.42, h=0.062, small=False):
+        super().__init__(parent=parent, model="quad", position=(x + w / 2 - 0.01, y, -0.02), scale=(w, h),
+                         color=color.rgba32(0, 0, 0, 0), highlight_color=color.rgba32(0, 0, 0, 0),
+                         pressed_color=color.rgba32(0, 0, 0, 0), highlight_scale=1.0, pressed_scale=1.0)
+        self.home = Vec3(x, y, -0.03)
+        font = T.F_TYPE if small else T.F_HORROR
+        self.label = label(parent, text, x, y, size, rgb(*BONE), origin=(-0.5, 0), z=-0.03, font=font, max_w=w - 0.03)
+        self.slash = rect(parent, x - 0.022, y, 0.004, h * 0.62, rgb(*BLOOD), z=-0.03)
+        self.slash.scale_y = 0.0001
+        self.under = rect(parent, x, y - h * 0.42, 0.001, 0.0025, rgb(*BLOOD), z=-0.03)
+        self.under.origin = (-0.5, 0)
+        self.under.x = x
+        self.text_w = None
+        self.max_w = w - 0.04
+        self.h = h
+        self.k = 0.0
+        if on_click:
+            self.on_click = on_click
+
+    def on_mouse_enter(self):
+        theme.play_ui_sound("ui_hover")
+
+    def input(self, key):
+        if key == "left mouse down" and self.hovered:
+            theme.play_ui_sound("ui_click")
+        super().input(key)
+
+    def animate_step(self, dt):
+        target = 1.0 if self.hovered else 0.0
+        self.k += (target - self.k) * min(1.0, dt * 14)
+        k = self.k
+        c = [int(BONE[i] + (BLOOD[i] - BONE[i]) * k) for i in range(3)]
+        self.label.color = rgb(*c)
+        jx = random.uniform(-1, 1) * 0.0025 * k if random.random() < 0.35 else 0.0
+        jy = random.uniform(-1, 1) * 0.0015 * k if random.random() < 0.35 else 0.0
+        self.label.position = self.home + Vec3(0.016 * k + jx, jy, 0)
+        self.slash.scale_y = max(0.0001, self.h * 0.62 * k)
+        if self.text_w is None:
+            bx = text_box(self.label, self.label.parent)
+            self.text_w = min(self.max_w, bx[2] - bx[0]) if bx else self.max_w
+        self.under.scale_x = max(0.001, self.text_w * k)
+        self.under.x = self.home[0] + 0.016 * k
+
+    def remove(self):
+        for e in (self.label, self.slash, self.under):
+            destroy(e)
+        destroy(self)
+
+
 class MainMenu:
-    """Écran titre : la maison sous la pluie, éclairs, silhouette à la fenêtre du grenier."""
+    """Écran titre : la maison sous la pluie, éclairs, grain de pellicule, chuchotements."""
+
+    X = -0.66
 
     def __init__(self, game):
         self.game = game
         self.root = Entity(parent=camera.ui, z=-3, enabled=False)
-        # dégradé latéral pour la lisibilité du menu (à gauche)
+        X = self.X
+        # dégradé latéral (lisibilité) + vignette + grain animé
         grad = Image.new("RGBA", (256, 4), (0, 0, 0, 0))
         for x in range(256):
-            a = int(225 * max(0.0, 1.0 - x / 256.0) ** 1.4)
+            a = int(240 * max(0.0, 1.0 - x / 256.0) ** 1.2)
             for yy in range(4):
-                grad.putpixel((x, yy), (4, 3, 4, a))
-        image(self.root, grad, -0.55, 0, 1.5, 1.2, z=1)
-        self.title_pos = Vec3(-0.5, 0.27, 0)
+                grad.putpixel((x, yy), (3, 1, 2, a))
+        image(self.root, grad, -0.6, 0, 1.4, 1.2, z=1)
+        image(self.root, _vignette_image(), 0, 0, 2.2, 1.24, z=0.9)
+        self.grain = image(self.root, _grain_image(), 0, 0, 2.2, 1.24, z=0.8)
+        self.grain.texture_scale = (3.5, 2.0)
         try:
-            self.title = title_entity(self.root, config.GAME_TITLE, -0.47, 0.29, 0.14, z=0)
+            th = 0.16
+            img = title_image(config.GAME_TITLE, 170, (150, 30, 30), None, 3)
+            tw = th * img.width / img.height
+            # le texte commence à 60 px du bord de l'image : on l'aligne sur les entrées du menu
+            self.title_pos = Vec3(X - 60 / img.height * th + tw / 2, 0.3, 0)
+            self.title = title_entity(self.root, config.GAME_TITLE, self.title_pos[0], self.title_pos[1], th, z=0)
         except Exception:
-            self.title = label(self.root, config.GAME_TITLE, -0.5, 0.29, 6.0, color.white, z=0)
-        self.sub = label(self.root, config.GAME_SUBTITLE.upper() + "  ·  NICE", -0.5, 0.17, 0.95, rgb(200, 150, 130), z=0)
-        rect(self.root, -0.5, 0.135, 0.36, 0.002, rgb(150, 40, 34), z=0)
-        self.buttons = []
+            self.title_pos = Vec3(X, 0.3, 0)
+            self.title = label(self.root, config.GAME_TITLE, X, 0.3, 6.0, color.white, origin=(-0.5, 0), z=0)
+        self.sub = label(self.root, config.GAME_SUBTITLE + "  ·  Nice", X, 0.19, 1.05, rgb(170, 160, 148),
+                         origin=(-0.5, 0), z=0, font=T.F_PRINT)
+        rect(self.root, X + 0.17, 0.155, 0.34, 0.0022, rgb(120, 14, 14), z=0)
+        self.items = []
         self.page = "main"
         self.lobby = None
         self._build_main()
@@ -89,36 +185,46 @@ class MainMenu:
         self.window_glow = []
         self.glow_t = 0.0
         self.sil = None
-        self.ver = label(self.root, f"v{config.VERSION}  ·  F5 : vue 3e personne  ·  Échap : pause", 0.86, -0.47, 0.55,
-                         rgb(120, 118, 115), origin=(0.5, 0), z=0)
+        self.whisper = label(self.root, " ", X, -0.4, 0.95, rgb(150, 20, 20, 0), origin=(-0.5, 0), z=0, font=T.F_PRINT)
+        self.whisper_t = 4.0
+        self.whisper_i = random.randrange(len(MENU_WHISPERS))
+        self.ver = label(self.root, f"v{config.VERSION}", 0.86, -0.47, 0.6, rgb(110, 104, 98), origin=(0.5, 0), z=0, font=T.F_TYPE)
+
+    def _clear_items(self):
+        for it in self.items:
+            it.remove()
+        self.items = []
 
     def _build_main(self):
-        for b in self.buttons:
-            destroy(b)
-        self.buttons = []
-        has_save = self.game.saves.exists()
-        items = [("Nouvelle partie", self.game.new_game, True, "primary"),
-                 ("Continuer", self.game.continue_game, has_save, "dark"),
-                 ("Coopératif en ligne", self.game.show_multiplayer, True, "dark"),
-                 ("Paramètres", self.game.show_settings, True, "dark"),
-                 ("Succès", self.show_achievements, True, "dark"),
-                 ("Crédits", self.show_credits, True, "dark"),
-                 ("Quitter", self.game.quit_game, True, "ghost")]
-        y = 0.05
-        for text, cb, enabled, style in items:
-            b = button(self.root, text, -0.5, y, 0.36, 0.058, cb if enabled else None, style=style if enabled else "card",
-                       text_col=None if enabled else rgb(100, 100, 106), size=0.9)
-            if not enabled:
-                b.highlight_color = b.color
-            self.buttons.append(b)
-            y -= 0.072
+        self.page = "main"
+        self._clear_items()
+        items = [("Jouer", self.play),
+                 ("Multijoueur", self.game.show_multiplayer),
+                 ("Paramètres", self.game.show_settings),
+                 ("Succès", self.show_achievements),
+                 ("Quitter", self.game.quit_game)]
+        y = 0.07
+        for text, cb in items:
+            self.items.append(MenuItem(self.root, text, self.X, y, cb))
+            y -= 0.085
+
+    def _build_play(self):
+        self.page = "play"
+        self._clear_items()
+        y = 0.07
+        for text, cb in (("Continuer", self.game.continue_game), ("Nouvelle partie", self.game.new_game)):
+            self.items.append(MenuItem(self.root, text, self.X, y, cb))
+            y -= 0.085
+        self.items.append(MenuItem(self.root, "‹  Retour", self.X, y - 0.02, self._build_main, size=1.1, small=True))
+
+    def play(self):
+        if self.game.saves.exists():
+            self._build_play()
+        else:
+            self.game.new_game()
 
     def show_achievements(self):
         self.game.achievements.open_screen()
-
-    def show_credits(self):
-        lines = [t for t, _ in gd.CREDITS if t]
-        self.game.ui.docs.open("Crédits", ["\n".join(lines)])
 
     def show(self):
         self.root.enabled = True
@@ -130,14 +236,33 @@ class MainMenu:
     def hide(self):
         self.root.enabled = False
 
+    def on_key(self, key):
+        if key == "escape" and self.root.enabled and self.page == "play":
+            self._build_main()
+
     def update(self, dt):
         if not self.root.enabled:
             return
         self.t += dt
         self.idle += dt
+        for it in self.items:
+            it.animate_step(dt)
+        # grain de pellicule : la texture saute à chaque image
+        self.grain.texture_offset = (random.random(), random.random())
+        # chuchotements qui apparaissent et s'effacent en bas à gauche
+        self.whisper_t -= dt
+        if self.whisper_t <= 0:
+            self.whisper_i = (self.whisper_i + 1) % len(MENU_WHISPERS)
+            self.whisper.text = MENU_WHISPERS[self.whisper_i]
+            self.whisper_t = 9.0
+        ph = 9.0 - self.whisper_t
+        a = max(0.0, min(1.0, ph / 1.5, (7.5 - ph) / 1.5)) if self.whisper.text.strip() else 0.0
+        if random.random() < 0.04:
+            a *= 0.3
+        self.whisper.color = rgb(150, 20, 20, int(200 * a))
         # titre légèrement tremblant
         j = 0.6 / 1080.0
-        self.title.position = Vec3(-0.47 + random.uniform(-j, j) * 2, 0.29 + random.uniform(-j, j) * 2, 0)
+        self.title.position = Vec3(self.title_pos[0] + random.uniform(-j, j) * 2, self.title_pos[1] + random.uniform(-j, j) * 2, 0)
         # éclairs
         self.next_lightning -= dt
         if self.next_lightning <= 0:
@@ -159,15 +284,15 @@ class PauseMenu:
         self.root = Entity(parent=camera.ui, z=-12, enabled=False)
         rect(self.root, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 170), z=1)
         panel(self.root, 0, 0, 0.56, 0.7, "panel", z=0.8)
-        label(self.root, "PAUSE", 0, 0.28, 2.2, color.white, z=0)
-        rect(self.root, 0, 0.235, 0.2, 0.003, rgb(170, 50, 40), z=0)
+        label(self.root, "PAUSE", 0, 0.275, 3.0, rgb(*BONE), z=0, font=T.F_HORROR)
+        rect(self.root, 0, 0.225, 0.2, 0.003, rgb(*BLOOD), z=0)
         self.items = []
         y = 0.14
         for text, cb, style in (("Reprendre", game.resume, "primary"), ("Paramètres", game.show_settings, "dark"),
                                 ("Menu principal", game.confirm_main_menu, "dark"), ("Quitter le jeu", game.quit_game, "ghost")):
             self.items.append(button(self.root, text, 0, y, 0.4, 0.06, cb, style=style, size=0.9))
             y -= 0.078
-        self.info = label(self.root, "", 0, -0.2, 0.65, rgb(200, 196, 190), z=0, wrap=48)
+        self.info = label(self.root, "", 0, -0.2, 0.65, rgb(200, 192, 180), z=0, wrap=48, font=T.F_TYPE)
         self.hint = label(self.root, "Sauvegarde automatique à chaque étape importante.", 0, -0.3, 0.55, rgb(130, 128, 125), z=0)
 
     def show(self):
@@ -192,7 +317,7 @@ class DocumentViewer:
         self.root = Entity(parent=camera.ui, z=-13, enabled=False)
         rect(self.root, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 190), z=1)
         self.page_ent = None
-        self.title = label(self.root, "", 0, 0.45, 1.0, rgb(230, 220, 200), z=-0.1)
+        self.title = label(self.root, "", 0, 0.45, 1.2, rgb(*BONE), z=-0.1, font=T.F_PRINT)
         self.page_label = label(self.root, "", 0, -0.44, 0.65, rgb(170, 160, 150), z=-0.1)
         self.prev = button(self.root, "‹", -0.38, 0, 0.06, 0.08, self.prev_page, style="dark", size=1.2, z=-0.1)
         self.next = button(self.root, "›", 0.38, 0, 0.06, 0.08, self.next_page, style="dark", size=1.2, z=-0.1)
@@ -304,7 +429,7 @@ class ChoiceDialog:
         self.root = Entity(parent=camera.ui, z=-14, enabled=False)
         rect(self.root, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 160), z=1)
         panel(self.root, 0, 0, 0.76, 0.34, "panel", z=0.5)
-        self.text = label(self.root, "", 0, 0.06, 0.88, color.white, wrap=44, z=-0.1, max_w=0.7, max_h=0.16)
+        self.text = label(self.root, "", 0, 0.06, 0.88, rgb(*BONE), wrap=44, z=-0.1, max_w=0.7, max_h=0.16, font=T.F_TYPE)
         self.yes = button(self.root, "Oui", -0.17, -0.1, 0.3, 0.062, None, style="danger", size=0.85, z=-0.1)
         self.no = button(self.root, "Non", 0.17, -0.1, 0.3, 0.062, None, style="dark", size=0.85, z=-0.1)
         self.visible = False
@@ -394,7 +519,7 @@ class GameOverScreen:
             title_entity(self.items, gd.GAMEOVER_TITLE.upper(), 0, 0.2, 0.15, glow=(170, 20, 20), seed=9, z=0)
         except Exception:
             label(self.items, gd.GAMEOVER_TITLE, 0, 0.18, 3.2, color.white, z=0)
-        label(self.items, gd.GAMEOVER_RATING, -0.08, 0.05, 0.95, rgb(190, 186, 182), z=0)
+        label(self.items, gd.GAMEOVER_RATING, -0.08, 0.05, 0.95, rgb(190, 182, 170), z=0, font=T.F_TYPE)
         for i in range(5):
             star(self.items, 0.12 + i * 0.038, 0.05, 0.032, color.rgb32(255, 200, 40) if i == 0 else rgb(60, 60, 66), z=0)
         button(self.items, "Réessayer", -0.13, -0.1, 0.24, 0.065, self.game.retry, style="primary", size=0.9)
@@ -402,9 +527,9 @@ class GameOverScreen:
         st = self.game.state.stats
         m, s_ = divmod(int(st.get("play_time", 0)), 60)
         label(self.items, f"Survécu {m} min {s_:02d} s  ·  {st.get('photos', 0)} photo(s)  ·  morts : {st.get('deaths', 0)}", 0, -0.2,
-              0.62, rgb(140, 138, 134), z=0)
+              0.62, rgb(140, 132, 124), z=0, font=T.F_TYPE)
         if first_death:
-            label(self.items, gd.GAMEOVER_TIP, 0, -0.38, 0.72, rgb(220, 196, 150), z=0, wrap=70)
+            label(self.items, gd.GAMEOVER_TIP, 0, -0.38, 0.72, rgb(180, 168, 150), z=0, wrap=70, font=T.F_PRINT)
 
     def hide(self):
         self.root.enabled = False
@@ -499,7 +624,7 @@ class EndingScreen:
             if self.credit_items and self.credit_items[-1].y > 0.5 and not getattr(self, "_buttons", False):
                 self._buttons = True
                 label(self.items, config.GAME_TITLE, 0, 0.18, 4.5, color.white, z=0)
-                button(self.items, "Menu principal", 0, -0.05, 0.36, 0.07, self.game.to_main_menu, rgb(20, 20, 24, 240), size=1.0)
+                button(self.items, "Menu principal", 0, -0.05, 0.36, 0.07, self.game.to_main_menu, style="dark", size=1.0)
             return
         a = min(1.0, self.t / 0.8, max(0.0, (self.dur - self.t) / 0.8))
         if self.cur is not None:
@@ -527,8 +652,8 @@ class HUD:
         r = self.root
         ts = text_scale()
         # objectif (haut gauche) : pastille + texte
-        self.obj_bar = rect(r, -0.865, 0.448, 0.005, 0.032, rgb(226, 90, 60, 230), z=0.05, radius=0.5)
-        self.obj_title = label(r, "OBJECTIF", -0.852, 0.458, 0.5, rgb(226, 120, 90, 230), origin=(-0.5, 0), z=0)
+        self.obj_bar = rect(r, -0.865, 0.448, 0.005, 0.032, rgb(170, 22, 20, 230), z=0.05, radius=0.5)
+        self.obj_title = label(r, "OBJECTIF", -0.852, 0.458, 0.5, rgb(190, 40, 36, 230), origin=(-0.5, 0), z=0, font=T.F_TYPE)
         self.obj = Text(parent=r, text=" ", position=(-0.852, 0.447), origin=(-0.5, 0.5), scale=0.82 * ts, color=rgb(255, 255, 255, 215))
         # téléphone (bas gauche) et lampe (bas droite) : icône + jauge
         self.ph_img_on = ill.icon_phone(96, True)
@@ -555,8 +680,8 @@ class HUD:
         # notification de quête (bandeau haut centre)
         self.quest_root = Entity(parent=r, y=0.38, enabled=False)
         panel(self.quest_root, 0, 0, 0.62, 0.06, "panel", z=0.05, radius=0.4)
-        rect(self.quest_root, -0.29, 0, 0.006, 0.036, rgb(255, 200, 90), z=0, radius=0.5)
-        self.quest_note = label(self.quest_root, "", 0, 0, 0.85, rgb(255, 230, 160), z=-0.1, max_w=0.55, max_h=0.05)
+        rect(self.quest_root, -0.29, 0, 0.006, 0.036, rgb(170, 22, 20), z=0, radius=0.5)
+        self.quest_note = label(self.quest_root, "", 0, 0, 0.85, rgb(226, 218, 204), z=-0.1, max_w=0.55, max_h=0.05)
         self.quest_t = 0.0
         self.tips = label(r, "", 0, -0.2, 0.72, rgb(205, 205, 210), wrap=80, z=-0.1)
         self.tips_t = 0.0
@@ -627,7 +752,7 @@ class HUD:
         if self.quest_t > 0:
             self.quest_t -= dt
             a = max(0.0, min(1.0, self.quest_t / 0.6))
-            self.quest_note.color = rgb(255, 230, 160, int(255 * a))
+            self.quest_note.color = rgb(226, 218, 204, int(255 * a))
             if self.quest_t <= 0:
                 self.quest_note.text = ""
                 self.quest_root.enabled = False
@@ -677,6 +802,8 @@ class UIManager:
         self.ending = EndingScreen(game)
         self.toast = Toast()
         self.fade_overlay = None
+        from ui_cursor import HorrorCursor
+        self.cursor = HorrorCursor()
 
     # --- raccourcis -----------------------------------------------------
     def say(self, text, duration=3.5, speaker=None):

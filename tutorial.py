@@ -138,8 +138,8 @@ class Tutorial:
         h = 0.135
         x, y = -0.86 + self.W / 2, 0.24
         self.bg = panel(r, x, y, self.W, h, "panel", z=0.2, radius=0.12)
-        rect(r, x - self.W / 2 + 0.008, y, 0.005, h - 0.03, rgb(226, 90, 60), z=0.1, radius=0.5)
-        label(r, "DIDACTICIEL", x - self.W / 2 + 0.025, y + h / 2 - 0.02, 0.5, rgb(226, 120, 90), origin=(-0.5, 0), z=0)
+        rect(r, x - self.W / 2 + 0.008, y, 0.005, h - 0.03, rgb(170, 22, 20), z=0.1, radius=0.5)
+        label(r, "DIDACTICIEL", x - self.W / 2 + 0.025, y + h / 2 - 0.02, 0.5, rgb(190, 40, 36), origin=(-0.5, 0), z=0)
         idx = [s["id"] for s in self.STEPS].index(step["id"]) + 1
         label(r, f"{idx}/{len(self.STEPS)}", x + self.W / 2 - 0.02, y + h / 2 - 0.02, 0.5, rgb(140, 138, 134), origin=(0.5, 0), z=0)
         # touches

@@ -32,7 +32,19 @@ CANDIDATES = {
              ("DejaVuSerif-Italic.ttf", "DejaVuSerif-BoldItalic.ttf"), ("LiberationSerif-Italic.ttf", "LiberationSerif-BoldItalic.ttf")],
     "title": [("DejaVuSerif-Bold.ttf", "DejaVuSerif-Bold.ttf"), ("georgiab.ttf", "georgiab.ttf"), ("palab.ttf", "palab.ttf"),
               ("timesbd.ttf", "timesbd.ttf"), ("LiberationSerif-Bold.ttf", "LiberationSerif-Bold.ttf")],
+    "horror": [("Creepster-Regular.ttf", "Creepster-Regular.ttf"), ("DejaVuSerif-Bold.ttf", "DejaVuSerif-Bold.ttf")],
+    "typewriter": [("SpecialElite-Regular.ttf", "SpecialElite-Regular.ttf"), ("DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf")],
+    "oldprint": [("IMFellEnglishSC-Regular.ttf", "IMFellEnglishSC-Regular.ttf"), ("DejaVuSerif.ttf", "DejaVuSerif-Bold.ttf")],
+    "blood": [("Nosifer-Regular.ttf", "Nosifer-Regular.ttf"), ("DejaVuSerif-Bold.ttf", "DejaVuSerif-Bold.ttf")],
 }
+
+# Polices Ursina (nom de fichier dans le dossier de polices du cache) pour les menus d'ambiance
+F_HORROR = "ladresse_horror.ttf"
+F_TYPE = "ladresse_type.ttf"
+F_PRINT = "ladresse_print.ttf"
+F_BLOOD = "ladresse_blood.ttf"
+_UI_FONTS = {F_HORROR: "horror", F_TYPE: "typewriter", F_PRINT: "oldprint", F_BLOOD: "blood"}
+ui_fonts_ready = False
 
 _index = None
 _cache = {}
@@ -119,6 +131,15 @@ def apply_ui_font():
         dst = os.path.join(dst_dir, "ladresse_ui" + ext)
         if not os.path.exists(dst):
             shutil.copyfile(src, dst)
+        global ui_fonts_ready
+        ok = True
+        for name, kind in _UI_FONTS.items():
+            p = find_font(kind)
+            target = os.path.join(dst_dir, name)
+            if p and not os.path.exists(target):
+                shutil.copyfile(p, target)
+            ok = ok and os.path.exists(target)
+        ui_fonts_ready = ok
         application.fonts_folder = Path(dst_dir)
         Text.default_font = "ladresse_ui" + ext
         Text.default_resolution = 1080 * Text.size * 1.5

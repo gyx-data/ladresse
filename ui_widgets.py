@@ -66,12 +66,21 @@ def fit_text(t, max_w=None, max_h=None, ref=None, min_ratio=0.4):
     return t
 
 
+def ui_font(name):
+    """Nom de police Ursina utilisable (None si les polices d'ambiance ne sont pas installées)."""
+    import typography as T
+    return name if (name and T.ui_fonts_ready) else None
+
+
 def label(parent, text, x=0.0, y=0.0, size=1.0, col=color.white, origin=(0, 0), wrap=None, z=-0.01,
-          scale_text=True, bold=False, align=None, shadow=False, max_w=None, max_h=None):
-    """Texte d'interface. max_w / max_h (unités du parent) : le texte est réduit pour ne jamais déborder."""
+          scale_text=True, bold=False, align=None, shadow=False, max_w=None, max_h=None, font=None):
+    """Texte d'interface. max_w / max_h (unités du parent) : le texte est réduit pour ne jamais déborder.
+    font : une des polices d'ambiance (typography.F_HORROR, F_TYPE, F_PRINT, F_BLOOD)."""
     kw = {}
     if wrap:
         kw["wordwrap"] = wrap
+    if ui_font(font):
+        kw["font"] = font
     s = size * (text_scale() if scale_text else 1.0)
     if shadow:
         Text(parent=parent, text=text if text else " ", position=(x + 0.0016, y - 0.0022, z + 0.001), origin=origin,
@@ -165,27 +174,28 @@ def clear(entity):
 # ---------------------------------------------------------------------------
 def infer_style(col):
     """Choisit un style de thème d'après une couleur historique (r, g, b, a de 0..1)."""
+    # appels « couleur » historiques = applis du téléphone : styles propres, pas d'ambiance horreur
     if col is None:
-        return "dark"
+        return "phone"
     r, g, b = col[0] * 255, col[1] * 255, col[2] * 255
     if r > 190 and 70 < g < 190 and b < 90:
-        return "primary"
+        return "brand"
     if g > r + 40 and g > b + 15:
         return "success"
     if r > g + 55 and r > b + 55:
-        return "danger" if r > 120 else "dark"
+        return "alert" if r > 120 else "phone"
     if b > r + 55 and b > g + 20:
         return "blue"
     if col[3] < 0.05:
         return "ghost"
-    return "dark"
+    return "phone"
 
 
 class StyledButton(Button):
     """Bouton à textures arrondies (normal / survol / appuyé), son de survol et de clic."""
 
     def __init__(self, parent, text, x, y, w, h, on_click=None, style="dark", text_col=None, size=0.8, z=-0.02,
-                 radius=None, shadow=True, glow=None, sound=True):
+                 radius=None, shadow=True, glow=None, sound=True, font=None):
         self._w, self._h = w, h
         self._style = style
         self._radius = radius
@@ -209,6 +219,11 @@ class StyledButton(Button):
         self.inner = (w, h)
         # zone cliquable invisible (sans texte, style transparent) : ce n'est pas un cadre visuel
         self.ui_box = (w, h) if (text or style != "ghost") else None
+        if font is None and style in ("dark", "primary", "danger", "ghost", "card"):
+            import typography as T
+            font = T.F_TYPE
+        if ui_font(font) and getattr(self, "text_entity", None) is not None:
+            self.text_entity.font = font
         self._fit_label()
 
     def _fit_label(self):
@@ -255,10 +270,10 @@ class StyledButton(Button):
 
 
 def button(parent, text, x, y, w, h, on_click=None, col=None, text_col=None, size=0.8, z=-0.02,
-           highlight=None, press=None, style=None, radius=None, shadow=True, glow=None):
+           highlight=None, press=None, style=None, radius=None, shadow=True, glow=None, font=None):
     """Bouton stylé. `col` (ancienne API) sert à déduire le style ; `style` le force."""
     st = style or infer_style(col)
-    return StyledButton(parent, text, x, y, w, h, on_click, st, text_col, size, z, radius, shadow, glow)
+    return StyledButton(parent, text, x, y, w, h, on_click, st, text_col, size, z, radius, shadow, glow, font=font)
 
 
 # ---------------------------------------------------------------------------
@@ -273,11 +288,11 @@ class UISlider(Entity):
         self.value = value
         self.dragging = False
         self.track = theme.make_panel(self, 0, 0, w, height, "dark", 0.0, 0.5, False)
-        self.fill = Entity(parent=self, model="quad", color=color.rgb32(236, 150, 60), position=(-w / 2, 0, -0.001),
+        self.fill = Entity(parent=self, model="quad", color=color.rgb32(150, 18, 18), position=(-w / 2, 0, -0.001),
                            scale=(0.001, height * 0.62))
         self.fill.origin = (-0.5, 0)
-        kt, kp = theme.get_texture(theme.px(0.03), theme.px(0.03), "primary", "normal", 0.5, True)
-        self.knob = Entity(parent=self, model="quad", texture=kt, scale=0.03 + 2 * kp / theme.PX, z=-0.003)
+        kt, kp = theme.get_texture(theme.px(0.024), theme.px(0.024), "key", "normal", 0.5, True)
+        self.knob = Entity(parent=self, model="quad", texture=kt, scale=0.024 + 2 * kp / theme.PX, z=-0.003)
         self.hit = Button(parent=self, model="quad", scale=(w + 0.03, 0.05), color=color.rgba32(0, 0, 0, 1),
                           highlight_color=color.rgba32(0, 0, 0, 1), pressed_color=color.rgba32(0, 0, 0, 1), z=-0.004)
         self.hit.on_click = self._begin
@@ -330,7 +345,7 @@ class UIToggle(Button):
         self.value = bool(value)
         self.on_change_cb = on_change
         self.pw, self.ph = 0.085, 0.036
-        tex, pad = theme.get_texture(theme.px(self.pw), theme.px(self.ph), "success" if self.value else "dark", "normal", 0.5, False)
+        tex, pad = theme.get_texture(theme.px(self.pw), theme.px(self.ph), "toggle_on" if self.value else "dark", "normal", 0.5, False)
         super().__init__(parent=parent, model="quad", position=(x, y, z), scale=(self.pw + 2 * pad / theme.PX, self.ph + 2 * pad / theme.PX),
                          color=color.white, highlight_color=color.white, pressed_color=color.white, highlight_scale=1.0, pressed_scale=1.0)
         self.texture = tex
@@ -340,7 +355,7 @@ class UIToggle(Button):
         self.on_click = self.toggle
 
     def _place(self):
-        tex, _ = theme.get_texture(theme.px(self.pw), theme.px(self.ph), "success" if self.value else "dark", "normal", 0.5, False)
+        tex, _ = theme.get_texture(theme.px(self.pw), theme.px(self.ph), "toggle_on" if self.value else "dark", "normal", 0.5, False)
         self.texture = tex
         off = (self.pw / 2 - 0.02) / self.scale_x
         self.knob.x = off if self.value else -off
@@ -354,7 +369,7 @@ class UIToggle(Button):
 
 
 class ProgressBar(Entity):
-    def __init__(self, parent, x, y, w, h, fill_col=(236, 150, 60), z=-0.01):
+    def __init__(self, parent, x, y, w, h, fill_col=(150, 18, 18), z=-0.01):
         super().__init__(parent=parent, position=(x, y, z))
         self.w = w
         theme.make_panel(self, 0, 0, w, h, "dark", 0.0, 0.5, False)
