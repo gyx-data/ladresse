@@ -233,7 +233,7 @@ class PhoneShot(Shot):
         self.nodes.append(root)
         # écran
         self.screen = PhoneScreenTexture()
-        scr = Entity(parent=root, model="quad", position=(ox, 0.0105, 0.0), rotation_x=-90, scale=(0.072, 0.15),
+        scr = Entity(parent=root, model="quad", position=(ox, 0.0105, 0.0), rotation_x=-90, scale=(0.072, -0.15),
                      texture=self.screen.tex, shader=horror_shader, double_sided=True)
         scr.set_shader_input("emit", 1.0)
         scr.rotation_z = 0
@@ -241,9 +241,9 @@ class PhoneShot(Shot):
         self.lights.append(LightSource((ox, 0.12, 0.0), (0.5, 0.65, 1.0), 1.6, 1.6, kind="static"))
         self.lights.append(LightSource((ox - 0.6, 0.6, 0.5), (1.0, 0.85, 0.6), 0.35, 2.5, kind="static"))
         self.track = CameraTrack([
-            (0.0, (ox + 0.0, 0.36, -0.28), (62, 0, 0), 38),
-            (6.0, (ox + 0.02, 0.28, -0.20), (66, 0, 0), 34),
-            (25.0, (ox + 0.0, 0.2, -0.1), (74, 0, 0), 30),
+            (0.0, (ox + 0.0, 0.36, -0.20), (62, 0, 0), 38),
+            (6.0, (ox + 0.01, 0.28, -0.14), (66, 0, 0), 34),
+            (25.0, (ox + 0.0, 0.22, -0.07), (74, 0, 0), 32),
         ])
         # timeline des messages
         self.msgs = []
@@ -454,10 +454,10 @@ class CarShot(Shot):
         ox = self.ox
         sway = math.sin(t * 0.7) * 0.03
         camera.world_position = Vec3(ox + 1.35 + sway * 0.2, 1.18 + math.sin(t * 9.0) * 0.004, self.cam_z)
-        camera.world_rotation = Vec3(1.5, 0.0 + sway * 4, math.sin(t * 0.5) * 0.2)
-        camera.fov = 70
+        camera.world_rotation = Vec3(12.0, 0.0 + sway * 4, math.sin(t * 0.5) * 0.2)
+        camera.fov = 75
         self.track = None
-        self.cab.world_position = camera.world_position
+        self.cab.world_position = camera.world_position + camera.up * 0.2
         self.cab.world_rotation = camera.world_rotation
         self.dash_light.pos = camera.world_position + Vec3(0.0, -0.25, 0.5)
         self.gps_light.pos = camera.world_position + Vec3(0.45, -0.2, 0.7)

@@ -14,6 +14,12 @@ else:
     if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Mode --windowed (PyInstaller) : pas de console, sys.stdout/sys.stderr valent None.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
 from panda3d.core import loadPrcFileData
 
 import config
