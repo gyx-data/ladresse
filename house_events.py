@@ -76,7 +76,7 @@ class HouseEvents:
         # cadres photo du couloir (superposés pour pouvoir être déformés)
         for (x, y, z) in h.photo_frames:
             e = Entity(parent=h.level_roots[1], model="quad", texture=textures.get("portrait"), shader=horror_shader,
-                       position=(x - 0.012, y, z), scale=(0.42, 0.55), rotation_y=90)
+                       position=(x - 0.04, y, z), scale=(0.42, 0.55), rotation_y=90)
             e.set_shader_input("emit", 0.0)
             self.portraits.append(e)
         # le reflet : avatar dans le miroir (désactivé)

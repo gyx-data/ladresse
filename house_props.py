@@ -106,7 +106,8 @@ def _rdc(house, rng):
     rb.wall_decal(b, "griffures", 7.0, 1.1, 11.89, 1.2, 1.9, "-z", off=0.0)
     point(house, "planches", (7.0, 1.1, 11.6), "Examiner la porte", 0, radius=1.0)
     # couloir : tableau / horloge arrêtée
-    b.box("metal", 6.1, 1.9, 4.4, 6.14, 2.3, 4.8, (0.4, 0.38, 0.35))
+    if not b.model("wall_clock", 6.13, 4.6, 1.9, 90.0, (0.4, 0.4, None)):
+        b.box("metal", 6.1, 1.9, 4.4, 6.14, 2.3, 4.8, (0.4, 0.38, 0.35))
 
     # ---------------- Salon --------------------------------------------
     rb.armchair(b, 1.6, 4.5, 270, y0)
@@ -117,10 +118,16 @@ def _rdc(house, rng):
     point(house, "journaux", (3.1, 0.5, 4.1), "Lire", 0, radius=0.8)
     # meuble télé + CRT
     b.box("bois_meuble", 3.6, y0, 0.15, 4.8, y0 + 0.55, 0.65, (0.6, 0.55, 0.5), collide=True)
-    b.box("metal", 3.78, y0 + 0.55, 0.2, 4.62, y0 + 1.2, 0.62, (0.18, 0.18, 0.18), collide=True)
-    A["tv_screen_pos"] = Vec3(4.2, 0.88, 0.635)
+    if b.model("Television_01", 4.2, 0.38, y0 + 0.55, 0.0, (0.75, None, 0.58)):
+        b.colliders.append((3.78, y0 + 0.55, 0.2, 4.62, y0 + 1.2, 0.62))
+        # écran du modèle (mesuré sur sa vue de face : 69 % x 69 %, décalé vers la gauche du poste)
+        screen_pos, screen_size = (4.283, y0 + 0.867, 0.675), (0.51, 0.39)
+    else:
+        b.box("metal", 3.78, y0 + 0.55, 0.2, 4.62, y0 + 1.2, 0.62, (0.18, 0.18, 0.18), collide=True)
+        screen_pos, screen_size = (4.2, 0.88, 0.635), (0.62, 0.5)
+    A["tv_screen_pos"] = Vec3(*screen_pos)
     tv = Entity(parent=house.level_roots[0], model="quad", texture=textures.get("ecran_noir"), shader=horror_shader,
-                position=(4.2, 0.88, 0.635), scale=(0.62, 0.5), rotation_y=180, double_sided=True)
+                position=screen_pos, scale=screen_size, rotation_y=180, double_sided=True)
     tv.set_shader_input("emit", 0.0)
     house.parts["tv_screen"] = tv
     point(house, "tv", (4.2, 0.9, 0.9), "Éteindre", 0, radius=0.8, enabled=False)
@@ -134,18 +141,29 @@ def _rdc(house, rng):
     b.obox("metal", 0.9, y0, 1.7, 0.04, 0.04, 0.7, 20, (0.2, 0.2, 0.2))    # tisonnier
     point(house, "tisonnier", (0.9, 0.1, 1.7), "Ramasser", 0, radius=0.9)
     rb.bookshelf  # (déjà utilisé)
-    # cadre photo au mur
-    rb.painting(b, 3.0, 1.7, 5.9, 0.7, 0.5, "-z", tex="portrait")
+    # cadre photo au mur (mur est, entre l'angle et la porte : le mur nord est l'arche vers la cuisine)
+    rb.painting(b, 5.9, 1.7, 1.2, 0.7, 0.5, "-x", tex="portrait")
     # reveals : silhouette dans le fauteuil
     hidden_entity(house, 0, "silhouette", (1.75, 0.85, 4.5), (0.8, 1.5), rot_y=-90, name="fauteuil")
 
     # ---------------- Cuisine ------------------------------------------
     # plan de travail en L
-    rb.counter(b, 0.1, 7.2, 0.7, 11.9, y0)
+    rb.counter(b, 0.1, 7.2, 0.7, 8.6, y0)
+    rb.counter(b, 0.1, 9.4, 0.7, 11.9, y0)
     rb.counter(b, 0.7, 11.3, 3.4, 11.9, y0)
-    b.box("email", 0.12, y0 + 0.9, 8.6, 0.55, y0 + 0.97, 9.4, (0.7, 0.7, 0.72))              # évier
-    b.box("metal", 0.14, y0 + 0.92, 8.7, 0.5, y0 + 0.98, 9.3, (0.25, 0.25, 0.26), skip=("-y",))
-    b.box("metal", 0.12, y0 + 0.97, 9.0, 0.2, y0 + 1.25, 9.06, (0.8, 0.8, 0.8))               # robinet
+    # évier inox encastré : meuble sous évier, plan de travail découpé autour du bac
+    b.box("bois_meuble", 0.1, y0, 8.6, 0.7, y0 + 0.86, 9.4, (0.6, 0.55, 0.5), collide=True, skip=("+y",))
+    for (x0_, z0_, x1_, z1_) in ((0.08, 8.58, 0.16, 9.42), (0.56, 8.58, 0.72, 9.42), (0.16, 8.58, 0.56, 8.64), (0.16, 9.36, 0.56, 9.42)):
+        b.box("marbre", x0_, y0 + 0.86, z0_, x1_, y0 + 0.9, z1_, (1, 1, 1))
+    b.loft("metal", [rb._ring(0.36, 9.0, y0 + 0.902, 0.205, 0.365, 0.0, 8.0), rb._ring(0.36, 9.0, y0 + 0.902, 0.185, 0.345, 0.0, 6.0)],
+           (0.8, 0.8, 0.82), outward=False)
+    floor = rb._basin(b, "metal", 0.36, 9.0, 0.0, y0 + 0.902, (0.185, 0.345), (0.185, 0.345), 0.2, (0.72, 0.72, 0.75),
+                      n_out=6.0, n_in=6.0, bulge=(1.0, 0.99, 0.97, 0.94, 0.9))
+    b.cap("metal", rb._ring(0.36, 9.0, floor[0][1] + 0.002, 0.03, 0.03, 0.0, 2.0, seg=12), (0, 1, 0), (0.2, 0.2, 0.22))
+    b.cyl("metal", 0.14, y0 + 0.9, 9.0, 0.02, 0.32, 12, (0.85, 0.85, 0.88))                   # robinet col de cygne
+    b.obox("metal", 0.23, y0 + 1.19, 9.0, 0.19, 0.028, 0.028, 0.0, (0.85, 0.85, 0.88))
+    for zz in (8.88, 9.12):
+        b.cyl("metal", 0.14, y0 + 0.9, zz, 0.02, 0.06, 10, (0.85, 0.85, 0.88))
     A["robinet"] = Vec3(0.25, 1.2, 9.03)
     # réfrigérateur (corps + porte articulée + intérieur)
     rb.fridge_body(b, 5.2, 11.55, y0, 0, 0.7, 0.7, 1.75)
@@ -199,7 +217,7 @@ def _rdc(house, rng):
     rb.table(b, 11.4, 11.4, y0, 0.9, 0.4, 0.8)
     b.cyl("email", 11.4, y0 + 0.8, 11.4, 0.07, 0.25, 8, (0.8, 0.8, 0.75))
     b.box("herbe", 11.34, y0 + 1.05, 11.34, 11.46, y0 + 1.3, 11.46, (0.25, 0.22, 0.15))     # fleurs mortes
-    rb.painting(b, 10.0, 1.7, 11.9, 0.8, 0.6, "-z", tex="portrait")
+    rb.painting(b, 8.9, 1.7, 11.9, 0.8, 0.6, "-z", tex="portrait")     # à côté de la fenêtre condamnée (x 10)
     rb.carton(b, 11.5, 5.2, y0, 0.45)
 
     # ---------------- Salle de bain RDC --------------------------------
@@ -212,7 +230,7 @@ def _rdc(house, rng):
     A["rideau"] = Vec3(14.4, 1.2, 5.4)
     point(house, "rideau", (14.4, 1.2, 5.5), "Tirer le rideau", 0, radius=1.0)
     point(house, "miroir_brise", (15.6, 1.5, 6.5), "Regarder le miroir brisé", 0, radius=0.9)
-    b.box("beton", 14.7, y0 + 0.88, 6.2, 14.85, y0 + 0.92, 6.35, (0.7, 0.75, 0.8))           # éclat dans le lavabo
+    b.box("beton", 15.47, y0 + 0.735, 6.42, 15.6, y0 + 0.75, 6.55, (0.7, 0.75, 0.8))         # éclat au fond de la vasque
     A["tuyauterie"] = Vec3(13.0, 1.0, 5.0)
 
     # ---------------- Buanderie ---------------------------------------
@@ -238,19 +256,16 @@ def _etage(house, rng):
     # néon au plafond
     A["neon_pos"] = Vec3(7.0, y0 + 2.72, 3.5)
     nb = MeshBuilder("neon")
-    nb.box("neon", 6.55, y0 + 2.74, 3.4, 7.45, y0 + 2.8, 3.6, (1, 1, 1))
+    nb.box("neon", 6.55, y0 + 2.7, 3.4, 7.45, y0 + 2.76, 3.6, (1, 1, 1))
     house.parts["neon_tube"] = nb.build(parent=house.level_roots[1], emit=1.0)[0]
-    b.box("metal", 6.5, y0 + 2.7, 3.35, 7.5, y0 + 2.74, 3.65, (0.4, 0.4, 0.4))
+    b.box("metal", 6.5, y0 + 2.76, 3.35, 7.5, y0 + 2.8, 3.65, (0.4, 0.4, 0.4))            # platine fixée au plafond, tube dessous
     # photos de famille
-    xs = [(6.04, 1.2, "+x"), (6.04, 2.2, "+x")]
     frames = []
-    for (zz, face) in ((9.0, "+x"), (10.5, "+x")):
-        pass
-    for z in (1.0, 2.5, 4.4, 8.9, 10.2):
-        rb.painting(b, 7.9, 1.65, z, 0.42, 0.55, "-x", tex="portrait")
-        frames.append((7.9, 1.65, z))
+    # mur x=8 seulement le long de la chambre condamnée (z < 4.5) : au-delà, le couloir donne sur le palier
+    for z in (0.6, 1.4, 2.2, 3.0, 3.8):
+        rb.painting(b, 7.9, y0 + 1.65, z, 0.42, 0.55, "-x", tex="portrait")
+        frames.append((7.9, y0 + 1.65, z))
     house.photo_frames = frames
-    del xs
     # placard : étagères et produits
     for k in range(4):
         b.box("planches", 0.15, y0 + 0.4 + k * 0.5, 10.2, 0.55, y0 + 0.43 + k * 0.5, 11.8, (0.8, 0.75, 0.7), collide=False)
@@ -259,12 +274,21 @@ def _etage(house, rng):
         b.cyl("email", rng.uniform(0.25, 0.45), y0 + 0.43 + (k % 4) * 0.5, 10.4 + k * 0.13, 0.05, 0.22, 6,
               rng.choice([(0.7, 0.3, 0.3), (0.3, 0.5, 0.7), (0.8, 0.8, 0.8)]))
     b.obox("metal", 5.3, y0, 10.7, 0.3, 1.2, 0.04, 70, (0.5, 0.45, 0.35), collide=False)     # balais
-    b.cyl("metal", 3.0, y0 + 0.85, 11.5, 0.05, 0.03, 8, (0.3, 0.3, 0.3))
-    point(house, "pile_placard", (3.0, y0 + 0.9, 11.4), "Fouiller le placard", 1, radius=1.3)
+    b.cyl("metal", 0.35, y0 + 0.93, 11.65, 0.05, 0.03, 8, (0.3, 0.3, 0.3))                    # pile posée sur l'étagère
+    point(house, "pile_placard", (0.7, y0 + 1.0, 11.5), "Fouiller le placard", 1, radius=1.3)
 
     # ---------------- Chambre principale -------------------------------
     rb.bed(b, 1.35, 3.0, 90, y0)
-    house.parts["oreillers"] = make_part(house.level_roots[1], "drap", (0.5, 0.35, 1.0), (1.6, y0 + 0.62, 3.0), (0.95, 0.9, 0.7))
+    # amas d'oreillers sous le drap, à la forme vaguement humaine (tête côté tête de lit, x bas)
+    lump = Entity(parent=house.level_roots[1])
+    lb = MeshBuilder("forme_lit")
+    for k in range(9):
+        lx = 0.8 + k * 0.17
+        r = 0.13 + 0.09 * math.sin(math.pi * (k + 0.5) / 9)          # plus épais au milieu (le « torse »)
+        lb.sphere("drap", lx, y0 + 0.57, 3.0 + 0.03 * math.sin(k * 1.7), r, (0.9, 0.87, 0.82), lat=12, lon=20, sy=0.38)
+    for e in lb.build(parent=lump):
+        pass
+    house.parts["oreillers"] = lump
     point(house, "lit", (1.5, y0 + 0.7, 3.0), "Soulever les draps", 1, radius=1.1)
     point(house, "dessous_lit", (2.9, y0 + 0.2, 3.0), "Regarder sous le lit", 1, radius=0.9)
     rb.table(b, 0.45, 4.15, y0, 0.45, 0.45, 0.55)
@@ -278,11 +302,11 @@ def _etage(house, rng):
     point(house, "volets_master", (2.0, y0 + 1.5, 0.5), "Ouvrir les volets", 1, radius=1.0)
     b.obox("tissu", 4.45, y0 + 0.7, 0.62, 0.5, 1.1, 0.04, 0, (0.18, 0.2, 0.28))             # uniforme dans l'armoire
     hidden_entity(house, 1, "papier", (3.0, y0 + 1.7, 5.88), (0.9, 0.6), rot_y=180, name="mur_message", col=(1.0, 0.9, 0.85))
-    rb.painting(b, 5.9, y0 + 1.7, 3.0, 0.5, 0.65, "-x", tex="portrait")
+    rb.painting(b, 5.9, y0 + 1.7, 1.3, 0.5, 0.65, "-x", tex="portrait")     # à côté de la porte (z 3)
     b.box("tissu", 1.0, y0, 0.9, 2.6, y0 + 0.02, 1.9, (0.4, 0.15, 0.12))                     # tapis
 
     # ---------------- Chambre d'amis ------------------------------------
-    rb.bed(b, 1.0, 7.4, 90, y0, w=0.95, l=1.9, col_sheet=(0.75, 0.8, 0.7))
+    rb.bed(b, 1.1, 7.4, 90, y0, w=0.95, l=1.9, col_sheet=(0.75, 0.8, 0.7))
     rb.table(b, 3.4, 9.55, y0, 1.3, 0.55, 0.75)
     rb.chair(b, 3.4, 8.9, y0, 0)
     house.parts["tiroir_bureau"] = SlidingPart(house.level_roots[1], (3.4, y0 + 0.62, 9.3), (0.5, 0.1, 0.4), "bois_meuble", (0.7, 0.65, 0.6), travel=(0, 0, -0.3))
@@ -309,8 +333,20 @@ def _etage(house, rng):
     rb.sink(b, 15.55, 8.0, y0, 270)
     rb.toilet(b, 15.5, 9.6, y0, 270) if False else None
     rb.painting(b, 15.88, y0 + 1.55, 8.0, 0.55, 0.7, "-x", tex="miroir")
-    house.parts["pharmacie"] = hinged(house, 1, (15.1, 10.2), 0.5, 0.7, 0.03, (0, 1), (-1, 0), "metal", (0.8, 0.8, 0.82), y0=y0 + 1.3)
-    b.box("metal", 15.7, y0 + 1.3, 10.2, 15.9, y0 + 2.0, 10.7, (0.8, 0.8, 0.82), collide=False)
+    # armoire à pharmacie murale : caisson creux (fond, côtés, dessus, dessous, 2 étagères), porte sur la façade
+    px0, px1, pz0, pz1, py0, py1 = 15.62, 15.9, 10.2, 10.7, y0 + 1.3, y0 + 2.0
+    white = (0.86, 0.86, 0.84)
+    b.box("email", px1 - 0.02, py0, pz0, px1, py1, pz1, white)                                  # fond
+    b.box("email", px0, py0, pz0, px1, py1, pz0 + 0.02, white)                                  # côtés
+    b.box("email", px0, py0, pz1 - 0.02, px1, py1, pz1, white)
+    b.box("email", px0, py1 - 0.02, pz0, px1, py1, pz1, white)                                  # dessus / dessous
+    b.box("email", px0, py0, pz0, px1, py0 + 0.02, pz1, white)
+    for sy in (py0 + 0.24, py0 + 0.47):                                                          # étagères
+        b.box("email", px0 + 0.02, sy, pz0 + 0.02, px1 - 0.02, sy + 0.015, pz1 - 0.02, white)
+    for k, (zz, hh, c) in enumerate(((10.3, 0.12, (0.55, 0.3, 0.15)), (10.42, 0.09, (0.85, 0.85, 0.85)), (10.58, 0.14, (0.3, 0.45, 0.6)))):
+        b.cyl("vitre" if k == 0 else "email", 15.78, py0 + 0.02, zz, 0.03, hh, 8, c)              # flacons
+    b.obox("papier", 15.76, py0 + 0.255, 10.5, 0.08, 0.05, 0.14, 0, (0.9, 0.88, 0.82))          # boîte de médicaments
+    house.parts["pharmacie"] = hinged(house, 1, (px0 - 0.012, pz0), 0.5, 0.7, 0.02, (0, 1), (-1, 0), "email", white, y0=py0)
     point(house, "pharmacie", (15.5, y0 + 1.6, 10.4), "Ouvrir l'armoire à pharmacie", 1, radius=1.0)
     A["eau_baignoire"] = Vec3(14.0, y0 + 0.6, 11.3)
     A["miroir1"] = Vec3(15.85, y0 + 1.55, 8.0)
@@ -397,6 +433,10 @@ def _sous_sol(house, rng):
     # téléphone au fond du congélateur
     house.parts["tel_fond"] = make_part(house.level_roots[-1], "metal", (0.08, 0.015, 0.16), (cx, y0 + 0.2, cz), (0.1, 0.1, 0.12))
     house.parts["tel_fond"].enabled = False
+    # vieux tonneaux dans les angles (loin de l'escalier, x 6.1-7.9)
+    for (bx, bz, br) in ((3.6, 16.8, 0), (10.4, 16.8, 40), (10.35, 17.55, 75)):
+        if b.model("Barrel_01", bx, bz, y0, br, (None, 0.9, None)):
+            b.colliders.append((bx - 0.32, y0, bz - 0.32, bx + 0.32, y0 + 0.9, bz + 0.32))
     # bougies
     house.candle_pos = []
     for k in range(6):
@@ -418,7 +458,7 @@ def _sous_sol(house, rng):
     rb.wall_decal(b, "griffures", 3.2, 0.9 + y0, 21.5, 1.6, 1.5, "+x", off=0.01)
     # tuyaux au plafond
     for k in range(3):
-        b.box("metal", 3.2, y0 + 1.95, 17.0 + k * 2.5, 10.8, y0 + 2.1, 17.1 + k * 2.5, (0.4, 0.4, 0.42))
+        b.box("metal", 3.2, y0 + 2.05, 17.0 + k * 2.5, 10.8, y0 + 2.2, 17.1 + k * 2.5, (0.4, 0.4, 0.42))
     house.anchors["basement_center"] = Vec3(cx, y0 + 1.0, cz)
 
 

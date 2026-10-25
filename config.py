@@ -7,7 +7,7 @@ import tempfile
 GAME_TITLE = "L'ADRESSE"
 GAME_SUBTITLE = "17 rue des Lilas"
 VERSION = "1.1.0"
-CACHE_VERSION = "v2"
+CACHE_VERSION = "v4"
 
 # --- Réseau ---------------------------------------------------------------
 SERVER_HOST = "5.180.34.43"

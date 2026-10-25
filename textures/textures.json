@@ -1,0 +1,254 @@
+{
+  "parquet": {
+    "source": "wood_floor_worn",
+    "url": "https://polyhaven.com/a/wood_floor_worn",
+    "mode": "replace",
+    "size_m": [
+      1.9999996423721313,
+      1.9999996423721313
+    ]
+  },
+  "carrelage": {
+    "source": "floor_tiles_06",
+    "url": "https://polyhaven.com/a/floor_tiles_06",
+    "mode": "replace",
+    "size_m": [
+      3.0,
+      3.0
+    ]
+  },
+  "moquette": {
+    "source": "dirty_carpet",
+    "url": "https://polyhaven.com/a/dirty_carpet",
+    "mode": "replace",
+    "size_m": [
+      0.5999999046325684,
+      0.5999999046325684
+    ]
+  },
+  "beton": {
+    "source": "concrete_floor_damaged_01",
+    "url": "https://polyhaven.com/a/concrete_floor_damaged_01",
+    "mode": "replace",
+    "size_m": [
+      5.0,
+      5.0
+    ]
+  },
+  "asphalte": {
+    "source": "asphalt_02",
+    "url": "https://polyhaven.com/a/asphalt_02",
+    "mode": "replace",
+    "size_m": [
+      3.000000238418579,
+      3.0
+    ]
+  },
+  "herbe": {
+    "source": "leafy_grass",
+    "url": "https://polyhaven.com/a/leafy_grass",
+    "mode": "replace",
+    "size_m": [
+      2.0,
+      2.0
+    ]
+  },
+  "planches": {
+    "source": "old_planks_02",
+    "url": "https://polyhaven.com/a/old_planks_02",
+    "mode": "replace",
+    "size_m": [
+      2.0,
+      2.0
+    ]
+  },
+  "bois_meuble": {
+    "source": "wood_cabinet_worn_long",
+    "url": "https://polyhaven.com/a/wood_cabinet_worn_long",
+    "mode": "replace",
+    "size_m": [
+      1.0,
+      1.0
+    ]
+  },
+  "platre": {
+    "source": "grey_plaster",
+    "url": "https://polyhaven.com/a/grey_plaster",
+    "mode": "replace",
+    "size_m": [
+      1.0,
+      1.0
+    ]
+  },
+  "plafond": {
+    "source": "ceiling_interior",
+    "url": "https://polyhaven.com/a/ceiling_interior",
+    "mode": "replace",
+    "size_m": [
+      2.0,
+      2.0
+    ]
+  },
+  "crepi": {
+    "source": "clay_plaster",
+    "url": "https://polyhaven.com/a/clay_plaster",
+    "mode": "replace",
+    "size_m": [
+      1.9999996423721313,
+      1.9999996423721313
+    ]
+  },
+  "crepi_rose": {
+    "source": "red_plaster_weathered",
+    "url": "https://polyhaven.com/a/red_plaster_weathered",
+    "mode": "replace",
+    "size_m": [
+      2.0,
+      2.0
+    ]
+  },
+  "tuiles": {
+    "source": "clay_roof_tiles_02",
+    "url": "https://polyhaven.com/a/clay_roof_tiles_02",
+    "mode": "replace",
+    "size_m": [
+      2.5,
+      2.5
+    ]
+  },
+  "marbre": {
+    "source": "marble_01",
+    "url": "https://polyhaven.com/a/marble_01",
+    "mode": "replace",
+    "size_m": [
+      1.5,
+      1.5
+    ]
+  },
+  "tissu": {
+    "source": "fabric_pattern_05",
+    "url": "https://polyhaven.com/a/fabric_pattern_05",
+    "mode": "replace",
+    "size_m": [
+      0.5,
+      0.4999999403953552
+    ]
+  },
+  "papier_peint": {
+    "source": "decrepit_wallpaper",
+    "url": "https://polyhaven.com/a/decrepit_wallpaper",
+    "mode": "replace",
+    "size_m": [
+      2.5,
+      2.5
+    ]
+  },
+  "papier_chambre": {
+    "source": "decrepit_wallpaper",
+    "url": "https://polyhaven.com/a/decrepit_wallpaper",
+    "mode": "replace",
+    "size_m": [
+      2.5,
+      2.5
+    ]
+  },
+  "papier_couloir": {
+    "source": "decrepit_wallpaper",
+    "url": "https://polyhaven.com/a/decrepit_wallpaper",
+    "mode": "replace",
+    "size_m": [
+      2.5,
+      2.5
+    ]
+  },
+  "palmier_tronc": {
+    "source": "palm_tree_bark",
+    "url": "https://polyhaven.com/a/palm_tree_bark",
+    "mode": "replace",
+    "size_m": [
+      2.5999999046325684,
+      1.3000000715255737
+    ]
+  },
+  "volet": {
+    "source": "worn_shutter",
+    "url": "https://polyhaven.com/a/worn_shutter",
+    "mode": "replace",
+    "size_m": [
+      1.3700000047683716,
+      1.3700000047683716
+    ]
+  },
+  "etoffe": {
+    "source": "cotton_jersey",
+    "url": "https://polyhaven.com/a/cotton_jersey",
+    "mode": "replace",
+    "size_m": [
+      0.2636027473872483,
+      0.2637999951839447
+    ]
+  },
+  "drap": {
+    "source": "rough_linen",
+    "url": "https://polyhaven.com/a/rough_linen",
+    "mode": "replace",
+    "size_m": [
+      0.2707081392676629,
+      0.27129998803138733
+    ]
+  },
+  "rideau": {
+    "source": "velour_velvet",
+    "url": "https://polyhaven.com/a/velour_velvet",
+    "mode": "replace",
+    "size_m": [
+      0.28422817052147237,
+      0.273499995470047
+    ]
+  },
+  "metal": {
+    "source": "metal_plate_02",
+    "url": "https://polyhaven.com/a/metal_plate_02",
+    "mode": "replace",
+    "size_m": [
+      2.0,
+      2.0
+    ]
+  },
+  "porte": {
+    "source": "fine_grained_wood",
+    "url": "https://polyhaven.com/a/fine_grained_wood",
+    "mode": "detail",
+    "size_m": [
+      0.6000000238418579,
+      0.6000000238418579
+    ]
+  },
+  "porte_griffes": {
+    "source": "fine_grained_wood",
+    "url": "https://polyhaven.com/a/fine_grained_wood",
+    "mode": "detail",
+    "size_m": [
+      0.6000000238418579,
+      0.6000000238418579
+    ]
+  },
+  "email": {
+    "source": "white_plaster_02",
+    "url": "https://polyhaven.com/a/white_plaster_02",
+    "mode": "detail",
+    "size_m": [
+      1.0,
+      1.0
+    ]
+  },
+  "papier": {
+    "source": "white_plaster_02",
+    "url": "https://polyhaven.com/a/white_plaster_02",
+    "mode": "detail",
+    "size_m": [
+      1.0,
+      1.0
+    ]
+  }
+}

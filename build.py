@@ -10,8 +10,8 @@ Le script :
   2. lance PyInstaller en mode --onefile --windowed ;
   3. produit dist/LADRESSE.exe.
 
-Aucun asset externe n'est embarqué : textures et sons sont générés au premier lancement
-(mis en cache dans le dossier temporaire).
+Seuls les polices, les textures photo (textures/) et les modèles 3D (models/), sous licence CC0, sont embarqués : les autres textures et
+les sons sont générés au premier lancement (mis en cache dans le dossier temporaire).
 """
 import os
 import subprocess
@@ -28,7 +28,7 @@ GAME_MODULES = [
     "effects", "lighting_system", "shaders", "ui_manager", "ui_widgets", "settings_menu", "multiplayer_client",
     "multiplayer_manager", "interaction_system", "inventory", "jumpscare_system", "save_system", "particle_system",
     "typography", "ui_theme", "illustrations", "character_model", "neighborhood", "shop", "fidelite", "achievements",
-    "crash_handler", "tts", "tutorial", "selftest", "autoplay",
+    "crash_handler", "tts", "tutorial", "selftest", "autoplay", "models",
 ]
 
 
@@ -78,6 +78,10 @@ def main():
         "--add-data", f"{os.path.join(HERE, 'server')}{os.pathsep}server",
         # polices libres embarquées (rendu identique sur tous les PC)
         "--add-data", f"{os.path.join(HERE, 'fonts')}{os.pathsep}fonts",
+        # textures photo (Poly Haven, CC0) : voir fetch_textures.py
+        "--add-data", f"{os.path.join(HERE, 'textures')}{os.pathsep}textures",
+        # modèles 3D (Poly Haven, CC0) : voir fetch_models.py
+        "--add-data", f"{os.path.join(HERE, 'models')}{os.pathsep}models",
     ]
     for m in GAME_MODULES:
         cmd += ["--hidden-import", m]

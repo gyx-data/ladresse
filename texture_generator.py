@@ -559,7 +559,8 @@ def tex_metal(rng):
     s = 256
     n = fbm(s, rng, base=6, octaves=4, stretch=(0.2, 1.0))
     arr = lerp_color(n, (78, 80, 84), (128, 130, 134))
-    rust = np.clip((fbm(s, rng, base=5, octaves=4) - 0.6) * 4, 0, 1)
+    arr *= (0.9 + 0.1 * fbm(s, rng, base=40, octaves=2, stretch=(0.02, 1.0)))[..., None]     # brossage
+    rust = np.clip((fbm(s, rng, base=5, octaves=4) - 0.7) * 3, 0, 1) * 0.6                # rouille légère, par endroits
     arr = arr * (1 - rust[..., None]) + np.array((120, 64, 30))[None, None, :] * rust[..., None]
     return to_img(arr)
 
@@ -1093,6 +1094,46 @@ def _smooth_texture(tex):
         pass
 
 
+# ---------------------------------------------------------------------------
+# Textures photo (Poly Haven, CC0) : voir fetch_textures.py
+# ---------------------------------------------------------------------------
+_PHOTO_META = None
+
+
+def photo_meta():
+    """nom -> métadonnées (dont size_m = taille réelle couverte) des textures photo présentes dans textures/."""
+    global _PHOTO_META
+    if _PHOTO_META is None:
+        _PHOTO_META = {}
+        folder = config.resource_path("textures")
+        try:
+            import json
+            with open(os.path.join(folder, "textures.json"), encoding="utf-8") as f:
+                meta = json.load(f)
+            _PHOTO_META = {k: v for k, v in meta.items() if os.path.exists(os.path.join(folder, k + ".jpg"))}
+        except (OSError, ValueError):
+            pass
+    return _PHOTO_META
+
+
+def _photo_texture(name, procedural):
+    """Remplace la texture procédurale par la photo, recolorée vers la teinte moyenne de la version procédurale
+    (les couleurs de sommet et l'éclairage du jeu ont été réglés sur ces teintes : les variantes de papier peint
+    en tirent aussi leurs couleurs)."""
+    photo = Image.open(os.path.join(config.resource_path("textures"), name + ".jpg")).convert("RGB")
+    arr = np.asarray(photo).astype(float)
+    if photo_meta()[name].get("mode") == "detail":
+        # garde le dessin procédural (agrandi à la taille de la photo) et lui applique le grain photographique
+        base = np.asarray(procedural.convert("RGB").resize(photo.size, Image.BICUBIC)).astype(float)
+        lum = arr.mean(axis=2)
+        detail = lum / max(lum.mean(), 1.0)
+        return to_img(base * (1.0 + 0.85 * (detail - 1.0))[..., None])
+    target = np.asarray(procedural.convert("RGB").resize((128, 128))).reshape(-1, 3).astype(float).mean(axis=0)
+    mean = arr.reshape(-1, 3).mean(axis=0)
+    arr *= (target / np.maximum(mean, 1.0))[None, None, :]
+    return to_img(arr)
+
+
 class TextureLibrary:
     """Génère (ou charge depuis le cache) toutes les textures."""
 
@@ -1121,6 +1162,8 @@ class TextureLibrary:
                 seed = sum(ord(c) * (k + 1) for k, c in enumerate(name)) + 1337
                 rng = np.random.default_rng(seed)
                 img = fn(rng)
+                if name in photo_meta():
+                    img = _photo_texture(name, img)
                 mode = "RGBA" if img.mode == "RGBA" else "RGB"
                 img = img.convert(mode)
                 try:

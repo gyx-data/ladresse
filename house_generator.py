@@ -101,7 +101,7 @@ WINDOWS = [
     (0, "x", 12.0, 3.0, "planches"),   # cuisine, nord (côté ouest)
     (0, "z", 0.0, 9.0, "planches"),    # cuisine au-dessus de l'évier
     (0, "z", 16.0, 2.2, "volet"),      # bureau, est
-    (0, "z", 16.0, 6.5, "planches"),   # sdb
+    (0, "z", 16.0, 7.8, "planches"),   # sdb (au-dessus des WC : le miroir est en z 6.5)
     (0, "x", 12.0, 10.0, "planches"),  # hall nord
     (1, "x", 0.0, 2.0, "volet"),       # master
     (1, "x", 0.0, 7.0, "volet"),       # couloir
@@ -595,12 +595,20 @@ class House:
             b = self.b(owner if st["id"] != "cave" else -1)
             stairs_mesh(b, st["x0"], st["x1"], st["za"], st["zb"], st["ya"], st["yb"], st["steps"])
             self.surfaces.append(Surface(st["x0"], st["za"], st["x1"], st["zb"], st["ya"], st["yb"], st["za"], st["zb"], level=lvl))
+            if st["id"] == "cave":
+                # raccord entre le pied de l'escalier (z 16.14) et le sol de la cave (z 16.2) : sinon chute dans le vide
+                self.surfaces.append(Surface(st["x0"], st["za"] - 0.02, st["x1"], st["za"] + 0.1, st["ya"], level=-1))
             lo, hi = sorted((st["za"], st["zb"]))
             # rambardes latérales (collision) sur toute la longueur
             y_lo = min(st["ya"], st["yb"])
             y_hi = max(st["ya"], st["yb"])
+            rail_lo = lo
+            if st["id"] == "rdc_1":
+                # le bas de la volée touche le mur du bureau (z 4.6) : on y accède par le côté,
+                # donc pas de rambarde sur les premières marches (< 0,55 m, franchissables)
+                rail_lo = lo + 0.75
             for xw in (st["x0"], st["x1"]):
-                self.b(owner).colliders.append((xw - 0.05, y_lo - 0.1, lo, xw + 0.05, y_hi + 1.2, hi))
+                self.b(owner).colliders.append((xw - 0.05, y_lo - 0.1, rail_lo, xw + 0.05, y_hi + 1.2, hi))
             # fermeture côté bas (z) : mur invisible, et côté haut ouvert
             if st["id"] == "rdc_1":
                 self.b(1).colliders.append((st["x0"], 3.0, st["za"] - 0.05, st["x1"], 4.2, st["za"] + 0.05))
@@ -731,10 +739,14 @@ class House:
                     b.quad("neon" if lit else "volet", (wx, 2.0, fz), (wx + 0.9, 2.0, fz), (wx + 0.9, 3.3, fz), (wx, 3.3, fz), nrm,
                            (0.9, 0.7, 0.4) if lit else (dark + 0.2, dark + 0.25, dark + 0.2))
         # lampadaire
-        b.cyl("metal", 3.2, 0.0, -7.0, 0.07, 5.0, 6, (0.35, 0.36, 0.4))
-        b.box("metal", 3.0, 4.95, -7.1, 3.9, 5.05, -6.9, (0.35, 0.36, 0.4))
-        b.box("neon", 3.35, 4.88, -7.08, 3.85, 4.95, -6.92, (1.0, 0.85, 0.55))
-        self.anchors["lamp_pos"] = Vec3(3.6, 4.8, -7.0)
+        if b.model("street_lamp_01", 3.2, -7.0, 0.0, 0.0, (None, 4.6, None)):
+            b.sphere("neon", 3.2, 4.32, -7.0, 0.1, (1.0, 0.85, 0.55))
+            self.anchors["lamp_pos"] = Vec3(3.2, 4.3, -7.0)
+        else:
+            b.cyl("metal", 3.2, 0.0, -7.0, 0.07, 5.0, 6, (0.35, 0.36, 0.4))
+            b.box("metal", 3.0, 4.95, -7.1, 3.9, 5.05, -6.9, (0.35, 0.36, 0.4))
+            b.box("neon", 3.35, 4.88, -7.08, 3.85, 4.95, -6.92, (1.0, 0.85, 0.55))
+            self.anchors["lamp_pos"] = Vec3(3.6, 4.8, -7.0)
         # voiture garée
         self._car(b, 9.5, -9.4)
         self.anchors["car_pos"] = Vec3(9.5, 0.0, -9.4)
@@ -743,7 +755,7 @@ class House:
         self.colliders.extend(b.colliders)
         self.surfaces.append(Surface(-30, -16, 46, 40, 0.0, level=0))
         # lumières extérieures
-        lamp = LightSource((3.6, 4.7, -7.0), (1.0, 0.8, 0.5), 1.6, 12.0, kind="flicker", name="lampadaire")
+        lamp = LightSource(tuple(self.anchors["lamp_pos"]), (1.0, 0.8, 0.5), 1.6, 12.0, kind="flicker", name="lampadaire")
         self.anchors["lamp_light"] = lamp
         self.lights.append(lamp)
 

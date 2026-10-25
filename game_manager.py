@@ -13,14 +13,14 @@ import game_data as gd
 from config import settings
 from assistance_system import AssistanceSystem
 from cinematic_engine import CinematicEngine
-from effects import EffectsManager, PhotoSystem, SkyDome, FlashlightCone
+from effects import EffectsManager, PhotoSystem, SkyDome
 from entity_ai import EntityAI
 from house_events import HouseEvents
 from house_generator import House
 from interaction_system import InteractionSystem
 from intro_cinematic import build_intro, PLAYER_START
 
-OUTSIDE_START = (11.2, 0.0, -10.4)      # à côté de la voiture garée, rue des Lilas
+OUTSIDE_START = (11.2, 0.0, -6.9)       # sur le trottoir à côté de la voiture garée (hors de son collider), rue des Lilas
 
 
 def voice_text(text):
@@ -212,7 +212,6 @@ class GameManager:
         self.events.setup()
         self.particles = ParticleManager(self)
         self.sky = SkyDome()
-        self.fl_cone = FlashlightCone(self.player.cone_anchor)
         self.settings_menu = SettingsMenu(self)
         self.achievements = Achievements(self)
         self.tutorial = Tutorial(self)
@@ -1174,7 +1173,6 @@ class GameManager:
         shader_state.cam_pos = cam_pos
         self.lighting.update(dt, cam_pos)
         self.sky.update()
-        self.fl_cone.update(p.flashlight, self.phone.is_open)
         self.events.update(dt)
         if self.neighborhood is not None:
             self.neighborhood.update(dt)

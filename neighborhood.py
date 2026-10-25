@@ -53,7 +53,7 @@ def _txt_tex(text, px=96, fg=(255, 255, 255), bg=None, pad=18, bold=True, kind="
     import typography as T
     from texture_generator import textures
     f = T.pil_font(kind, px, bold)
-    w = int(T.text_width(text, f)) + pad * 2
+    w = int(T.text_width(text, kind, px, bold)) + pad * 2
     h = int(px * 1.35) + pad
     img = Image.new("RGBA", (w, h), bg if bg else (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -338,6 +338,7 @@ class Neighborhood:
         self._build_villas(b, be, rng)
         # --- mobilier urbain ---
         self._street_lamps(b, be)
+        self._street_furniture(b)
         self._bus_stop(b, be)
         self._traffic_light(b, be)
         self._barriers(b, be)
@@ -353,7 +354,9 @@ class Neighborhood:
         parked = [(-22.0, -8.3), (-38.0, -8.3), (36.0, -8.3), (64.0, -8.3), (-50.0, -15.1), (-27.0, -15.1), (4.0, -15.1),
                   (70.0, -15.1), (90.0, -8.3)]
         for i, (px_, pz_) in enumerate(parked):
-            car_mesh(b, px_, pz_, car_cols[i % len(car_cols)], True)
+            # voitures de voisins sous bâche (modèle 3D) ; à défaut, citadine en boîtes
+            if not b.model("covered_car", px_, pz_, 0.0, 0.0, (4.1, 1.5, 1.8), free_yaw=True):
+                car_mesh(b, px_, pz_, car_cols[i % len(car_cols)], True)
             cols.append((px_ - 2.1, 0, pz_ - 0.9, px_ + 2.1, 1.5, pz_ + 0.9))
         # scooter de livraison abandonné (référence au livreur disparu)
         b.obox("metal", -3.0, 0.2, ROAD_Z0 - 1.2, 1.6, 0.5, 0.5, 20, (0.95, 0.45, 0.08))
@@ -485,19 +488,21 @@ class Neighborhood:
         for zz in (-24.95, -24.65, -24.35):
             b.box("carrelage", 11.8, 0.035, zz, 15.8, 0.048, zz + 0.045, (1.0, 0.82, 0.08), tile=0.5)
         b.box("bois_meuble", 17.6, 0, -24.4, 18.6, 0.95, -22.0, (0.7, 0.72, 0.78), collide=True)
+        b.model("CashRegister_01", 18.1, -22.6, 0.95, 0.0, (0.5, None, 0.5))
+        b.model("WetFloorSign_01", 16.3, -28.0, 0.0, 30.0, (None, 0.62, None))
         sign(self.root, "CAISSE FERMÉE", (18.1, 1.25, -23.2), 0.12, 0, (255, 255, 255), (214, 36, 46, 255), px=48)
         for gx in (SHOP_DOOR_X - 1.15, SHOP_DOOR_X + 1.15):
             b.box("metal", gx - 0.05, 0, z1 - 1.1, gx + 0.05, 1.5, z1 - 0.7, (0.8, 0.82, 0.88), collide=True)
         # enseigne lumineuse Carrefour City
-        sign(self.root, SHOP_NAME, (SHOP_DOOR_X, H + 0.42, z1 + 0.06), 0.55, 180,
-             (255, 255, 255), bg=(10, 30, 115, 255), px=110)
+        enseigne = sign(self.root, SHOP_NAME, (SHOP_DOOR_X, H + 0.42, z1 + 0.06), 0.55, 180,
+                        (255, 255, 255), bg=(10, 30, 115, 255), px=110)
         # horaires et promos sur la vitrine
         sign(self.root, "Ouvert 7j/7 · 7h – 23h", (SHOP_DOOR_X + 6.5, 2.6, z1 + 0.04), 0.2, 180,
              (255, 255, 255), (214, 36, 46, 230), px=48)
         sign(self.root, "PROMO CARTE : -1 € sur les piles", (SHOP_DOOR_X - 6.5, 2.6, z1 + 0.04), 0.2, 180,
              (255, 255, 255), (18, 72, 160, 230), px=48)
-        # logo Carrefour (croix rouge/bleu)
-        self._carrefour_logo(SHOP_DOOR_X - 5.5, H + 0.42, z1 + 0.06)
+        # logo Carrefour (croix rouge/bleu), collé à gauche de l'enseigne vue depuis la rue (+x)
+        self._carrefour_logo(SHOP_DOOR_X + enseigne.scale_x / 2 + 0.45, H + 0.42, z1 + 0.06)
         # affiches promo dans les vitrines
         sign(self.root, "FRUITS & LÉGUMES  FRAIS", (x0 + 4.0, 1.8, z1 + 0.02), 0.18, 180,
              (255, 255, 255), (46, 139, 87, 230), px=48)
@@ -514,7 +519,7 @@ class Neighborhood:
             db.build(parent=root)
             self.door_panels.append((root, s))
         self.door_open = 0.0
-        b.box("crepi", d0 - 0.1, 2.5, z1 - 0.2, d1 + 0.1, H, z1, (0.85, 0.85, 0.85))
+        b.box("metal", d0 - 0.1, 2.5, z1 - 0.2, d1 + 0.1, H, z1, (0.3, 0.32, 0.36))      # linteau (assorti aux montants)
 
         # --- éléments extérieurs ---
         # tapis d'entrée
@@ -564,7 +569,7 @@ class Neighborhood:
         d.polygon(pts_b, fill=(10, 30, 115, 255))
         tex = textures.from_pil(img)
         Entity(parent=self.root, model="quad", texture=tex, position=(x, y, z),
-               rotation_y=180, scale=(0.5, 0.5), double_sided=True)
+               rotation_y=180, scale=(0.62, 0.62), double_sided=True)
 
     def _build_resto(self, b, be, rng):
         x0, z0, x1, z1 = RESTO
@@ -613,6 +618,9 @@ class Neighborhood:
         self.counter_pos = Vec3(x0 + 4.0, 1.2, z0 + 2.3)
 
     def _table(self, b, tx, tz):
+        if b.model("outdoor_table_chair_set_01", tx, tz, 0.0, 0.0, (1.7, 1.0, 1.0)):
+            b.colliders.append((tx - 0.45, 0, tz - 0.45, tx + 0.45, 0.8, tz + 0.45))
+            return
         b.cyl("metal", tx, 0, tz, 0.05, 0.72, 6, (0.25, 0.25, 0.27))
         b.cyl("marbre", tx, 0.72, tz, 0.42, 0.04, 10, (1, 1, 1))
         for (cx, cz) in ((tx - 0.62, tz), (tx + 0.62, tz)):
@@ -687,7 +695,11 @@ class Neighborhood:
         while x < X_MAX - 4:
             side = -1 if k % 2 == 0 else 1
             z = ROAD_Z0 - 0.4 if side < 0 else ROAD_Z1 + 0.4
-            if abs(x - 3.2) > 6:      # le lampadaire devant la maison existe déjà
+            if abs(x - 3.2) > 6 and b.model("street_lamp_01", x, z, 0.0, 0.0, (None, 4.6, None)):
+                be.sphere("neon", x, 4.32, z, 0.1, (1.0, 0.82, 0.5))
+                self.lights.append(LightSource((x, 4.2, z), (1.0, 0.78, 0.48), 1.6, 13.0, kind="static", name="lampadaire"))
+                b.colliders.append((x - 0.15, 0, z - 0.15, x + 0.15, 5.0, z + 0.15))
+            elif abs(x - 3.2) > 6:      # le lampadaire devant la maison existe déjà
                 b.cyl("metal", x, 0, z, 0.07, 5.2, 6, (0.3, 0.32, 0.35))
                 b.box("metal", x - 0.05, 5.1, z, x + 0.05, 5.2, z - side * 0.9, (0.3, 0.32, 0.35))
                 be.box("neon", x - 0.2, 5.0, min(z - side * 0.6, z - side * 1.0), x + 0.2, 5.08, max(z - side * 0.6, z - side * 1.0),
@@ -696,6 +708,13 @@ class Neighborhood:
                 b.colliders.append((x - 0.12, 0, z - 0.12, x + 0.12, 5.0, z + 0.12))
             x += 17.0
             k += 1
+
+    def _street_furniture(self, b):
+        """Poubelles le long des trottoirs (modèles 3D uniquement)."""
+        z_n, z_s = ROAD_Z1 + 0.35, ROAD_Z0 - 0.35
+        for (x, z) in ((-40.0, z_n), (-6.0, z_n), (26.0, z_n), (62.0, z_n), (-33.0, z_s), (8.0, z_s), (36.0, z_s), (75.0, z_s)):
+            if b.model("metal_trash_can", x, z, 0.0, 0.0, (None, 0.95, None)):
+                b.colliders.append((x - 0.25, 0, z - 0.25, x + 0.25, 1.0, z + 0.25))
 
     def _bus_stop(self, b, be):
         x, z = -24.0, ROAD_Z0 - 1.9
@@ -727,6 +746,9 @@ class Neighborhood:
                                 ((BLVD_X0 + BLVD_X1) / 2, Z_MAX - 1.5, True)):
             for k in range(-2, 3):
                 cx, cz = (x + k * 1.8, z) if along_x else (x, z + k * 1.8)
+                if b.model("concrete_road_barrier", cx, cz, 0.0, 0.0 if along_x else 90.0, (1.7, 0.8, 0.5), free_yaw=True):
+                    be.sphere("neon", cx, 0.86, cz, 0.06, (1.0, 0.5, 0.0), lat=3, lon=5)
+                    continue
                 b.obox("platre", cx, 0.5, cz, 1.6 if along_x else 0.12, 0.3, 0.12 if along_x else 1.6, 0, (0.9, 0.2, 0.15))
                 b.obox("metal", cx, 0.0, cz, 0.1, 0.5, 0.1, 0, (0.3, 0.3, 0.3))
                 be.sphere("neon", cx, 0.9, cz, 0.06, (1.0, 0.5, 0.0), lat=3, lon=5)

@@ -12,8 +12,9 @@ import random
 from ursina import Entity, Mesh, Vec3
 from panda3d.core import TransparencyAttrib
 
+import models
 from shaders import horror_shader
-from texture_generator import textures
+from texture_generator import textures, photo_meta
 
 # Taille (en mètres) couverte par une répétition de chaque texture
 TILE = {
@@ -24,6 +25,9 @@ TILE = {
     "metal": 1.0, "papier": 1.0, "drap": 1.0, "rideau": 1.0, "eau_noire": 1.0,
     "miroir": 1.0, "miroir_brise": 1.0, "vitre": 1.0, "neon": 1.0, "ecran_noir": 1.0,
 }
+# Textures photo : la répétition suit leur taille réelle. Les `tile` explicites (réglés pour la version procédurale)
+# sont mis à l'échelle dans le même rapport.
+PHOTO_SCALE = {k: v["size_m"][0] / TILE.get(k, 1.0) for k, v in photo_meta().items() if v.get("mode", "replace") == "replace"}
 TRANSPARENT = {"vitre", "empreintes", "mains", "griffures", "taches", "sel", "sel_brise",
                "cercle_sombre", "silhouette", "lueur", "poussiere", "goutte"}
 
@@ -71,7 +75,7 @@ def _product_label_texture(label_text):
     draw = ImageDraw.Draw(img)
     draw.rectangle((2, 2, 253, 93), outline=(80, 78, 68, 255), width=4)
     font = T.pil_font("sans", 46, True)
-    while T.text_width(label_text, font) > 232 and font.size > 16:
+    while T.text_width(label_text, "sans", font.size, True) > 232 and font.size > 16:
         font = T.pil_font("sans", font.size - 2, True)
     draw.text((128, 48), label_text, font=font, fill=(34, 35, 38, 255), anchor="mm")
     textures.images[name] = img
@@ -87,6 +91,15 @@ class MeshBuilder:
         self.groups = {}
         self.colliders = []     # (x0, y0, z0, x1, y1, z1)
         self.entities = []
+        self.models = []        # modèles 3D à instancier au build (voir model())
+
+    def model(self, name, cx, cz, y0, rot=0.0, size=None, stretch=False, pitch=0.0, free_yaw=False):
+        """Réserve un modèle 3D (models.py) posé au build. Faux si le modèle est absent : l'appelant
+        construit alors la version en boîtes."""
+        if not models.available(name):
+            return False
+        self.models.append((name, cx, cz, y0, rot, size, stretch, pitch, free_yaw))
+        return True
 
     # --- primitives --------------------------------------------------------
     def _grp(self, tex):
@@ -100,6 +113,8 @@ class MeshBuilder:
         """Quad p0..p3 ; p0->p1 = axe u, p0->p3 = axe v. `normal` = normale voulue."""
         g = self._grp(tex)
         t = tile or TILE.get(tex, 1.0)
+        if tex in PHOTO_SCALE:
+            t = tuple(v * PHOTO_SCALE[tex] for v in t) if isinstance(t, (tuple, list)) else t * PHOTO_SCALE[tex]
         tu, tv = t if isinstance(t, (tuple, list)) else (t, t)
         du = _len(_sub(p1, p0)) / tu
         dv = _len(_sub(p3, p0)) / tv
@@ -118,6 +133,8 @@ class MeshBuilder:
     def tri(self, tex, p0, p1, p2, normal, col=(1, 1, 1), tile=None):
         g = self._grp(tex)
         t = tile or TILE.get(tex, 1.0)
+        if tex in PHOTO_SCALE:
+            t = tuple(v * PHOTO_SCALE[tex] for v in t) if isinstance(t, (tuple, list)) else t * PHOTO_SCALE[tex]
         pts = [p0, p1, p2]
         front = _dot(_cross(_sub(p1, p0), _sub(p2, p0)), normal) < 0
         order = (0, 1, 2) if front else (0, 2, 1)
@@ -264,6 +281,63 @@ class MeshBuilder:
                 else:
                     self.quad(tex, p00, p01, p11, p10, n, col, tile)
 
+    # --- surfaces lisses (sanitaires) --------------------------------------
+    def loft(self, tex, rings, col=(1, 1, 1), outward=True, tile=None):
+        """Surface lisse reliant des anneaux fermés de même nombre de points (profil de bas en haut).
+
+        Normales par sommet (différences centrées) : rendu arrondi sans facettes. outward : normales vers
+        l'extérieur des anneaux (paroi extérieure) ou vers leur axe (paroi intérieure d'une vasque).
+        """
+        g = self._grp(tex)
+        t = tile or TILE.get(tex, 1.0)
+        if tex in PHOTO_SCALE:
+            t = t * PHOTO_SCALE[tex]
+        a = col if len(col) == 4 else (col[0], col[1], col[2], 1.0)
+        R, S = len(rings), len(rings[0])
+        centers = [tuple(sum(p[k] for p in ring) / S for k in range(3)) for ring in rings]
+        normals, uvs = [], []
+        vacc = 0.0
+        for i in range(R):
+            if i:
+                vacc += _len(_sub(rings[i][0], rings[i - 1][0]))
+            row_n, row_uv, uacc = [], [], 0.0
+            for j in range(S):
+                du = _sub(rings[i][(j + 1) % S], rings[i][(j - 1) % S])
+                dv = _sub(rings[min(i + 1, R - 1)][j], rings[max(i - 1, 0)][j])
+                n = _norm(_cross(dv, du))
+                radial = _norm(_sub(rings[i][j], centers[i]))
+                if abs(_dot(n, radial)) < 0.25:
+                    if n[1] < 0:                       # surface quasi horizontale (rebord) : vers le haut
+                        n = (-n[0], -n[1], -n[2])
+                elif (_dot(n, radial) < 0) == outward:
+                    n = (-n[0], -n[1], -n[2])
+                if j:
+                    uacc += _len(_sub(rings[i][j], rings[i][j - 1]))
+                row_n.append(n)
+                row_uv.append((uacc / t, vacc / t))
+            normals.append(row_n)
+            uvs.append(row_uv)
+        for i in range(R - 1):
+            for j in range(S):
+                jn = (j + 1) % S
+                quad = [(i, j), (i, jn), (i + 1, jn), (i + 1, j)]
+                pts = [rings[r][c] for r, c in quad]
+                nav = _norm(tuple(sum(normals[r][c][k] for r, c in quad) for k in range(3)))
+                front = _dot(_cross(_sub(pts[1], pts[0]), _sub(pts[2], pts[0])), nav) < 0
+                for idx in ((0, 1, 2, 0, 2, 3) if front else (0, 2, 1, 0, 3, 2)):
+                    r, c = quad[idx]
+                    uv = uvs[r][c] if not (c == 0 and idx in (1, 2)) else (uvs[r][S - 1][0] + _len(_sub(rings[r][0], rings[r][S - 1])) / t, uvs[r][c][1])
+                    g["v"].append(rings[r][c])
+                    g["u"].append(uv)
+                    g["n"].append(normals[r][c])
+                    g["c"].append(a)
+
+    def cap(self, tex, ring, normal, col=(1, 1, 1), tile=None):
+        """Disque plat fermant un anneau (fond de vasque, dessous de baignoire...)."""
+        c = tuple(sum(p[k] for p in ring) / len(ring) for k in range(3))
+        for j in range(len(ring)):
+            self.tri(tex, c, ring[j], ring[(j + 1) % len(ring)], normal, col, tile)
+
     # --- végétation méditerranéenne ----------------------------------------
     def leaf(self, tex, p0, p1, p2, p3, col=(1, 1, 1)):
         """Quad visible des deux côtés (feuilles, palmes)."""
@@ -407,6 +481,8 @@ class MeshBuilder:
                 e.set_depth_write(False)
                 e.set_bin("fixed", 20)
             ents.append(e)
+        for (name, cx, cz, y0, rot, size, stretch, pitch, free_yaw) in self.models:
+            models.place(name, parent, cx, cz, y0, rot, size, stretch, pitch, free_yaw)
         self.entities = ents
         return ents
 
@@ -490,7 +566,17 @@ WOOD = (0.85, 0.8, 0.75)
 DARKWOOD = (0.55, 0.5, 0.45)
 
 
+def _ocollider(b, cx, y0, cz, sx, sy, sz, rot=0.0):
+    """Collider d'une boîte orientée (même emprise que obox(..., collide=True)), sans géométrie."""
+    ca, sa = abs(math.cos(math.radians(rot))), abs(math.sin(math.radians(rot)))
+    ex, ez = (ca * sx + sa * sz) / 2, (sa * sx + ca * sz) / 2
+    b.colliders.append((cx - ex, y0, cz - ez, cx + ex, y0 + sy, cz + ez))
+
+
 def sofa(b, cx, cz, rot, y0, length=2.0, depth=0.9):
+    if b.model("sofa_03", cx, cz, y0, rot, (length, 1.0, depth), stretch=True):
+        _ocollider(b, cx, y0, cz, length, 0.42, depth, rot)
+        return
     b.obox("tissu", cx, y0, cz, length, 0.42, depth, rot, (1, 1, 1), collide=True)
     ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
     # dossier (côté -z local)
@@ -511,10 +597,25 @@ def sofa(b, cx, cz, rot, y0, length=2.0, depth=0.9):
 
 
 def armchair(b, cx, cz, rot, y0):
+    if b.model("GreenChair_01", cx, cz, y0, rot, (0.95, 1.05, 0.9)):
+        _ocollider(b, cx, y0, cz, 0.95, 0.42, 0.9, rot)
+        return
     sofa(b, cx, cz, rot, y0, length=0.95, depth=0.9)
 
 
 def table(b, cx, cz, y0, sx, sz, h=0.75, tex="bois_meuble", col=WOOD, rot=0.0, collide=True):
+    if h <= 0.5:
+        name = "gothic_coffee_table"
+    elif sx <= 0.5 and sz <= 0.5:
+        name = "painted_wooden_nightstand"
+    elif sx >= 1.0 and sz >= 0.7:
+        name = "dining_table"
+    else:
+        name = "WoodenTable_01"
+    if b.model(name, cx, cz, y0, rot, (sx, h, sz), stretch=True, free_yaw=True):
+        if collide:
+            _ocollider(b, cx, y0, cz, sx, h, sz, rot)
+        return
     b.obox(tex, cx, y0 + h - 0.05, cz, sx, 0.05, sz, rot, col, collide=False)
     ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
     for lx in (-1, 1):
@@ -528,6 +629,13 @@ def table(b, cx, cz, y0, sx, sz, h=0.75, tex="bois_meuble", col=WOOD, rot=0.0, c
 
 
 def chair(b, cx, cz, y0, rot=0.0, fallen=False, col=WOOD):
+    if b.model("painted_wooden_chair_01", cx, cz, y0, rot, (0.45, None if fallen else 0.92, 0.45 if not fallen else None),
+               pitch=90.0 if fallen else 0.0):
+        if fallen:
+            b.colliders.append((cx - 0.45, y0, cz - 0.3, cx + 0.45, y0 + 0.45, cz + 0.3))
+        else:
+            b.colliders.append((cx - 0.22, y0, cz - 0.22, cx + 0.22, y0 + 0.9, cz + 0.22))
+        return
     if fallen:
         b.obox("bois_meuble", cx, y0, cz, 0.42, 0.42, 0.05, rot, col)               # assise couchée
         b.obox("bois_meuble", cx + 0.2, y0, cz, 0.05, 0.45, 0.42, rot + 90, col)
@@ -549,6 +657,12 @@ def bookshelf(b, x0, z0, x1, z1, y0, height=2.1, rng=None, face="+x"):
     """Bibliothèque contre un mur. (x0,z0)-(x1,z1) = emprise. face = direction d'ouverture."""
     import random
     r = rng or random.Random(5)
+    rot = {"+z": 0.0, "+x": 90.0, "-z": 180.0, "-x": 270.0}[face]
+    along_x = face in ("+z", "-z")
+    w, d = (x1 - x0, z1 - z0) if along_x else (z1 - z0, x1 - x0)
+    if b.model("vintage_cabinet_01", (x0 + x1) / 2, (z0 + z1) / 2, y0, rot, (w, height, d), stretch=True):
+        b.colliders.append((x0, y0, z0, x1, y0 + height, z1))
+        return
     b.box("bois_meuble", x0, y0, z0, x1, y0 + height, z1, DARKWOOD, collide=True,
           skip=("+x",) if face == "+x" else ("-x",) if face == "-x" else ("+z",) if face == "+z" else ("-z",))
     shelves = 5
@@ -584,6 +698,9 @@ def bookshelf(b, x0, z0, x1, z1, y0, height=2.1, rng=None, face="+x"):
 
 
 def bed(b, cx, cz, rot, y0, w=1.6, l=2.0, col_sheet=(0.95, 0.9, 0.7)):
+    if b.model("GothicBed_01", cx, cz, y0, rot, (w, None, l), stretch=True):
+        _ocollider(b, cx, y0, cz, w, 0.3, l, rot)
+        return
     b.obox("bois_meuble", cx, y0, cz, w, 0.3, l, rot, DARKWOOD, collide=True)
     b.obox("drap", cx, y0 + 0.3, cz, w - 0.1, 0.18, l - 0.1, rot, col_sheet)
     ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
@@ -605,6 +722,9 @@ def counter(b, x0, z0, x1, z1, y0, h=0.9):
 
 
 def carton(b, cx, cz, y0, size=0.5, rot=0.0, col=(0.7, 0.55, 0.35)):
+    if b.model("cardboard_box_01", cx, cz, y0, rot, (size, size * 0.9, size), stretch=True, free_yaw=True):
+        _ocollider(b, cx, y0, cz, size, size * 0.9, size, rot)
+        return
     b.obox("papier", cx, y0, cz, size, size * 0.9, size, rot, col, collide=True)
     b.obox("papier", cx, y0 + size * 0.9, cz, size * 0.96, 0.02, 0.06, rot, (0.55, 0.45, 0.3))
 
@@ -615,23 +735,117 @@ def covered_furniture(b, cx, cz, y0, sx, sz, h):
     b.obox("drap", cx, y0 + h, cz, sx * 0.9, 0.06, sz * 0.9, 0.0, (0.9, 0.9, 0.9))
 
 
-def toilet(b, cx, cz, y0, rot):
-    b.obox("email", cx, y0, cz, 0.38, 0.4, 0.5, rot, (1, 1, 0.95), collide=True)
+def _ring(cx, cz, y, hw, hd, rot=0.0, n=2.6, seg=32, ox=0.0, oz=0.0):
+    """Anneau en super-ellipse |x/hw|^n + |z/hd|^n = 1 (rectangle arrondi pour n grand), centré sur (ox, oz)
+    dans le repère local de l'objet, puis tourné de `rot` et placé en (cx, cz)."""
     ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
-    ox, oz = 0.0, -0.3
-    b.obox("email", cx + ox * ca + oz * sa, y0 + 0.4, cz - ox * sa + oz * ca, 0.4, 0.4, 0.18, rot, (1, 1, 0.95))
+    pts = []
+    for k in range(seg):
+        t = 2 * math.pi * k / seg
+        c, s_ = math.cos(t), math.sin(t)
+        lx = ox + hw * math.copysign(abs(c) ** (2.0 / n), c)
+        lz = oz + hd * math.copysign(abs(s_) ** (2.0 / n), s_)
+        pts.append((cx + lx * ca + lz * sa, y, cz - lx * sa + lz * ca))
+    return pts
+
+
+def _local(cx, cz, rot, lx, lz):
+    ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+    return cx + lx * ca + lz * sa, cz - lx * sa + lz * ca
+
+
+ENAMEL = (1.0, 1.0, 0.96)
+CHROME = (0.85, 0.85, 0.88)
+
+
+def _basin(b, tex, cx, cz, rot, rim_y, outer, inner, depth, col, n_out=2.6, n_in=2.6, ox=0.0, oz=0.0, bulge=None, floor=True):
+    """Vasque creuse : bord plat (anneau extérieur -> intérieur) puis paroi intérieure jusqu'au fond, fond plat.
+    outer/inner = (demi-largeur, demi-profondeur). bulge : profil intérieur (fractions de l'ouverture, de haut en bas)."""
+    (ow, od), (iw, idp) = outer, inner
+    b.loft(tex, [_ring(cx, cz, rim_y, ow, od, rot, n_out, ox=ox, oz=oz), _ring(cx, cz, rim_y, iw, idp, rot, n_in, ox=ox, oz=oz)],
+           col, outward=False)
+    prof = bulge or (1.0, 0.97, 0.9, 0.78, 0.6)
+    rings = [_ring(cx, cz, rim_y - depth * k / (len(prof) - 1), iw * f, idp * f, rot, n_in, ox=ox, oz=oz) for k, f in enumerate(prof)]
+    b.loft(tex, rings[::-1], col, outward=False)
+    if floor:
+        b.cap(tex, rings[-1], (0, 1, 0), col)
+    return rings[-1]
+
+
+def toilet(b, cx, cz, y0, rot):
+    """WC : pied et cuvette arrondis, abattant, réservoir aux angles arrondis (façade vers +z local)."""
+    # pied -> cuvette (s'évase et avance vers l'avant)
+    prof = ((0.0, 0.11, 0.15, -0.02), (0.12, 0.12, 0.17, 0.0), (0.26, 0.16, 0.22, 0.03), (0.36, 0.185, 0.25, 0.04), (0.4, 0.19, 0.255, 0.04))
+    b.loft("email", [_ring(cx, cz, y0 + y, hw, hd, rot, 2.2, oz=oz) for (y, hw, hd, oz) in prof], ENAMEL)
+    _basin(b, "email", cx, cz, rot, y0 + 0.4, (0.19, 0.255), (0.14, 0.2), 0.2, ENAMEL, n_out=2.2, n_in=2.0, oz=0.04,
+           bulge=(1.0, 0.92, 0.75, 0.5, 0.3))
+    b.cap("eau_noire", _ring(cx, cz, y0 + 0.27, 0.075, 0.1, rot, 2.0, oz=0.06), (0, 1, 0), (0.6, 0.65, 0.6))
+    # abattant (anneau épais) posé sur la cuvette
+    seat_o = [_ring(cx, cz, y0 + yy, 0.195, 0.26, rot, 2.2, oz=0.04) for yy in (0.405, 0.43)]
+    b.loft("email", seat_o, (0.95, 0.95, 0.92))
+    _basin(b, "email", cx, cz, rot, y0 + 0.43, (0.195, 0.26), (0.13, 0.18), 0.025, (0.95, 0.95, 0.92), n_out=2.2, n_in=2.0, oz=0.05,
+           bulge=(1.0, 1.0), floor=False)
+    # réservoir (arrière, -z local)
+    tank = [_ring(cx, cz, y0 + yy, 0.2, 0.09, rot, 6.0, oz=-0.26) for yy in (0.4, 0.42, 0.74, 0.76)]
+    b.loft("email", tank, ENAMEL)
+    lid = [_ring(cx, cz, y0 + yy, 0.215, 0.1, rot, 6.0, oz=-0.26) for yy in (0.76, 0.79)]
+    b.loft("email", lid, ENAMEL)
+    b.cap("email", lid[-1], (0, 1, 0), ENAMEL)
+    bx, bz = _local(cx, cz, rot, 0.0, -0.26)
+    b.cyl("metal", bx, y0 + 0.79, bz, 0.025, 0.012, 12, CHROME)
+    _ocollider(b, cx, y0, cz, 0.38, 0.4, 0.5, rot)
 
 
 def sink(b, cx, cz, y0, rot, h=0.85):
-    b.obox("email", cx, y0 + h - 0.12, cz, 0.55, 0.12, 0.42, rot, (1, 1, 0.95), collide=False)
-    b.obox("email", cx, y0, cz, 0.12, h - 0.12, 0.12, rot, (1, 1, 0.95), collide=True)
-    b.obox("metal", cx, y0 + h, cz, 0.04, 0.16, 0.04, rot, (1, 1, 1))
+    """Lavabo sur colonne : vasque creuse, colonne galbée, robinet chromé (dos du lavabo vers -z local)."""
+    # colonne
+    col_prof = ((0.0, 0.11), (0.03, 0.1), (0.2, 0.075), (h - 0.3, 0.07), (h - 0.17, 0.09))
+    b.loft("email", [_ring(cx, cz, y0 + y, r, r * 0.85, rot, 2.0, seg=24, oz=-0.04) for (y, r) in col_prof], ENAMEL)
+    # vasque : dessous bombé puis bord
+    under = [_ring(cx, cz, y0 + h - dy, 0.275 * f, 0.21 * f, rot, 2.4) for (dy, f) in ((0.17, 0.45), (0.12, 0.8), (0.06, 0.97), (0.0, 1.0))]
+    b.loft("email", under, ENAMEL)
+    b.cap("email", under[0], (0, -1, 0), ENAMEL)
+    floor = _basin(b, "email", cx, cz, rot, y0 + h, (0.275, 0.21), (0.22, 0.15), 0.12, ENAMEL, n_out=2.4, n_in=2.2, oz=0.01)
+    b.cap("metal", _ring(cx, cz, floor[0][1] + 0.002, 0.022, 0.022, rot, 2.0, seg=12, oz=0.01), (0, 1, 0), (0.25, 0.25, 0.27))
+    # robinet : pied, col de cygne, deux croisillons
+    fx, fz = _local(cx, cz, rot, 0.0, -0.17)
+    b.cyl("metal", fx, y0 + h, fz, 0.018, 0.14, 12, CHROME)
+    sx, sz = _local(cx, cz, rot, 0.0, -0.11)
+    b.obox("metal", sx, y0 + h + 0.12, sz, 0.026, 0.026, 0.13, rot, CHROME)
+    for side in (-1, 1):
+        hx, hz = _local(cx, cz, rot, side * 0.08, -0.17)
+        b.cyl("metal", hx, y0 + h, hz, 0.02, 0.05, 10, CHROME)
+        b.sphere("metal", hx, y0 + h + 0.055, hz, 0.02, CHROME, lat=4, lon=8)
+    _ocollider(b, cx, y0, cz, 0.12, h - 0.12, 0.12, rot)
 
 
 def bathtub(b, cx, cz, y0, rot, l=1.6, w=0.75, water=False):
-    b.obox("email", cx, y0 + 0.08, cz, l, 0.5, w, rot, (1, 1, 0.95), collide=True)
+    """Baignoire ancienne à pieds de lion : coque ovale galbée, bord roulé, intérieur creux, robinetterie."""
+    hl, hw = l / 2, w / 2
+    rim = y0 + 0.62
+    shell = [_ring(cx, cz, y0 + y, hl * f, hw * g, rot, 2.6, seg=40)
+             for (y, f, g) in ((0.14, 0.84, 0.78), (0.18, 0.9, 0.86), (0.3, 0.96, 0.95), (0.45, 0.99, 0.99), (0.58, 1.0, 1.0), (0.62, 1.01, 1.01))]
+    b.loft("email", shell, ENAMEL)
+    b.cap("email", shell[0], (0, -1, 0), ENAMEL)
+    _basin(b, "email", cx, cz, rot, rim, (hl * 1.01, hw * 1.01), (hl - 0.07, hw - 0.07), 0.44, ENAMEL,
+           bulge=(1.0, 0.98, 0.95, 0.88, 0.75))
+    # pieds de lion (fonte)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            fx, fz = _local(cx, cz, rot, sx * (hl - 0.2), sz * (hw - 0.14))
+            b.sphere("metal", fx, y0 + 0.07, fz, 0.07, (0.35, 0.32, 0.28), lat=6, lon=10, sy=1.1)
+            b.cyl("metal", fx, y0, fz, 0.05, 0.03, 10, (0.3, 0.28, 0.25))
+    # robinetterie côté -x local
+    tx, tz = _local(cx, cz, rot, -hl + 0.05, 0.0)
+    b.cyl("metal", tx, rim, tz, 0.02, 0.16, 12, CHROME)
+    spx, spz = _local(cx, cz, rot, -hl + 0.12, 0.0)
+    b.obox("metal", spx, rim + 0.13, spz, 0.15, 0.028, 0.028, rot, CHROME)
+    for s_ in (-1, 1):
+        hx, hz = _local(cx, cz, rot, -hl + 0.05, s_ * 0.1)
+        b.cyl("metal", hx, rim, hz, 0.018, 0.06, 10, CHROME)
     if water:
-        b.obox("eau_noire", cx, y0 + 0.55, cz, l - 0.12, 0.01, w - 0.12, rot, (1, 1, 1))
+        b.cap("eau_noire", _ring(cx, cz, y0 + 0.5, hl - 0.1, hw - 0.1, rot, 2.6, seg=40), (0, 1, 0), (1, 1, 1))
+    _ocollider(b, cx, y0 + 0.08, cz, l, 0.5, w, rot)
 
 
 def fridge_body(b, cx, cz, y0, rot=0.0, w=0.7, d=0.7, h=1.7):
@@ -671,6 +885,9 @@ def washing_machine(b, cx, cz, y0, rot=0.0):
 
 
 def crate(b, cx, cz, y0, size=0.45, rot=0.0):
+    if b.model("wooden_crate_01", cx, cz, y0, rot, (size, size * 0.8, size), stretch=True, free_yaw=True):
+        _ocollider(b, cx, y0, cz, size, size * 0.8, size, rot)
+        return
     b.obox("planches", cx, y0, cz, size, size * 0.8, size, rot, (0.9, 0.85, 0.8), collide=True)
 
 
@@ -699,19 +916,19 @@ def painting(b, x, y, z, w, h, facing, tex="portrait", thick=0.03):
     if facing == "+z":
         b.box("bois_meuble", x - w / 2 - 0.03, y - h / 2 - 0.03, z, x + w / 2 + 0.03, y + h / 2 + 0.03, z + thick, DARKWOOD)
         b.quad(tex, (x - w / 2, y - h / 2, z + thick + 0.002), (x + w / 2, y - h / 2, z + thick + 0.002),
-               (x + w / 2, y + h / 2, z + thick + 0.002), (x - w / 2, y + h / 2, z + thick + 0.002), (0, 0, 1), (1, 1, 1), tile=max(w, h))
+               (x + w / 2, y + h / 2, z + thick + 0.002), (x - w / 2, y + h / 2, z + thick + 0.002), (0, 0, 1), (1, 1, 1), tile=(w, h))
     elif facing == "-z":
         b.box("bois_meuble", x - w / 2 - 0.03, y - h / 2 - 0.03, z - thick, x + w / 2 + 0.03, y + h / 2 + 0.03, z, DARKWOOD)
         b.quad(tex, (x + w / 2, y - h / 2, z - thick - 0.002), (x - w / 2, y - h / 2, z - thick - 0.002),
-               (x - w / 2, y + h / 2, z - thick - 0.002), (x + w / 2, y + h / 2, z - thick - 0.002), (0, 0, -1), (1, 1, 1), tile=max(w, h))
+               (x - w / 2, y + h / 2, z - thick - 0.002), (x + w / 2, y + h / 2, z - thick - 0.002), (0, 0, -1), (1, 1, 1), tile=(w, h))
     elif facing == "+x":
         b.box("bois_meuble", x, y - h / 2 - 0.03, z - w / 2 - 0.03, x + thick, y + h / 2 + 0.03, z + w / 2 + 0.03, DARKWOOD)
         b.quad(tex, (x + thick + 0.002, y - h / 2, z - w / 2), (x + thick + 0.002, y - h / 2, z + w / 2),
-               (x + thick + 0.002, y + h / 2, z + w / 2), (x + thick + 0.002, y + h / 2, z - w / 2), (1, 0, 0), (1, 1, 1), tile=max(w, h))
+               (x + thick + 0.002, y + h / 2, z + w / 2), (x + thick + 0.002, y + h / 2, z - w / 2), (1, 0, 0), (1, 1, 1), tile=(w, h))
     else:
         b.box("bois_meuble", x - thick, y - h / 2 - 0.03, z - w / 2 - 0.03, x, y + h / 2 + 0.03, z + w / 2 + 0.03, DARKWOOD)
         b.quad(tex, (x - thick - 0.002, y - h / 2, z + w / 2), (x - thick - 0.002, y - h / 2, z - w / 2),
-               (x - thick - 0.002, y + h / 2, z - w / 2), (x - thick - 0.002, y + h / 2, z + w / 2), (-1, 0, 0), (1, 1, 1), tile=max(w, h))
+               (x - thick - 0.002, y + h / 2, z - w / 2), (x - thick - 0.002, y + h / 2, z + w / 2), (-1, 0, 0), (1, 1, 1), tile=(w, h))
 
 
 def wall_decal(b, tex, x, y, z, w, h, facing, off=0.012, col=(1, 1, 1)):
