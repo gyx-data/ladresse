@@ -237,9 +237,14 @@ class Door:
             return
         self.is_open = False
         self.part.set_open(False, duration)
-        self._add_collider()
+        from ursina import invoke as _invoke
+        _invoke(self._finish_close, delay=duration)
         if not silent and self.house.on_door_sound:
             self.house.on_door_sound(self, "porte_claque" if slam else "porte_ferme")
+
+    def _finish_close(self):
+        if not self.is_open:
+            self._add_collider()
 
     def toggle(self):
         if self.is_open:
@@ -612,7 +617,8 @@ class House:
                 self.b(2).colliders.append((st["x0"] - 0.05, 6.0, st["zb"], st["x0"] + 0.05, 7.2, st["za"]))
                 self.b(2).colliders.append((st["x1"] - 0.05, 6.0, st["zb"], st["x1"] + 0.05, 7.2, st["za"]))
         # murs porteurs sous les escaliers (RDC) : volume plein
-        self.b(0).colliders.append((8.4, 0.0, 5.0, 9.8, 1.0, 9.4))
+        # z-start reculé pour ne pas bloquer l'entrée de l'escalier
+        self.b(0).colliders.append((8.4, 0.0, 6.5, 9.8, 1.0, 9.4))
 
     def _balustrade(self, b, a0, a1, fixed, y, axis="x"):
         lo, hi = min(a0, a1), max(a0, a1)

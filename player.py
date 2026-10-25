@@ -301,6 +301,7 @@ class Player:
         self.stress = 20.0
         self.stamina = 100.0
         self.frozen = False
+        self.move_enabled = True
 
     def emit_noise(self, radius, pos=None, kind="step"):
         p = Vec3(*(pos if pos is not None else self.pos))

@@ -207,7 +207,7 @@ def _rdc(house, rng):
     rb.sink(b, 15.55, 6.5, y0, 270)
     rb.painting(b, 15.88, 1.55, 6.5, 0.55, 0.7, "-x", tex="miroir_brise")
     rb.wall_decal(b, "griffures", 15.85, 1.2, 8.2, 0.7, 1.0, "-x", off=0.01, col=(0.7, 0.7, 0.7)) if False else None
-    rb.bathtub(b, 14.4, 4.95, y0, 0, 1.6, 0.75)
+    rb.bathtub(b, 14.4, 5.35, y0, 0, 1.6, 0.75)
     house.parts["rideau"] = make_part(house.level_roots[0], "rideau", (1.7, 1.7, 0.03), (14.4, 1.45, 5.4), (1, 1, 1))
     A["rideau"] = Vec3(14.4, 1.2, 5.4)
     point(house, "rideau", (14.4, 1.2, 5.5), "Tirer le rideau", 0, radius=1.0)
@@ -258,7 +258,7 @@ def _etage(house, rng):
     for k in range(10):
         b.cyl("email", rng.uniform(0.25, 0.45), y0 + 0.43 + (k % 4) * 0.5, 10.4 + k * 0.13, 0.05, 0.22, 6,
               rng.choice([(0.7, 0.3, 0.3), (0.3, 0.5, 0.7), (0.8, 0.8, 0.8)]))
-    b.obox("metal", 5.3, y0, 10.7, 0.3, 1.2, 0.04, 70, (0.5, 0.45, 0.35), collide=True)      # balais
+    b.obox("metal", 5.3, y0, 10.7, 0.3, 1.2, 0.04, 70, (0.5, 0.45, 0.35), collide=False)     # balais
     b.cyl("metal", 3.0, y0 + 0.85, 11.5, 0.05, 0.03, 8, (0.3, 0.3, 0.3))
     point(house, "pile_placard", (3.0, y0 + 0.9, 11.4), "Fouiller le placard", 1, radius=1.3)
 
@@ -305,7 +305,7 @@ def _etage(house, rng):
     A["condamnee_centre"] = Vec3(12.0, y0 + 1.0, 2.25)
 
     # ---------------- Salle de bain 1er ---------------------------------
-    rb.bathtub(b, 14.0, 11.3, y0, 0, 1.6, 0.75, water=True)
+    rb.bathtub(b, 14.0, 10.9, y0, 0, 1.6, 0.75, water=True)
     rb.sink(b, 15.55, 8.0, y0, 270)
     rb.toilet(b, 15.5, 9.6, y0, 270) if False else None
     rb.painting(b, 15.88, y0 + 1.55, 8.0, 0.55, 0.7, "-x", tex="miroir")
@@ -407,7 +407,7 @@ def _sous_sol(house, rng):
     # étagères avec sacs de livraison déchirés
     for k in range(3):
         sx = 3.4 + k * 2.45
-        rb.shelving_unit(b, sx, 23.4, sx + 2.1, 24.0, y0, levels=4, height=1.9)
+        rb.shelving_unit(b, sx, 23.2, sx + 2.1, 23.8, y0, levels=4, height=1.9)
         for lv in range(4):
             for j in range(4):
                 rb.delivery_bag(b, sx + 0.35 + j * 0.45, 23.7, y0 + 0.18 + lv * 0.43, rng.uniform(-8, 8), torn=True)
