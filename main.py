@@ -86,6 +86,8 @@ def _optimize_ursina():
 
 app = create_app()
 _optimize_ursina()
+import typography
+typography.apply_ui_font()
 
 from game_manager import GameManager
 

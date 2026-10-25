@@ -156,7 +156,7 @@ def _rdc(house, rng):
     A["frigo"] = Vec3(5.2, 1.0, 11.0)
     point(house, "frigo", (5.2, 1.0, 11.0), "Ouvrir", 0, radius=0.9)
     # papier magnétique (adresse)
-    hidden_paper = text_paper("17 rue des Lilas\n69120 Vaulx-en-Velin", 256, 24, 11)
+    hidden_paper = text_paper("17 rue des Lilas\n06300 Nice", 256, 24, 11)
     ptex = textures.from_pil(hidden_paper)
     pe = Entity(parent=house.level_roots[0], model="quad", texture=ptex, shader=horror_shader, position=(5.35, 1.45, 11.12),
                 scale=(0.2, 0.2), rotation_y=180, double_sided=True)

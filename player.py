@@ -1,5 +1,8 @@
-"""Contrôleur première personne : déplacement, sprint, saut, accroupi, lampe torche,
-stamina, stress, tremblement de caméra, bruit émis, pas, respiration, battement de cœur.
+"""Contrôleur du joueur : déplacement, sprint, saut, accroupi, lampe torche, stamina, stress,
+tremblement de caméra, bruit émis, pas, respiration, battement de cœur.
+
+Deux vues : première personne (mains + lampe) et troisième personne « caméra d'épaule »
+(personnage animé visible, caméra amortie qui évite de traverser les murs et les plafonds).
 """
 import math
 import random
@@ -8,12 +11,15 @@ from ursina import Entity, Vec3, camera, held_keys, mouse, color
 
 import config
 import game_data as gd
+from character_model import CharacterModel
 from lighting_system import Flashlight
 from sound_engine import engine as sound
-from config import settings
+from config import settings, LEVEL_Y
 
 EYE_STAND = 1.62
 EYE_CROUCH = 1.0
+LEVEL_CEIL = {-1: 2.55, 0: 2.95, 1: 2.95, 2: 3.6}      # hauteur sous plafond approximative par niveau
+SHOULDER = {"Droite": 0.55, "Centre": 0.0, "Gauche": -0.55}
 
 
 def key_down(action):
@@ -81,7 +87,17 @@ class Player:
         self.zone = None
         self.stairs_id = None
         self.dark_stress = True
+        self.hide_model = False        # spectateur en coopératif
+        self.force_first_person = 0    # >0 : vue 1re personne imposée (appareil photo, cachette...)
+        self.cam_attached = False
+        self.cam_dist = 0.0            # distance effective (après collision), lissée
+        self.cam_side = SHOULDER.get(settings["cam_epaule"], 0.42)
         self._build_viewmodel()
+        self.model = CharacterModel(parent=self.rig, jacket=(0.42, 0.62, 0.52), pants=(0.34, 0.4, 0.58),
+                                    skin=(0.84, 0.66, 0.54), hair=(0.12, 0.09, 0.07), flashlight=True, seed=1, emit=0.38)
+        self.model.enabled = False
+        # point d'ancrage du faisceau visible (cône) : main en 1re personne, lampe du modèle en 3e
+        self.cone_anchor = Entity(parent=self.vm, position=(0.12, -0.1, 0.25))
 
     # ------------------------------------------------------------------
     # Modèle visible (mains + lampe torche)
@@ -106,9 +122,119 @@ class Player:
         camera.clip_plane_far = 90
         self.vm.parent = camera
         self.vm.enabled = True
+        self.cam_attached = True
+        self.cam_dist = 0.0
+        self._apply_view()
 
     def detach_camera(self):
         self.vm.enabled = False
+        self.cam_attached = False
+        self.model.enabled = False
+
+    # ------------------------------------------------------------------
+    # Vue 1re / 3e personne
+    # ------------------------------------------------------------------
+    @property
+    def third_person(self):
+        return (settings["vue"] == "Troisième personne" and self.force_first_person <= 0
+                and not self.frozen and not self.hide_model and self.cam_attached)
+
+    def toggle_view(self):
+        settings["vue"] = "Première personne" if settings["vue"] == "Troisième personne" else "Troisième personne"
+        settings.save()
+        self.cam_dist = 0.0
+        self._apply_view()
+        return settings["vue"]
+
+    def _apply_view(self):
+        tps = self.third_person
+        self.model.enabled = tps
+        self.vm.enabled = self.cam_attached and not tps
+        anchor_parent = self.model.beam_anchor if tps else self.vm
+        if self.cone_anchor.parent is not anchor_parent:
+            self.cone_anchor.parent = anchor_parent
+            self.cone_anchor.position = Vec3(0, 0, 0) if tps else Vec3(0.12, -0.1, 0.25)
+            self.cone_anchor.rotation = Vec3(0, 0, 0)
+        self._tps_state = tps
+
+    def light_origin(self):
+        """Origine du faisceau pour l'éclairage : lampe du personnage en 3e personne, sinon les yeux."""
+        if self.third_person and self.model.enabled:
+            try:
+                return self.model.beam_anchor.world_position
+            except Exception:
+                pass
+        return self.eye_pos
+
+    def _segment_clear(self, a, b, pad=0.18):
+        """Fraction t (0..1) jusqu'à laquelle le segment a->b est libre (murs, meubles, portes)."""
+        h = self.house
+        best = 1.0
+        dx, dy, dz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+        mx, mz = (a[0] + b[0]) / 2, (a[2] + b[2]) / 2
+        reach = math.hypot(dx, dz) / 2 + 0.6
+        for c in list(h._near(mx, mz, reach)) + getattr(h, "glass_colliders", []):
+            x0, y0, z0, x1, y1, z1 = c[0] - pad, c[1] - pad, c[2] - pad, c[3] + pad, c[4] + pad, c[5] + pad
+            # le joueur peut être collé à un meuble bas : on ignore les colliders qui contiennent l'origine
+            if x0 <= a[0] <= x1 and y0 <= a[1] <= y1 and z0 <= a[2] <= z1:
+                continue
+            tmin, tmax = 0.0, best
+            ok = True
+            for o, d, lo, hi in ((a[0], dx, x0, x1), (a[1], dy, y0, y1), (a[2], dz, z0, z1)):
+                if abs(d) < 1e-9:
+                    if o < lo or o > hi:
+                        ok = False
+                        break
+                else:
+                    t0, t1 = (lo - o) / d, (hi - o) / d
+                    if t0 > t1:
+                        t0, t1 = t1, t0
+                    tmin, tmax = max(tmin, t0), min(tmax, t1)
+                    if tmin > tmax:
+                        ok = False
+                        break
+            if ok and tmin < best:
+                best = max(0.0, tmin)
+        return best
+
+    def _third_person_camera(self, dt, bob_x, bob_y):
+        """Caméra d'épaule façon GTA : derrière le personnage, décalée, amortie, sans traverser les murs."""
+        side_target = SHOULDER.get(settings["cam_epaule"], 0.42)
+        self.cam_side += (side_target - self.cam_side) * min(1.0, dt * 6.0)
+        want = float(settings["cam_distance"]) * (0.8 if self.crouch_t > 0.5 else 1.0)
+        if self.sprinting:
+            want *= 1.12
+        eye = self.eye_pos
+        yr, pr = math.radians(self.yaw), math.radians(self.pitch)
+        fwd = Vec3(math.sin(yr) * math.cos(pr), -math.sin(pr), math.cos(yr) * math.cos(pr))
+        right = Vec3(math.cos(yr), 0, -math.sin(yr))
+        up = Vec3(0, 1, 0)
+        pivot = eye + right * self.cam_side + up * 0.18
+        # le pivot d'épaule lui-même ne doit pas entrer dans un mur
+        t_side = self._segment_clear(eye, pivot, 0.12)
+        pivot = eye + (pivot - eye) * max(0.0, t_side - 0.05)
+        target = pivot - fwd * want
+        t = self._segment_clear(pivot, target, 0.16)
+        dist = max(0.25, want * t - 0.08)
+        # plafond / plancher du niveau courant
+        lvl = self.house.level_at(self.pos[1])
+        floor_y = LEVEL_Y[lvl] if lvl in LEVEL_Y else 0.0
+        ceil_y = floor_y + LEVEL_CEIL.get(lvl, 2.9) - 0.2
+        if lvl == 0 and self.zone == "dehors":
+            ceil_y = floor_y + 30.0
+        # rapproche plus vite qu'on ne recule (évite les clignotements à travers les murs)
+        k = 18.0 if dist < self.cam_dist else (5.0 if settings["cam_lissage"] else 30.0)
+        self.cam_dist += (dist - self.cam_dist) * min(1.0, dt * k)
+        cam = pivot - fwd * self.cam_dist
+        cam = Vec3(cam[0], max(floor_y + 0.25, min(ceil_y, cam[1])), cam[2])
+        camera.world_position = cam + right * bob_x + Vec3(0, bob_y, 0)
+        # le personnage devient translucide si la caméra est trop près (dans un couloir étroit)
+        near = self.cam_dist < 0.95
+        if near != getattr(self, "_model_hidden", False):
+            self._model_hidden = near
+            for e in self.model.root.children:
+                e.enabled = not near
+        return cam
 
     # ------------------------------------------------------------------
     # État
@@ -169,6 +295,7 @@ class Player:
             self.on_death(cause)
 
     def revive(self):
+        self.model.revive()
         self.dead = False
         self.health = 100.0
         self.stress = 20.0
@@ -197,6 +324,9 @@ class Player:
             self.flashlight.adjust_zoom(-0.1)
         elif key == settings.key("parler"):
             self.speak()
+        elif key == settings.key("vue"):
+            mode = self.toggle_view()
+            return "vue:" + mode
 
     def speak(self):
         """Le joueur parle à voix haute (utile pour certaines paires d'assistance)."""
@@ -439,10 +569,20 @@ class Player:
         bob_amp = 0.0
         if self.on_ground and self.moving and not self.phone_open:
             bob_amp = 0.032 if self.sprinting else 0.018 if not self.crouching else 0.01
+        if not settings["bob_camera"]:
+            bob_amp *= 0.25
         bob_y = math.sin(self.bob_phase * 2.0) * bob_amp
         bob_x = math.sin(self.bob_phase) * bob_amp * 0.6
-        camera.position = Vec3(bob_x, bob_y, 0)
-        camera.rotation = Vec3(rx, ry, rz)
+        if self.third_person != getattr(self, "_tps_state", None):
+            self._apply_view()
+        if self.third_person:
+            self._third_person_camera(dt, bob_x * 0.5, bob_y * 0.5)
+            camera.rotation = Vec3(rx * 0.6, ry * 0.6, rz * 0.4)
+            self.model.animate(dt, self.speed, self.crouch_t, self.pitch, self.sprinting,
+                               self.flashlight.on and not self.phone_open, not self.on_ground)
+        else:
+            camera.position = Vec3(bob_x, bob_y, 0)
+            camera.rotation = Vec3(rx, ry, rz)
         # FOV : léger élargissement en course
         target_fov = self.fov + (6 if self.sprinting else 0) - self.stress * 0.05
         camera.fov += (target_fov - camera.fov) * min(1.0, dt * 6.0)
@@ -455,7 +595,8 @@ class Player:
         target_y = -0.24 if not self.phone_open else -0.7
         self.flash_hand_y += (target_y - self.flash_hand_y) * min(1.0, dt * 8.0)
         self.hand_flash.position = Vec3(0.26 + sway_x + tremble, self.flash_hand_y + sway_y, 0.5)
-        self.vm.enabled = not self.frozen or self.vm.enabled
+        if self.third_person:
+            self.vm.enabled = False
 
     # ------------------------------------------------------------------
     # Utilitaires pour l'IA

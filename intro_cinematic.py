@@ -56,7 +56,7 @@ class PhoneScreenTexture:
             d.rectangle([0, 0, W, 130], fill=(16, 20, 30, 255))
             d.text((20, 18), "Navigation", fill=(150, 170, 200, 255), font=self.font_s)
             d.text((20, 44), gps, fill=(255, 255, 255, 255), font=self.font_b)
-            d.text((20, 84), "Vaulx-en-Velin", fill=(170, 190, 220, 255), font=self.font)
+            d.text((20, 84), "Nice — Mont-Boron", fill=(170, 190, 220, 255), font=self.font)
             self._push(img)
             return
         d.rectangle([0, 0, W, 90], fill=(24, 26, 34, 255))
@@ -308,24 +308,45 @@ class CarShot(Shot):
         b = MeshBuilder("route")
         L = 760.0
         b.quad("asphalte", (ox - 3.2, 0, -50), (ox + 3.2, 0, -50), (ox + 3.2, 0, L), (ox - 3.2, 0, L), (0, 1, 0), (0.8, 0.8, 0.85), tile=3.0)
-        b.quad("herbe", (ox + 3.2, -0.02, -50), (ox + 60, -0.02, -50), (ox + 60, -0.02, L), (ox + 3.2, -0.02, L), (0, 1, 0), (0.5, 0.55, 0.5), tile=3.0)
-        b.quad("herbe", (ox - 60, -0.02, -50), (ox - 3.2, -0.02, -50), (ox - 3.2, -0.02, L), (ox - 60, -0.02, L), (0, 1, 0), (0.5, 0.55, 0.5), tile=3.0)
+        # Corniche : colline côté droit (est), mer en contrebas côté gauche
+        b.quad("herbe", (ox + 3.2, -0.02, -50), (ox + 60, -0.02, -50), (ox + 60, -0.02, L), (ox + 3.2, -0.02, L), (0, 1, 0), (0.45, 0.5, 0.42), tile=3.0)
+        b.quad("beton", (ox - 4.4, 0.01, -50), (ox - 3.2, 0.01, -50), (ox - 3.2, 0.01, L), (ox - 4.4, 0.01, L), (0, 1, 0), (0.7, 0.68, 0.64), tile=2.0)
+        # falaise + Méditerranée nocturne
+        b.quad("beton", (ox - 4.4, -9.0, -50), (ox - 4.4, -9.0, L), (ox - 4.4, 0.0, L), (ox - 4.4, 0.0, -50), (-1, 0, 0), (0.32, 0.3, 0.28), tile=4.0)
+        b.quad("eau_noire", (ox - 400, -8.5, -50), (ox - 4.4, -8.5, -50), (ox - 4.4, -8.5, L), (ox - 400, -8.5, L), (0, 1, 0), (0.35, 0.42, 0.55), tile=6.0)
+        # rambarde blanche de la Promenade
+        z = -50.0
+        while z < L:
+            b.box("platre", ox - 4.35, 0.0, z, ox - 4.25, 0.9, z + 0.1, (0.82, 0.82, 0.86))
+            z += 1.6
+        b.box("platre", ox - 4.4, 0.85, -50, ox - 4.2, 0.95, L, (0.85, 0.85, 0.88))
         # marquage central discontinu
         z = -40.0
         while z < L:
             b.box("platre", ox - 0.06, 0.005, z, ox + 0.06, 0.012, z + 2.0, (1.0, 0.95, 0.7))
             z += 6.0
-        # arbres et bâtiments de bord de route
+        # palmiers côté mer, villas ocre et cyprès côté colline
         rnd = random.Random(11)
         z = 0.0
         while z < L:
-            side = rnd.choice([-1, 1])
-            x = ox + side * rnd.uniform(5, 14)
-            h = rnd.uniform(4, 7)
-            b.cyl("bois_meuble", x, 0, z, 0.2, h, 6, (0.3, 0.27, 0.25))
-            b.sphere("herbe", x, h, z, rnd.uniform(1.2, 2.0), (0.12, 0.2, 0.12), sy=1.2)
-            if rnd.random() < 0.25:
-                b.box("crepi", ox + side * rnd.uniform(12, 20), 0, z + 3, ox + side * rnd.uniform(24, 34), rnd.uniform(5, 8), z + 12, (0.3, 0.3, 0.33))
+            if rnd.random() < 0.65:
+                b.palm(ox - 5.2 + rnd.uniform(-0.3, 0.3), z, rnd.uniform(5.5, 7.5), (rnd.uniform(-1.0, -0.2), rnd.uniform(-0.3, 0.3)),
+                       seed=int(z), fronds=8)
+            x = ox + rnd.uniform(6, 14)
+            if rnd.random() < 0.4:
+                b.cypress(x, z + 2, rnd.uniform(5, 8), 0.6)
+            else:
+                h = rnd.uniform(3.5, 6)
+                b.cyl("bois_meuble", x, 0, z, 0.2, h, 6, (0.3, 0.27, 0.25))
+                b.sphere("herbe", x, h, z, rnd.uniform(1.2, 2.0), (0.16, 0.24, 0.14), sy=1.0)
+            if rnd.random() < 0.35:
+                x0 = ox + rnd.uniform(12, 20)
+                x1 = x0 + rnd.uniform(9, 14)
+                hh = rnd.uniform(5, 9)
+                tex = rnd.choice(["crepi", "crepi_rose"])
+                b.box(tex, x0, 0, z + 3, x1, hh, z + 12, (0.42, 0.38, 0.34))
+                b.quad("tuiles", (x0 - 0.3, hh, z + 2.7), (x0 - 0.3, hh, z + 12.3), (x0 + (x1 - x0) / 2, hh + 1.8, z + 12.3),
+                       (x0 + (x1 - x0) / 2, hh + 1.8, z + 2.7), (-0.6, 0.8, 0), (0.45, 0.38, 0.34))
             z += rnd.uniform(9, 18)
         # lampadaires : de plus en plus espacés
         lamp_z = []
@@ -339,6 +360,12 @@ class CarShot(Shot):
             b.cyl("metal", ox + 3.6, 0, lz, 0.07, 5.5, 6, (0.3, 0.3, 0.34))
             b.box("metal", ox + 2.6, 5.45, lz - 0.1, ox + 3.7, 5.55, lz + 0.1, (0.3, 0.3, 0.34))
             lamps.box("neon", ox + 2.5, 5.38, lz - 0.1, ox + 3.0, 5.45, lz + 0.1, (1.0, 0.7, 0.35))
+        # lumières lointaines de la Baie des Anges, de l'autre côté de l'eau
+        for k in range(160):
+            zz = -50 + k * 5.0 + rnd.uniform(-2, 2)
+            xx = ox - 90 - 25 * math.sin(k * 0.05)
+            yy = -8.0 + rnd.uniform(0.5, 6.0) * (1.0 + 0.4 * math.sin(k * 0.13))
+            lamps.box("neon", xx, yy, zz, xx + 0.8, yy + 0.8, zz + 0.8, (1.0, 0.75 + rnd.uniform(-0.1, 0.1), 0.45))
         root = Entity()
         for e in b.build(parent=root):
             pass

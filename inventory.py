@@ -11,8 +11,8 @@ ITEM_DEFS = {
     "sel": ("Salière", "Du gros sel. Peut-être utile.", (0.9, 0.9, 0.9), True),
     "tisonnier": ("Tisonnier", "Inutile comme arme.", (0.3, 0.3, 0.3), False),
     "trousseau": ("Trousseau de clés", "Elles n'ouvrent rien ici.", (0.6, 0.6, 0.5), False),
-    "adresse_bonne": ("Papier : adresse", "17 rue des Lilas, 69120 Vaulx-en-Velin", (0.9, 0.85, 0.7), False),
-    "adresse_piege": ("Papier : adresse barrée", "4 impasse du Calvaire, 69120 (barrée)", (0.9, 0.7, 0.6), False),
+    "adresse_bonne": ("Papier : adresse", "17 rue des Lilas, 06300 Nice", (0.9, 0.85, 0.7), False),
+    "adresse_piege": ("Papier : adresse barrée", "4 impasse du Calvaire, 06300 (barrée)", (0.9, 0.7, 0.6), False),
     "adresse_erreur": ("Papier : petite annonce", "23 avenue du Grand Champ", (0.8, 0.8, 0.75), False),
     "numero_barre": ("Papier : numéro barré", "Un numéro de téléphone barré plusieurs fois.", (0.85, 0.85, 0.8), False),
 }

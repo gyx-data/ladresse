@@ -6,8 +6,8 @@ import tempfile
 
 GAME_TITLE = "L'ADRESSE"
 GAME_SUBTITLE = "17 rue des Lilas"
-VERSION = "1.0.0"
-CACHE_VERSION = "v1"
+VERSION = "1.1.0"
+CACHE_VERSION = "v2"
 
 # --- Réseau ---------------------------------------------------------------
 SERVER_HOST = "5.180.34.43"
@@ -88,6 +88,7 @@ DEFAULT_KEYS = {
     "inventaire": "tab",
     "accroupir": "c",
     "parler": "v",
+    "vue": "f5",
 }
 
 # Touches alternatives acceptées tant que la touche par défaut est conservée (ZQSD / WASD)
@@ -106,6 +107,7 @@ KEY_LABELS = {
     "inventaire": "Inventaire",
     "accroupir": "S'accroupir",
     "parler": "Parler à voix haute",
+    "vue": "Changer de vue (1re / 3e personne)",
 }
 
 DEFAULT_SETTINGS = {
@@ -129,6 +131,12 @@ DEFAULT_SETTINGS = {
     "sensibilite": 10,
     "inverser_y": False,
     "fov": 75,
+    "vue": "Première personne",       # ou "Troisième personne"
+    "cam_distance": 2.4,              # recul de la caméra en vue 3e personne (m)
+    "cam_epaule": "Droite",           # Droite / Centre / Gauche
+    "cam_lissage": True,              # caméra 3e personne amortie
+    "bob_camera": True,               # balancement de la tête en marchant
+    "difficulte": "Normal",           # Facile / Normal / Cauchemar
     "keys": dict(DEFAULT_KEYS),
     # Accessibilité
     "reduire_jumpscares": False,
@@ -145,6 +153,15 @@ RESOLUTIONS = {"720p": (1280, 720), "1080p": (1920, 1080), "1440p": (2560, 1440)
 TEXT_SCALE = {"Petit": 0.85, "Moyen": 1.0, "Grand": 1.25}
 
 
+def _compatible(default, value):
+    """Le type d'une valeur chargée doit correspondre à celui de la valeur par défaut."""
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, (int, float)):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, type(default))
+
+
 class Settings:
     """Paramètres persistants (JSON dans %APPDATA%/LADRESSE/settings.json)."""
 
@@ -157,18 +174,36 @@ class Settings:
         try:
             with open(self.path, "r", encoding="utf-8") as f:
                 saved = json.load(f)
+            if not isinstance(saved, dict):
+                raise ValueError("format")
             for k, v in saved.items():
                 if k == "keys" and isinstance(v, dict):
-                    self.data["keys"].update(v)
-                elif k in self.data:
+                    for a, key in v.items():
+                        if a in DEFAULT_KEYS and isinstance(key, str) and 0 < len(key) < 24:
+                            self.data["keys"][a] = key
+                elif k in self.data and _compatible(self.data[k], v):
                     self.data[k] = v
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError):
             pass
+        self._clamp()
+
+    def _clamp(self):
+        """Ramène les valeurs numériques dans des bornes sûres (fichier édité à la main, ancienne version...)."""
+        bounds = {"fov": (60, 110), "sensibilite": (1, 30), "cam_distance": (1.2, 4.5), "vol_main": (0, 100),
+                  "vol_music": (0, 100), "vol_sfx": (0, 100), "vol_voice": (0, 100), "msaa": (0, 8)}
+        for k, (lo, hi) in bounds.items():
+            try:
+                self.data[k] = type(DEFAULT_SETTINGS[k])(max(lo, min(hi, self.data[k])))
+            except (TypeError, ValueError):
+                self.data[k] = DEFAULT_SETTINGS[k]
 
     def save(self):
+        """Écriture atomique (fichier temporaire puis remplacement) : pas de fichier tronqué en cas de crash."""
+        tmp = self.path + ".tmp"
         try:
-            with open(self.path, "w", encoding="utf-8") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, self.path)
         except OSError:
             pass
 

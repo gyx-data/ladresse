@@ -284,7 +284,7 @@ class FlashlightCone:
             self.e.set_light_off()
         except Exception:
             pass
-        self.e.position = Vec3(0.12, -0.1, 0.25)
+        self.e.position = Vec3(0, 0, 0)
         self.e.enabled = False
 
     def update(self, flash, phone_open):

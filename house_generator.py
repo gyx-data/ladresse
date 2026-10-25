@@ -266,6 +266,7 @@ class House:
         self.on_door_sound = None
         self._cgrid = {}
         self.window_info = []              # pour le brouillard / lumière extérieure
+        self.glass_colliders = []          # vitres : bloquent la caméra 3e personne (pas le joueur)
         self.nav = None
         self.built = False
         self.rng = random.Random(1961)
@@ -549,6 +550,7 @@ class House:
                 else:
                     pass
                 self.window_info.append((lvl, ax, fixed, c, state))
+                self.glass_colliders.append((c - hw, ys, zc - 0.05, c + hw, ye, zc + 0.05))
             else:
                 inward = 1 if fixed < 8 else -1
                 out = -inward
@@ -570,6 +572,7 @@ class House:
                         b.box("planches", min(xi, xi + inward * 0.03), yy, c - hw - 0.12, max(xi, xi + inward * 0.03),
                               yy + 0.2, c + hw + 0.12, (0.85, 0.8, 0.75))
                 self.window_info.append((lvl, ax, fixed, c, state))
+                self.glass_colliders.append((xc - 0.05, ys, c - hw, xc + 0.05, ye, c + hw))
 
     # --- portes --------------------------------------------------------
     def _doors(self, lvl):
@@ -635,8 +638,8 @@ class House:
         # versant sud (z=0 -> 6)
         n_s = (0.0, 0.47, -0.88)
         n_n = (0.0, 0.47, 0.88)
-        ts = "asphalte"
-        cs = (0.55, 0.52, 0.5)
+        ts = "tuiles"
+        cs = (0.85, 0.8, 0.78)
         for (za, ya_, zb, yb_, n_out, n_in) in (
             (-ov, yw - 0.12, 6.0, yr, (0, 0.9, -0.43), (0, -0.9, 0.43)),
             (12 + ov, yw - 0.12, 6.0, yr, (0, 0.9, 0.43), (0, -0.9, -0.43)),
@@ -651,7 +654,13 @@ class House:
             q2 = (15.9, yb_ - 0.02, zb)
             q3 = (0.1, yb_ - 0.02, zb)
             b.quad("planches", q0, q1, q2, q3, n_in, (0.8, 0.75, 0.7), tile=1.2)
-        # pignons extérieurs (hors-sol) : déjà posés avec les murs
+        # génoise provençale (double rang de tuiles sous l'avant-toit) et faîtage
+        for zf, sgn in ((0.0, -1), (12.0, 1)):
+            for k in range(2):
+                zz = zf + sgn * (0.05 + 0.12 * k)
+                b.box("tuiles", -0.25, yw - 0.32 + k * 0.12, min(zz, zz + sgn * 0.12), 16.25, yw - 0.2 + k * 0.12,
+                      max(zz, zz + sgn * 0.12), (0.9, 0.78, 0.7))
+        b.box("tuiles", -ov, yr - 0.04, 5.85, 16 + ov, yr + 0.14, 6.15, (0.75, 0.6, 0.55))
         del n_s, n_n
 
     # --- extérieur -----------------------------------------------------
@@ -671,30 +680,50 @@ class House:
         b.quad("beton", (6.4, -0.02, -6.0), (7.6, -0.02, -6.0), (7.6, -0.02, 0.0), (6.4, -0.02, 0.0), (0, 1, 0), (0.85, 0.85, 0.85), tile=1.0)
         # marche de porte
         b.box("beton", 6.4, 0.0, -0.6, 7.6, 0.12, 0.0, (0.8, 0.8, 0.8))
-        # pot de fleurs à gauche de l'entrée
-        b.cyl("bois_meuble", 6.15, 0.0, -0.4, 0.17, 0.32, 8, (0.62, 0.35, 0.28))
-        b.sphere("herbe", 6.15, 0.42, -0.4, 0.14, (0.25, 0.3, 0.2))
-        # clôture et portail
-        for i in range(-10, 28):
-            x = i * 1.0
-            if 6.4 < x < 7.6:
-                continue
-            b.box("planches", x, 0.0, -6.0, x + 0.12, 0.95 - 0.1 * ((i * 7) % 3 == 0), -5.94, (0.7, 0.68, 0.64))
-        b.box("bois_meuble", -10, 0.5, -6.0, 28, 0.55, -5.94, (0.5, 0.48, 0.46))
-        # arbres morts
+        # pots de géraniums de part et d'autre de l'entrée
+        b.flower_pot(6.15, 0.0, -0.4)
+        b.flower_pot(7.85, 0.0, -0.4, 0.14, 0.26)
+        # muret en pierre crépie + grille en fer forgé (clôture niçoise)
+        for (xa, xb) in ((-10.0, 6.4), (7.6, 28.0)):
+            b.box("crepi", xa, 0.0, -6.06, xb, 0.55, -5.86, (0.82, 0.78, 0.72), collide=True)
+            b.box("beton", xa - 0.02, 0.55, -6.1, xb + 0.02, 0.62, -5.82, (0.8, 0.78, 0.74))
+            x = xa + 0.1
+            while x < xb - 0.05:
+                b.box("metal", x, 0.62, -5.99, x + 0.03, 1.45 - 0.06 * (int(x * 3) % 2), -5.95, (0.2, 0.22, 0.2))
+                x += 0.22
+            b.box("metal", xa, 1.3, -5.99, xb, 1.34, -5.95, (0.2, 0.22, 0.2))
+        for px_ in (6.3, 7.7):
+            b.box("crepi", px_ - 0.18, 0.0, -6.15, px_ + 0.18, 1.7, -5.8, (0.85, 0.8, 0.74), collide=True)
+            b.box("beton", px_ - 0.22, 1.7, -6.19, px_ + 0.22, 1.8, -5.76, (0.8, 0.78, 0.74))
+        # végétation méditerranéenne : palmiers, cyprès, agaves, lauriers
         rng = random.Random(7)
-        for (tx, tz) in ((-4, -3), (3, -4.3), (11.5, -3.2), (19, -3.8), (-8, 6), (22, 5), (-3, 15), (13, 18)):
-            h = rng.uniform(3.5, 5.5)
-            b.cyl("bois_meuble", tx, 0.0, tz, 0.14, h, 6, (0.35, 0.3, 0.28))
-            for k in range(5):
-                a = rng.uniform(0, 6.28)
-                l = rng.uniform(0.8, 1.5)
-                b.obox("bois_meuble", tx + math.cos(a) * l / 2, h * 0.6 + k * 0.2, tz + math.sin(a) * l / 2, l, 0.05, 0.05,
-                       -math.degrees(a), (0.3, 0.27, 0.25))
-        # maisons voisines (silhouettes sombres)
-        for (nx, nw, nh) in ((-26, 12, 8), (-10, 7, 6), (28, 9, 7), (40, 10, 9)):
-            b.box("crepi", nx, 0.0, 10.0, nx + nw, nh, 22.0, (0.3, 0.3, 0.32))
-            b.box("crepi", nx - 1, 0.0, -34, nx + nw + 3, nh + 2, -26, (0.25, 0.25, 0.28))
+        b.palm(-3.5, -3.2, 6.5, (0.8, -0.3), seed=1)
+        b.palm(19.5, -3.6, 7.2, (-0.6, -0.4), seed=2)
+        b.palm(-6.0, 7.0, 5.8, (0.4, 0.5), seed=3)
+        for (cx_, cz_, ch) in ((12.5, -3.0, 6.0), (14.0, -3.3, 6.8), (24.0, 6.0, 7.5), (-9.0, 16.0, 7.0), (14.0, 20.0, 6.4)):
+            b.cypress(cx_, cz_, ch)
+        for (ax_, az_, sz) in ((2.0, -1.5, 0.8), (4.0, -2.4, 0.6), (9.5, -1.2, 0.9), (17.0, -1.6, 0.7), (-1.0, -4.5, 0.75)):
+            b.agave(ax_, az_, sz, seed=int(ax_ * 10))
+        for (lx, lz) in ((-8, -2), (22, -2), (-3, 15), (20, 15)):
+            b.sphere("herbe", lx, 0.9, lz, 1.1, (0.32, 0.42, 0.3), lat=5, lon=8, sy=0.8)
+        # villas voisines : enduits ocre/rose, toits de tuiles
+        for (nx, nw, nh, tex) in ((-26, 12, 8, "crepi_rose"), (-10, 7, 6, "crepi"), (28, 9, 7, "crepi_rose"), (40, 10, 9, "crepi")):
+            for (z0, z1, dark) in ((10.0, 22.0, 0.42), (-34.0, -26.0, 0.36)):
+                x0, x1 = (nx, nx + nw) if z0 > 0 else (nx - 1, nx + nw + 3)
+                hh = nh if z0 > 0 else nh + 2
+                b.box(tex, x0, 0.0, z0, x1, hh, z1, (dark, dark * 0.95, dark * 0.9))
+                zm = (z0 + z1) / 2
+                b.quad("tuiles", (x0 - 0.3, hh, z0 - 0.3), (x1 + 0.3, hh, z0 - 0.3), (x1 + 0.3, hh + 1.6, zm), (x0 - 0.3, hh + 1.6, zm),
+                       (0, 0.8, -0.6), (dark, dark * 0.9, dark * 0.85))
+                b.quad("tuiles", (x0 - 0.3, hh + 1.6, zm), (x1 + 0.3, hh + 1.6, zm), (x1 + 0.3, hh, z1 + 0.3), (x0 - 0.3, hh, z1 + 0.3),
+                       (0, 0.8, 0.6), (dark, dark * 0.9, dark * 0.85))
+                # fenêtres éclairées (quelques-unes seulement)
+                for wx in range(int(x0) + 1, int(x1) - 1, 3):
+                    lit = rng.random() < 0.25
+                    fz = z0 - 0.02 if z0 > 0 else z1 + 0.02
+                    nrm = (0, 0, -1) if z0 > 0 else (0, 0, 1)
+                    b.quad("neon" if lit else "volet", (wx, 2.0, fz), (wx + 0.9, 2.0, fz), (wx + 0.9, 3.3, fz), (wx, 3.3, fz), nrm,
+                           (0.9, 0.7, 0.4) if lit else (dark + 0.2, dark + 0.25, dark + 0.2))
         # lampadaire
         b.cyl("metal", 3.2, 0.0, -7.0, 0.07, 5.0, 6, (0.35, 0.36, 0.4))
         b.box("metal", 3.0, 4.95, -7.1, 3.9, 5.05, -6.9, (0.35, 0.36, 0.4))

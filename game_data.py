@@ -11,14 +11,15 @@ PLAYER_NAME = "Adrien Morel"
 PLAYER_FIRST = "Adrien"
 BOSS_NAME = "Mme Duval"
 AGENCY = "Clairvue Immobilier"
-HOUSE_ADDRESS = "17 rue des Lilas, 69120 Vaulx-en-Velin"
+HOUSE_ADDRESS = "17 rue des Lilas, 06300 Nice"
+CITY = "Nice"
 
 # ---------------------------------------------------------------------------
 # SMS de la cinématique
 # ---------------------------------------------------------------------------
 INTRO_SMS = [
     ("21:03", "Mme Duval",
-     "Adrien, j'ai un mandat urgent. État des lieux au 17 rue des Lilas, Vaulx-en-Velin. "
+     "Adrien, j'ai un mandat urgent. État des lieux au 17 rue des Lilas, à Nice, côté Mont-Boron. "
      "Le propriétaire M. Garnier est décédé il y a 3 mois. Personne n'est entré depuis. "
      "Tarif doublé si les photos sont là demain 8h. Tu prends ?", False),
     ("21:04", "Adrien", "J'arrive.", True),
@@ -28,8 +29,8 @@ INTRO_SMS = [
 ]
 
 CINEMATIC_CAPTIONS = {
-    "bureau": ["Agence Clairvue Immobilier — Lyon 3ème", "Vendredi 13 octobre — 20h58"],
-    "voiture": ["Vaulx-en-Velin — 21h34"],
+    "bureau": ["Agence Clairvue Immobilier — Nice, Promenade des Anglais", "Vendredi 13 octobre — 20h58"],
+    "voiture": ["Nice, colline du Mont-Boron — 21h34"],
     "titre": "L'ADRESSE",
 }
 
@@ -51,13 +52,13 @@ BANK_NAME = "BNR Banque"
 BANK_BALANCE = 1247.83
 BANK_CARD = "Visa •••• 4721"
 BANK_TRANSACTIONS = [
-    ("Total Énergies — Carburant", -62.40, "12/10"),
-    ("Carrefour Market", -48.17, "11/10"),
+    ("Esso — Bd Gambetta", -62.40, "12/10"),
+    ("Monoprix — Jean Médecin", -48.17, "11/10"),
     ("Netflix", -13.49, "10/10"),
-    ("Pharmacie de la Part-Dieu", -11.80, "09/10"),
+    ("Pharmacie Masséna", -11.80, "09/10"),
     ("Virement Clairvue Immobilier", 1180.00, "05/10"),
     ("Spotify", -10.99, "03/10"),
-    ("SNCF Connect", -34.00, "01/10"),
+    ("Lignes d'Azur — Abonnement", -34.00, "01/10"),
 ]
 
 BANK_CALL_ATTEMPTS = [
@@ -75,13 +76,13 @@ CATEGORIES = ["Pizza", "Burger", "Asiatique", "Kebab", "Desserts"]
 # adresse -> description
 ADDRESSES = {
     "bonne": {"label": "17 rue des Lilas", "difficulty": "normal",
-              "aliases": ["17 rue des lilas", "17 rue des lilas 69120", "17 rue des lilas vaulx-en-velin",
-                          "17 rue des lilas, 69120 vaulx-en-velin", "17 rue des lilas 69120 vaulx-en-velin"]},
+              "aliases": ["17 rue des lilas", "17 rue des lilas 06300", "17 rue des lilas nice",
+                          "17 rue des lilas, 06300 nice", "17 rue des lilas 06300 nice"]},
     "piege": {"label": "4 impasse du Calvaire", "difficulty": "cauchemar",
-              "aliases": ["4 impasse du calvaire", "4 impasse du calvaire 69120",
-                          "4 impasse du calvaire, 69120", "4 impasse du calvaire 69120 vaulx-en-velin"]},
-    "erreur": {"label": "23 avenue du Grand Champ", "difficulty": "none",
-               "aliases": ["23 avenue du grand champ", "23 av du grand champ", "23 avenue du grand champ 69120"]},
+              "aliases": ["4 impasse du calvaire", "4 impasse du calvaire 06300",
+                          "4 impasse du calvaire, 06300", "4 impasse du calvaire 06300 nice"]},
+    "erreur": {"label": "23 boulevard du Mont-Boron", "difficulty": "none",
+               "aliases": ["23 avenue du grand champ", "23 av du grand champ", "23 avenue du grand champ 06000"]},
 }
 
 MEALS = {
@@ -249,8 +250,8 @@ NOTEBOOK_PAGES = [
 
 BANK_STATEMENT_TEXT = (
     "BNR BANQUE — RELEVÉ DE COMPTE\n\nTitulaire : M. Raymond GARNIER\n"
-    "17 rue des Lilas, 69120 Vaulx-en-Velin\n\n"
-    "~~4 impasse du Calvaire, 69120~~\n(adresse barrée au stylo, plusieurs fois)\n\n"
+    "17 rue des Lilas, 06300 Nice\n\n"
+    "~~4 impasse du Calvaire, 06300~~\n(adresse barrée au stylo, plusieurs fois)\n\n"
     "Prélèvements : QuickEats x 23\nSolde : 0,00 €"
 )
 
@@ -278,11 +279,11 @@ GARNIER_PHONE_TEXT = [
 ]
 
 NEWSPAPER_HEADLINES = [
-    "VAULX-EN-VELIN : TROISIÈME DISPARITION EN DEUX ANS DANS LE QUARTIER DES LILAS",
-    "Un livreur à scooter retrouvé sans vie rue de la République — enquête ouverte",
+    "NICE-MONT-BORON : TROISIÈME DISPARITION EN DEUX ANS AUTOUR DE LA RUE DES LILAS",
+    "Un livreur à scooter retrouvé sans vie Promenade des Anglais — enquête ouverte",
     "Les riverains inquiets : « On entend des coups la nuit »",
-    "Petites annonces : maison à vendre, 23 avenue du Grand Champ. Visites sur rendez-vous.",
-    "Météo : pluie persistante jusqu'à dimanche",
+    "Petites annonces : maison à vendre, 23 boulevard du Mont-Boron. Visites sur rendez-vous.",
+    "Météo : orages sur l'arrière-pays niçois, vigilance orange jusqu'à dimanche",
 ]
 
 RECEIPTS_TEXT = (
@@ -295,7 +296,7 @@ RECEIPTS_TEXT = (
 NOTE_FRIGO = "Ne pas commander après 23h."
 NOTE_SDB = "IL SAIT OÙ TU ES"
 NOTE_COAT = "Un bout de papier : un numéro de téléphone... barré, plusieurs fois."
-NOTE_FRIGO_ADDRESS = "17 rue des Lilas, 69120 Vaulx-en-Velin"
+NOTE_FRIGO_ADDRESS = "17 rue des Lilas, 06300 Nice"
 NOTE_DOOR_END_D = "Le gardien précédent est parti. Le poste est à vous."
 WALL_MESSAGE_PHOTO = "Derrière le papier peint, écrit à la main : « IL EST DÉJÀ ARRIVÉ »"
 

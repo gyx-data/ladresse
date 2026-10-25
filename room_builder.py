@@ -7,6 +7,7 @@ mètres réels pour que les textures aient la même échelle partout.
 Convention de repère : x = est, y = haut, z = nord. La façade (porte d'entrée) est en z = 0.
 """
 import math
+import random
 
 from ursina import Entity, Mesh, Vec3
 from panda3d.core import TransparencyAttrib
@@ -16,7 +17,7 @@ from texture_generator import textures
 
 # Taille (en mètres) couverte par une répétition de chaque texture
 TILE = {
-    "crepi": 2.5, "papier_peint": 1.4, "papier_chambre": 1.4, "papier_couloir": 1.4,
+    "etoffe": 0.5, "peau": 0.5, "crepi": 2.5, "crepi_rose": 2.5, "tuiles": 1.6, "palmier_tronc": 1.0, "palme": 1.0, "geranium": 0.6, "papier_peint": 1.4, "papier_chambre": 1.4, "papier_couloir": 1.4,
     "platre": 2.0, "plafond": 2.0, "parquet": 2.0, "carrelage": 1.0, "moquette": 1.5,
     "beton": 2.0, "asphalte": 3.0, "herbe": 2.0, "porte": 1.0, "planches": 1.0,
     "volet": 1.0, "bois_meuble": 1.0, "tissu": 1.0, "marbre": 1.0, "email": 1.0,
@@ -205,6 +206,78 @@ class MeshBuilder:
                     self.tri(tex, p00, p01, p10, n, col, tile)
                 else:
                     self.quad(tex, p00, p01, p11, p10, n, col, tile)
+
+    # --- végétation méditerranéenne ----------------------------------------
+    def leaf(self, tex, p0, p1, p2, p3, col=(1, 1, 1)):
+        """Quad visible des deux côtés (feuilles, palmes)."""
+        n = _norm(_cross(_sub(p1, p0), _sub(p3, p0)))
+        self.quad(tex, p0, p1, p2, p3, n, col)
+        self.quad(tex, p0, p1, p2, p3, (-n[0], -n[1], -n[2]), col)
+
+    def palm(self, cx, cz, h=6.0, lean=(0.6, 0.2), seed=0, fronds=9, col=(0.9, 0.9, 0.9)):
+        """Palmier : tronc courbe en segments + couronne de palmes retombantes."""
+        rnd = random.Random(seed)
+        segs = 7
+        x, y, z = cx, 0.0, cz
+        r = 0.24
+        for i in range(segs):
+            t = (i + 1) / segs
+            nx = cx + lean[0] * t * t
+            nz = cz + lean[1] * t * t
+            seg_h = h / segs
+            self.cyl("palmier_tronc", (x + nx) / 2, y, (z + nz) / 2, r, seg_h + 0.02, 7, col, cap=False)
+            x, z = nx, nz
+            y += seg_h
+            r *= 0.94
+        top = (x, y, z)
+        self.sphere("palmier_tronc", x, y, z, 0.32, (0.7, 0.62, 0.5), lat=4, lon=7)
+        for k in range(fronds):
+            a = 2 * math.pi * k / fronds + rnd.uniform(-0.2, 0.2)
+            L = rnd.uniform(2.0, 2.8)
+            w = 0.34
+            droop = rnd.uniform(0.6, 1.3)
+            dx, dz = math.cos(a), math.sin(a)
+            px_, pz_ = -dz * w, dx * w
+            mid = (top[0] + dx * L * 0.55, top[1] + 0.35, top[2] + dz * L * 0.55)
+            tip = (top[0] + dx * L, top[1] - droop, top[2] + dz * L)
+            leafc = (0.55 + rnd.uniform(-0.1, 0.1), 0.7, 0.5)
+            self.leaf("palme", (top[0] + px_ * 0.3, top[1], top[2] + pz_ * 0.3), (top[0] - px_ * 0.3, top[1], top[2] - pz_ * 0.3),
+                      (mid[0] - px_, mid[1], mid[2] - pz_), (mid[0] + px_, mid[1], mid[2] + pz_), leafc)
+            self.leaf("palme", (mid[0] + px_, mid[1], mid[2] + pz_), (mid[0] - px_, mid[1], mid[2] - pz_),
+                      (tip[0] - px_ * 0.2, tip[1], tip[2] - pz_ * 0.2), (tip[0] + px_ * 0.2, tip[1], tip[2] + pz_ * 0.2), leafc)
+        self.colliders.append((cx - 0.3, 0, cz - 0.3, cx + 0.3, h, cz + 0.3))
+        return top
+
+    def cypress(self, cx, cz, h=7.0, r=0.7, col=(0.35, 0.45, 0.32)):
+        """Cyprès de Provence : fuseau sombre."""
+        self.sphere("herbe", cx, h * 0.5, cz, r, col, lat=7, lon=9, sy=h / (2 * r))
+        self.cyl("bois_meuble", cx, 0.0, cz, 0.12, 0.6, 6, (0.3, 0.25, 0.2), cap=False)
+        self.colliders.append((cx - r * 0.6, 0, cz - r * 0.6, cx + r * 0.6, h, cz + r * 0.6))
+
+    def agave(self, cx, cz, size=0.8, seed=0, col=(0.55, 0.68, 0.6)):
+        """Agave : rosette de feuilles pointues."""
+        rnd = random.Random(seed)
+        for k in range(11):
+            a = 2 * math.pi * k / 11 + rnd.uniform(-0.15, 0.15)
+            L = size * rnd.uniform(0.7, 1.1)
+            up = rnd.uniform(0.4, 0.9)
+            dx, dz = math.cos(a), math.sin(a)
+            w = 0.09 * size / 0.8
+            tip = (cx + dx * L, up * L, cz + dz * L)
+            self.leaf("palme", (cx - dz * w, 0.02, cz + dx * w), (cx + dz * w, 0.02, cz - dx * w), tip, tip, col)
+
+    def flower_pot(self, cx, y0, cz, r=0.17, h=0.3):
+        """Pot en terre cuite avec géraniums rouges."""
+        self.cyl("tuiles", cx, y0, cz, r, h, 9, (0.95, 0.75, 0.65))
+        self.sphere("geranium", cx, y0 + h + 0.06, cz, r * 0.95, (1, 1, 1), lat=4, lon=8, sy=0.7)
+
+    def persienne(self, axis, fixed, a0, a1, y0, y1, outward=-1, col=(0.32, 0.5, 0.42)):
+        """Volet persienne vert provençal plaqué contre la façade (côté extérieur)."""
+        off = fixed + outward * 0.13
+        if axis == "x":
+            self.box("volet", a0, y0, min(off, off + outward * 0.04), a1, y1, max(off, off + outward * 0.04), col)
+        else:
+            self.box("volet", min(off, off + outward * 0.04), y0, a0, max(off, off + outward * 0.04), y1, a1, col)
 
     # --- murs --------------------------------------------------------------
     def wall(self, axis, a0, a1, fixed, y0, y1, thick=0.2, tex_neg="papier_peint", tex_pos="papier_peint",

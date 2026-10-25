@@ -14,69 +14,64 @@ import config
 import game_data as gd
 from config import settings
 from multiplayer_client import NetClient
-from room_builder import MeshBuilder
+from character_model import CharacterModel, Nametag
 from sound_engine import engine as sound
 from ui_widgets import label, rect, button, clear, rgb
 
 
 class RemoteAvatar:
-    """Modèle simple d'un autre joueur : capsule, tête sphérique, bras cylindriques, veste colorée."""
+    """Autre joueur : personnage articulé (sweat à sa couleur), pseudo flottant, lampe torche,
+    interpolation de position/orientation et animation de marche déduite de la vitesse."""
 
-    def __init__(self, pid, name, jacket):
+    def __init__(self, pid, name, jacket, seed=0):
         self.id = pid
         self.name = name
         self.root = Entity()
         self.target = Vec3(7, 0, 1)
         self.yaw_target = 0.0
+        self.pitch = 0.0
         self.alive = True
-        self.phase = 0.0
         self.step_dist = 0.0
         self.last = Vec3(7, 0, 1)
+        self.speed = 0.0
+        self.last_update = 0.0
+        self.torch_on = True
         jc = tuple(jacket)
-        b = MeshBuilder("avatar")
-        b.cyl("tissu", 0, 0.0, 0, 0.17, 0.85, 8, (0.12, 0.13, 0.2))                   # jambes
-        b.cyl("tissu", 0, 0.8, 0, 0.21, 0.7, 8, jc)                                  # torse / veste
-        b.sphere("platre", 0, 1.68, 0, 0.12, (0.8, 0.62, 0.52), sy=1.1)             # tête
-        for e in b.build(parent=self.root, emit=0.06):
-            pass
-        self.arm_l = Entity(parent=self.root, position=(-0.26, 1.45, 0))
-        self.arm_r = Entity(parent=self.root, position=(0.26, 1.45, 0))
-        for arm in (self.arm_l, self.arm_r):
-            ab = MeshBuilder("bras")
-            ab.cyl("tissu", 0, -0.6, 0, 0.055, 0.6, 6, jc)
-            for e in ab.build(parent=arm, emit=0.06):
-                pass
+        self.model = CharacterModel(parent=self.root, jacket=jc, pants=(0.32, 0.36, 0.5), seed=seed + 2, emit=0.12)
+        self.tag = Nametag(self.root, name, jc)
         # visage « faux » visible seulement sur les photos : yeux rouges, sourire déformé
-        self.fake = Entity(parent=self.root, enabled=False, position=(0, 1.7, 0.1))
-        for x in (-0.05, 0.05):
-            Entity(parent=self.fake, model="quad", color=color.rgb32(255, 20, 20), position=(x, 0.02, 0), scale=0.03, double_sided=True)
-        Entity(parent=self.fake, model="quad", color=color.rgb32(20, 0, 0), position=(0, -0.04, 0), scale=(0.1, 0.035), double_sided=True)
+        self.fake = Entity(parent=self.model.head, enabled=False, position=(0, 0.12, 0.112))
+        for x in (-0.04, 0.04):
+            Entity(parent=self.fake, model="quad", color=color.rgb32(255, 20, 20), position=(x, 0.015, 0), scale=0.028, double_sided=True)
+        Entity(parent=self.fake, model="quad", color=color.rgb32(20, 0, 0), position=(0, -0.09, 0), scale=(0.09, 0.03), double_sided=True)
 
     def set_target(self, pos, rot):
         self.target = Vec3(*pos)
+        self.pitch = rot[0] if len(rot) > 0 else 0.0
         self.yaw_target = rot[1] if len(rot) > 1 else 0.0
 
     def update(self, dt):
-        if not self.alive:
-            return
         cur = self.root.position
+        if not self.alive:
+            self.model.animate(dt)
+            return
+        # téléportation si l'écart est énorme (correction serveur, réapparition)
+        if (self.target - cur).length() > 6.0:
+            self.root.position = self.target
+            cur = self.target
         new = cur + (self.target - cur) * min(1.0, dt * 12.0)
-        moved = (new - cur).length()
+        moved = (Vec3(new[0], 0, new[2]) - Vec3(cur[0], 0, cur[2])).length()
         self.root.position = new
+        inst = moved / max(dt, 1e-4)
+        self.speed += (inst - self.speed) * min(1.0, dt * 8.0)
         d = (self.yaw_target - self.root.rotation_y + 180) % 360 - 180
         self.root.rotation_y += d * min(1.0, dt * 10.0)
-        if moved > 0.002:
-            self.phase += moved * 7.0
-            self.arm_l.rotation_x = math.sin(self.phase) * 28
-            self.arm_r.rotation_x = -math.sin(self.phase) * 28
-        else:
-            self.arm_l.rotation_x *= 0.9
-            self.arm_r.rotation_x *= 0.9
+        self.model.animate(dt, self.speed, 0.0, self.pitch, self.speed > 4.2, self.torch_on)
 
     def die(self):
         self.alive = False
-        self.root.rotation_x = -88
-        self.root.y = self.root.y + 0.15
+        self.model.die()
+        self.tag.set_visible(False)
 
     def destroy(self):
         destroy(self.root)
@@ -387,6 +382,8 @@ class MultiplayerManager:
         g._fresh_world()
         g.assistance.remote = True
         g.player.revive()
+        g.player.hide_model = False
+        self.__dict__.pop("_spec_init", None)
         g.player.flashlight.battery = 100.0
         g.phone.model.battery = 100.0
         g.entity.remote = True
@@ -398,7 +395,7 @@ class MultiplayerManager:
         for pid, p in self.players.items():
             if pid == me:
                 continue
-            av = RemoteAvatar(pid, p["name"], p.get("color", [0.7, 0.2, 0.2]))
+            av = RemoteAvatar(pid, p["name"], p.get("color", [0.7, 0.2, 0.2]), seed=len(self.avatars))
             av.root.position = Vec3(7.0, 0.0, 0.9)
             av.target = Vec3(7.0, 0.0, 0.9)
             self.avatars[pid] = av
@@ -446,6 +443,7 @@ class MultiplayerManager:
         p.frozen = False
         p.look_enabled = True
         p.move_enabled = False
+        p.hide_model = True
         if not hasattr(self, "_spec_init"):
             self._spec_init = True
             g.ui.hud.show()

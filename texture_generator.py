@@ -106,13 +106,17 @@ def _tile_wrap(img):
 # ---------------------------------------------------------------------------
 @register("crepi", 512)
 def tex_crepi(rng):
+    """Enduit niçois ocre jaune, délavé, fissuré, avec coulures de pluie et soubassement sali."""
     s = 512
     n = fbm(s, rng, base=24, octaves=4, persistence=0.6)
     coarse = fbm(s, rng, base=3, octaves=3)
     streaks = fbm(s, rng, base=6, octaves=3, stretch=(1.0, 0.15))
-    base = lerp_color(n, (96, 94, 90), (150, 147, 140))
-    base *= (0.75 + 0.35 * coarse)[..., None]
-    base *= (1.0 - 0.35 * np.clip((streaks - 0.5) * 3, 0, 1))[..., None]
+    base = lerp_color(n, (150, 108, 62), (206, 160, 98))
+    base *= (0.78 + 0.32 * coarse)[..., None]
+    base *= (1.0 - 0.38 * np.clip((streaks - 0.5) * 3, 0, 1))[..., None]
+    # écaillage : plaques plus claires où l'enduit est tombé
+    flakes = np.clip((fbm(s, rng, base=10, octaves=3) - 0.68) * 6, 0, 1)
+    base = base * (1 - flakes[..., None] * 0.5) + np.array((176, 166, 150))[None, None, :] * flakes[..., None] * 0.5
     img = to_img(base)
     d = ImageDraw.Draw(img)
     for _ in range(7):
@@ -124,7 +128,88 @@ def tex_crepi(rng):
             pts.append((x % s, y % s) if abs(x) < s else (x, y))
         for a, b in zip(pts, pts[1:]):
             if abs(a[0] - b[0]) < 60 and abs(a[1] - b[1]) < 60:
-                d.line([a, b], fill=(34, 32, 30), width=int(rng.integers(1, 3)))
+                d.line([a, b], fill=(70, 50, 34), width=int(rng.integers(1, 3)))
+    return img
+
+
+@register("crepi_rose", 512)
+def tex_crepi_rose(rng):
+    """Variante rose/terre de Sienne pour les villas voisines."""
+    s = 512
+    n = fbm(s, rng, base=20, octaves=4, persistence=0.6)
+    coarse = fbm(s, rng, base=3, octaves=3)
+    base = lerp_color(n, (150, 82, 70), (204, 132, 112))
+    base *= (0.8 + 0.3 * coarse)[..., None]
+    return to_img(base)
+
+
+@register("tuiles", 512)
+def tex_tiles_roof(rng):
+    """Tuiles canal provençales : rangées ondulées terre cuite, mousse et lichen."""
+    s = 512
+    arr = np.zeros((s, s, 3))
+    rows, cols = 8, 8
+    rh, cw = s // rows, s // cols
+    xx = np.arange(s)[None, :]
+    yy = np.arange(s)[:, None]
+    lx = (xx % cw) / cw
+    ly = (yy % rh) / rh
+    # profil d'une tuile canal : bombé (cos) + ombre sous le recouvrement
+    bump = np.cos((lx - 0.5) * np.pi) ** 0.8
+    shade = 0.55 + 0.45 * bump
+    shade = shade * (0.65 + 0.35 * np.clip(ly * 1.6, 0, 1))
+    tint = np.zeros((s, s))
+    for r in range(rows):
+        for c in range(cols):
+            tint[r * rh:(r + 1) * rh, c * cw:(c + 1) * cw] = rng.uniform(-0.12, 0.12)
+    noise = fbm(s, rng, base=32, octaves=3)
+    col0 = np.array((150, 64, 38), dtype=float)
+    col1 = np.array((198, 104, 62), dtype=float)
+    t = np.clip(0.5 + tint + (noise - 0.5) * 0.4, 0, 1)
+    arr = col0[None, None, :] * (1 - t[..., None]) + col1[None, None, :] * t[..., None]
+    arr *= shade[..., None]
+    moss = np.clip((fbm(s, rng, base=5, octaves=4) - 0.62) * 4, 0, 1)
+    arr = arr * (1 - moss[..., None] * 0.6) + np.array((70, 76, 40))[None, None, :] * moss[..., None] * 0.6
+    return to_img(arr)
+
+
+@register("palmier_tronc", 256)
+def tex_palm_trunk(rng):
+    """Écorce de palmier en écailles (bases de palmes coupées)."""
+    s = 256
+    arr = lerp_color(fbm(s, rng, base=12, octaves=3), (78, 62, 44), (128, 104, 76))
+    img = to_img(arr)
+    d = ImageDraw.Draw(img)
+    for y in range(0, s, 22):
+        off = 11 if (y // 22) % 2 else 0
+        for x in range(-22 + off, s + 22, 44):
+            d.arc([x, y - 6, x + 44, y + 24], 200, 340, fill=(48, 36, 26), width=3)
+    return img
+
+
+@register("palme", 256)
+def tex_palm_leaf(rng):
+    """Palme vert sombre avec nervure centrale (utilisée sur des quads)."""
+    s = 256
+    img = Image.new("RGB", (s, s), (40, 62, 34))
+    d = ImageDraw.Draw(img)
+    for x in range(0, s, 6):
+        c = int(rng.integers(30, 70))
+        d.line([(x, 0), (x + 3, s)], fill=(c, c + 30, c - 10), width=3)
+    d.line([(0, s // 2), (s, s // 2)], fill=(110, 120, 70), width=6)
+    return img.filter(ImageFilter.GaussianBlur(0.8))
+
+
+@register("geranium", 128)
+def tex_geranium(rng):
+    s = 128
+    img = Image.new("RGB", (s, s), (40, 70, 34))
+    d = ImageDraw.Draw(img)
+    for _ in range(60):
+        x, y = rng.integers(0, s), rng.integers(0, s)
+        r = int(rng.integers(3, 7))
+        c = (int(rng.integers(170, 230)), int(rng.integers(20, 50)), int(rng.integers(30, 60)))
+        d.ellipse([x - r, y - r, x + r, y + r], fill=c)
     return img
 
 
@@ -374,14 +459,18 @@ def tex_planks(rng):
 
 @register("volet", 256)
 def tex_shutter(rng):
+    """Persienne niçoise vert amande délavé : lames inclinées, peinture écaillée sur bois gris."""
     s = 256
-    arr = np.zeros((s, s, 3))
     n = fbm(s, rng, base=8, octaves=4)
-    arr[:] = lerp_color(n, (58, 70, 62), (92, 104, 90))
-    for y in range(0, s, 16):
-        arr[y:y + 2] *= 0.35
+    arr = lerp_color(n, (62, 104, 88), (104, 146, 122)).astype(float)
+    yy = (np.arange(s) % 16) / 16.0
+    louver = 0.55 + 0.45 * np.clip(yy * 1.4, 0, 1)
+    arr *= louver[:, None, None]
+    arr[:, :10] *= 0.75
+    arr[:, -10:] *= 0.75
+    arr[:, s // 2 - 4:s // 2 + 4] *= 0.6
     peel = np.clip((fbm(s, rng, base=5, octaves=3) - 0.6) * 5, 0, 1)
-    arr = arr * (1 - peel[..., None]) + np.array((90, 80, 64))[None, None, :] * peel[..., None]
+    arr = arr * (1 - peel[..., None]) + np.array((112, 100, 84))[None, None, :] * peel[..., None]
     return to_img(arr)
 
 
@@ -407,6 +496,25 @@ def tex_furniture_wood(rng):
     arr = lerp_color(g, (82, 52, 30), (130, 88, 52))
     arr *= (0.85 + 0.3 * fbm(s, rng, base=14, octaves=3))[..., None]
     return to_img(arr)
+
+
+@register("etoffe", 128)
+def tex_cloth_neutral(rng):
+    """Tissu neutre clair (teinté par la couleur de sommet) : vêtements des personnages."""
+    s = 128
+    n = fbm(s, rng, base=8, octaves=3)
+    arr = lerp_color(n, (196, 196, 196), (236, 236, 236))
+    yy, xx = np.mgrid[:s, :s]
+    weave = 0.5 + 0.25 * np.sin(xx * 2.2) + 0.25 * np.sin(yy * 2.2)
+    arr *= (0.86 + 0.14 * weave)[..., None]
+    return to_img(arr)
+
+
+@register("peau", 64)
+def tex_skin(rng):
+    s = 64
+    n = fbm(s, rng, base=4, octaves=3)
+    return to_img(lerp_color(n, (228, 222, 218), (250, 246, 242)))
 
 
 @register("tissu", 256)

@@ -159,7 +159,7 @@ class GameManager:
         self.events.setup()
         self.particles = ParticleManager(self)
         self.sky = SkyDome()
-        self.fl_cone = FlashlightCone(self.player.vm)
+        self.fl_cone = FlashlightCone(self.player.cone_anchor)
         self.settings_menu = SettingsMenu(self)
         self.phone_light = LightSource((0, 0, 0), (0.7, 0.8, 1.0), 0.0, 4.5, kind="static", enabled=False, name="telephone")
         self.house.lights.append(self.phone_light)
@@ -361,6 +361,7 @@ class GameManager:
         self.mode = "playing"
         self.paused = False
         self.camera_mode = False
+        self.player.force_first_person = 0
         self.ui.menu.hide()
         p = self.player
         self.effects.menu_mode = False
@@ -580,7 +581,9 @@ class GameManager:
             return
         if self.player.frozen:
             return
-        self.player.on_key(key)
+        res = self.player.on_key(key)
+        if isinstance(res, str) and res.startswith("vue:"):
+            self.ui.say(res[4:], 1.6)
         if key == settings.key("interagir"):
             self.interact()
         elif key == settings.key("telephone"):
@@ -598,12 +601,15 @@ class GameManager:
     # --- appareil photo --------------------------------------------------
     def enter_camera_mode(self):
         self.camera_mode = True
+        self.player.force_first_person += 1
         self.viewfinder.enabled = True
         self.player.speed_mult = 0.6
         self.set_mouse(free=False)
         self.state.set("camera_used")
 
     def exit_camera_mode(self):
+        if self.camera_mode:
+            self.player.force_first_person = max(0, self.player.force_first_person - 1)
         self.camera_mode = False
         self.viewfinder.enabled = False
         self.player.speed_mult = 1.0
@@ -964,7 +970,7 @@ class GameManager:
         eye = p.eye_pos
         zone_mult = self.lighting.zone_mult
         p.flashlight.mult = zone_mult
-        p.flashlight.update(dt, eye, p.forward)
+        p.flashlight.update(dt, p.light_origin(), p.forward)
         # éclairage perçu par le joueur (pour la détection)
         lvl = 0.0
         for l in self.house.lights:

@@ -747,6 +747,29 @@ def s_end_beep(rng):
     return normalize(tone(950, 0.35, (1.0,)), 0.5)
 
 
+@snd("ui_hover")
+def s_ui_hover(rng):
+    n = int(SR * 0.05)
+    return normalize(sine(1300, 0.05) * decay(n, 0.012) * 0.6 + bandpass(rng.standard_normal(n), 2000, 7000) * decay(n, 0.01) * 0.2, 0.18)
+
+
+@snd("ui_click")
+def s_ui_click(rng):
+    n = int(SR * 0.09)
+    x = sine(520, 0.09) * decay(n, 0.02) + 0.5 * sine(260, 0.09) * decay(n, 0.03)
+    x += bandpass(rng.standard_normal(n), 1500, 6000) * decay(n, 0.006) * 0.4
+    return normalize(x, 0.32)
+
+
+@snd("ui_open")
+def s_ui_open(rng):
+    n = int(SR * 0.28)
+    t = taxis(0.28)
+    f = np.interp(t, [0, 0.28], [300, 620])
+    x = np.sin(2 * np.pi * np.cumsum(f) / SR) * adsr(n, 0.01, 0.05, 0.5, 0.15)
+    return normalize(lowpass(x, 3000), 0.3)
+
+
 @snd("tap")
 def s_tap(rng):
     n = int(SR * 0.04)
