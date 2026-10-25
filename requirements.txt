@@ -1,0 +1,5 @@
+ursina>=7.0.0
+panda3d>=1.10.13
+numpy>=1.24
+Pillow>=10.0
+pyinstaller>=6.0
