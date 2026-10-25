@@ -4,7 +4,6 @@
 (et contradictoires entre eux) ; les photos montrent les autres joueurs « faux » (yeux
 rouges, sourire déformé) pour semer la paranoïa ; les morts deviennent spectateurs.
 """
-import math
 import random
 
 from ursina import Entity, Vec3, camera, color, destroy

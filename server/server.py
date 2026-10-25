@@ -11,43 +11,119 @@ IP publique : 5.180.34.43 | Port : 27303 (TCP pour les messages d'état, UDP pou
 Protocole : JSON, un message par ligne (TCP) ou par datagramme (UDP).
 """
 import json
+import os
+import queue
 import random
+import secrets
+import signal
 import socket
 import sys
 import threading
 import time
+import unicodedata
 
 import server_config as cfg
 from game_state import GameState, EntityState, dist3
 
+_log_lock = threading.Lock()
+_log_file = None
+
 
 def log(*a):
-    print(time.strftime("[%H:%M:%S]"), *a, flush=True)
+    """Journal console + fichier (server.log, rotation à 2 Mo)."""
+    global _log_file
+    line = time.strftime("[%Y-%m-%d %H:%M:%S] ") + " ".join(str(x) for x in a)
+    with _log_lock:
+        print(line, flush=True)
+        try:
+            if _log_file is None:
+                path = cfg.LOG_FILE
+                if os.path.exists(path) and os.path.getsize(path) > 2 * 1024 * 1024:
+                    os.replace(path, path + ".old")
+                _log_file = open(path, "a", encoding="utf-8")
+            _log_file.write(line + "\n")
+            _log_file.flush()
+        except OSError:
+            pass
+
+
+def clean_name(name, taken):
+    """Pseudo affichable : sans caractères de contrôle, 1 à 16 caractères, unique dans la salle."""
+    name = "".join(ch for ch in str(name) if unicodedata.category(ch)[0] not in ("C",)).strip()
+    name = " ".join(name.split())[:16] or "Joueur"
+    base, n = name, 2
+    while name.lower() in taken:
+        suffix = f"#{n}"
+        name = base[:16 - len(suffix)] + suffix
+        n += 1
+    return name
 
 
 class Connection:
+    """Connexion TCP d'un client.
+
+    Les envois passent par une file + un thread d'écriture dédié : un client lent ou bloqué ne peut
+    pas ralentir le tick du serveur. Si sa file déborde, il est déconnecté.
+    """
+
     def __init__(self, sock, addr):
         self.sock = sock
         self.addr = addr
-        self.lock = threading.Lock()
         self.pid = None
         self.alive = True
         self.buf = b""
+        self.q = queue.Queue(maxsize=cfg.SEND_QUEUE_MAX)
+        self.last_recv = time.time()
+        self.tokens = float(cfg.RATE_BURST)
+        self.last_refill = time.time()
+        self.flood_strikes = 0
+        self.udp_token = secrets.token_hex(8)
+        self.writer = threading.Thread(target=self._writer, daemon=True)
+        self.writer.start()
 
     def send(self, obj):
         if not self.alive:
             return False
-        data = (json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
         try:
-            with self.lock:
-                self.sock.sendall(data)
+            data = (json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+            self.q.put_nowait(data)
             return True
-        except OSError:
-            self.alive = False
+        except queue.Full:
+            log(f"{self.addr} : file d'envoi saturée, déconnexion")
+            self.close()
             return False
+        except (TypeError, ValueError):
+            return False
+
+    def _writer(self):
+        while self.alive:
+            try:
+                data = self.q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                self.sock.sendall(data)
+            except OSError:
+                self.alive = False
+                break
+
+    def allow(self):
+        """Limiteur de débit (seau à jetons)."""
+        now = time.time()
+        self.tokens = min(cfg.RATE_BURST, self.tokens + (now - self.last_refill) * cfg.RATE_PER_SEC)
+        self.last_refill = now
+        if self.tokens >= 1.0:
+            self.tokens -= 1.0
+            return True
+        self.flood_strikes += 1
+        return False
 
     def close(self):
         self.alive = False
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         try:
             self.sock.close()
         except OSError:
@@ -85,6 +161,7 @@ class GameServer:
 
     def stop(self):
         self.running = False
+        time.sleep(0.3)                # laisse partir les derniers messages (avis de redémarrage)
         for c in list(self.conns):
             c.close()
         for s in (self.tcp, self.udp):
@@ -102,9 +179,23 @@ class GameServer:
                 sock, addr = self.tcp.accept()
             except OSError:
                 break
+            with self.lock:
+                per_ip = sum(1 for c in self.conns if c.addr[0] == addr[0])
+                too_many = len(self.conns) >= cfg.MAX_CONNECTIONS or per_ip >= cfg.MAX_PER_IP
+            if too_many:
+                log("connexion refusée (limite atteinte) :", addr)
+                try:
+                    sock.sendall(b'{"type":"error","message":"Serveur occup\\u00e9, r\\u00e9essayez plus tard."}\n')
+                    sock.close()
+                except OSError:
+                    pass
+                continue
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            sock.settimeout(1.0)
             conn = Connection(sock, addr)
-            self.conns.append(conn)
+            with self.lock:
+                self.conns.append(conn)
             threading.Thread(target=self._client_loop, args=(conn,), daemon=True).start()
 
     def _client_loop(self, conn):
@@ -113,21 +204,41 @@ class GameServer:
             while self.running and conn.alive:
                 try:
                     chunk = conn.sock.recv(4096)
+                except socket.timeout:
+                    if time.time() - conn.last_recv > cfg.CLIENT_TIMEOUT:
+                        log(conn.addr, ": délai dépassé (aucun message)")
+                        break
+                    continue
                 except OSError:
                     break
                 if not chunk:
                     break
+                conn.last_recv = time.time()
                 conn.buf += chunk
+                if len(conn.buf) > cfg.MAX_LINE and b"\n" not in conn.buf:
+                    log(conn.addr, ": message trop long, déconnexion")
+                    break
                 while b"\n" in conn.buf:
                     line, conn.buf = conn.buf.split(b"\n", 1)
-                    if not line.strip():
+                    if not line.strip() or len(line) > cfg.MAX_LINE:
+                        continue
+                    if not conn.allow():
+                        if conn.flood_strikes > cfg.FLOOD_KICK:
+                            log(conn.addr, ": flood, déconnexion")
+                            conn.alive = False
+                            break
                         continue
                     try:
                         msg = json.loads(line.decode("utf-8"))
-                    except ValueError:
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    if not isinstance(msg, dict):
                         continue
                     with self.lock:
-                        self.handle(conn, msg)
+                        try:
+                            self.handle(conn, msg)
+                        except Exception as e:          # message malformé : on l'ignore, le client reste connecté
+                            log("erreur de traitement", msg.get("type"), ":", repr(e))
         finally:
             with self.lock:
                 self._disconnect(conn)
@@ -140,18 +251,31 @@ class GameServer:
                 continue
             except OSError:
                 break
+            if len(data) > 1400:
+                continue
             try:
                 msg = json.loads(data.decode("utf-8"))
-            except ValueError:
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if not isinstance(msg, dict):
                 continue
             with self.lock:
                 pid = msg.get("id")
                 ps = self.state.players.get(pid)
-                if ps is None:
+                if ps is None or ps.conn is None:
+                    continue
+                # anti-usurpation : même IP que la connexion TCP et jeton de session (si fourni par le client)
+                if addr[0] != ps.conn.addr[0]:
+                    continue
+                tok = msg.get("tok")
+                if tok is not None and tok != ps.conn.udp_token:
                     continue
                 ps.udp_addr = addr
                 if msg.get("type") == "move":
-                    self._on_move(ps, msg)
+                    try:
+                        self._on_move(ps, msg)
+                    except Exception as e:
+                        log("erreur UDP :", repr(e))
 
     def _disconnect(self, conn):
         if conn in self.conns:
@@ -195,16 +319,22 @@ class GameServer:
         if t == "connect":
             if conn.pid is not None:
                 return
+            ver = msg.get("version")
+            if ver is not None and str(ver).split(".")[0] != str(cfg.PROTOCOL_VERSION).split(".")[0]:
+                conn.send(dict(type="error", message=f"Version incompatible (serveur {cfg.PROTOCOL_VERSION}). Mettez le jeu à jour."))
+                return
             if s.phase != "lobby":
                 conn.send(dict(type="error", message="Partie déjà en cours."))
                 return
-            ps = s.add_player(str(msg.get("name", "Joueur")), conn)
+            taken = {p.name.lower() for p in s.players.values()}
+            ps = s.add_player(clean_name(msg.get("name", "Joueur"), taken), conn)
             if ps is None:
                 conn.send(dict(type="error", message="Serveur plein (4 joueurs maximum)."))
                 return
             conn.pid = ps.id
             log(f"{ps.name} (id {ps.id}) a rejoint le lobby")
-            conn.send(dict(type="welcome", id=ps.id, players=[p.info() for p in s.players.values()], host=s.host))
+            conn.send(dict(type="welcome", id=ps.id, players=[p.info() for p in s.players.values()], host=s.host,
+                           tok=conn.udp_token, version=cfg.PROTOCOL_VERSION, motd=cfg.MOTD))
             self.broadcast(self._lobby_msg())
             return
         ps = s.players.get(conn.pid)
@@ -231,7 +361,7 @@ class GameServer:
         elif t == "death":
             self._kill(ps, msg.get("cause", "entity_contact"))
         elif t == "ping":
-            conn.send(dict(type="pong", t=msg.get("t")))
+            conn.send(dict(type="pong", t=msg.get("t"), players=len(s.players)))
 
     def _on_move(self, ps, msg):
         pos = msg.get("pos")
@@ -262,7 +392,7 @@ class GameServer:
             self.broadcast(dict(type="interact", target=target, by=ps.id), exclude=ps.id)
 
     def _on_chat(self, ps, msg):
-        text = str(msg.get("message", ""))[:200]
+        text = "".join(ch for ch in str(msg.get("message", "")) if unicodedata.category(ch)[0] != "C").strip()[:200]
         if not text:
             return
         if not ps.alive and random.random() < 0.3:
@@ -397,7 +527,10 @@ class GameServer:
                 dt = min(0.25, t0 - self._last_tick)
                 self._last_tick = t0
                 with self.lock:
-                    self._tick(dt)
+                    try:
+                        self._tick(dt)
+                    except Exception as e:             # un tick raté ne doit jamais arrêter la salle
+                        log("erreur de tick :", repr(e))
                 sleep = cfg.TICK_DT - (time.time() - t0)
                 if sleep > 0:
                     time.sleep(sleep)
@@ -441,12 +574,69 @@ class GameServer:
                 log("victoire : au moins un joueur a survécu")
 
 
+def console(server):
+    """Commandes d'administration (console Pterodactyl) : help, list, kick <id>, say <texte>, reset, stop."""
+    for line in sys.stdin:
+        cmd, _, arg = line.strip().partition(" ")
+        cmd = cmd.lower()
+        try:
+            with server.lock:
+                if cmd == "help":
+                    log("commandes : list | kick <id> | say <texte> | reset | stop")
+                elif cmd == "list":
+                    st = server.state
+                    log(f"phase={st.phase} joueurs={len(st.players)} connexions={len(server.conns)}")
+                    for p in st.players.values():
+                        log(f"  #{p.id} {p.name} {'(hôte)' if p.id == st.host else ''} {'vivant' if p.alive else 'mort'} {p.conn.addr}")
+                elif cmd == "kick" and arg.isdigit():
+                    p = server.state.players.get(int(arg))
+                    if p is not None:
+                        p.conn.send(dict(type="error", message="Vous avez été exclu par l'administrateur."))
+                        p.conn.close()
+                        log("exclu :", p.name)
+                elif cmd == "say" and arg:
+                    server.broadcast(dict(type="chat", id=0, name="Serveur", message=arg[:200]))
+                elif cmd == "reset":
+                    for p in list(server.state.players.values()):
+                        p.conn.send(dict(type="error", message="La salle a été réinitialisée."))
+                        p.conn.close()
+                    server.state = GameState()
+                    log("salle réinitialisée")
+                elif cmd in ("stop", "quit", "exit"):
+                    server.running = False
+                    return
+                elif cmd:
+                    log("commande inconnue (help)")
+        except Exception as e:
+            log("erreur console :", repr(e))
+
+
 def main():
     host = cfg.HOST
     port = cfg.PORT
     if len(sys.argv) > 1:
-        port = int(sys.argv[1])
+        try:
+            port = int(sys.argv[1])
+        except ValueError:
+            log("port invalide :", sys.argv[1])
+            sys.exit(2)
     server = GameServer(host, port)
+
+    def _graceful(signum, frame):
+        log(f"signal {signum} reçu : arrêt propre")
+        try:
+            server.broadcast(dict(type="error", message="Le serveur redémarre. Reconnectez-vous dans un instant."))
+        except Exception:
+            pass
+        server.running = False
+    for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGINT", None)):
+        if sig is not None:
+            try:
+                signal.signal(sig, _graceful)
+            except (ValueError, OSError):
+                pass
+    if sys.stdin is not None and sys.stdin.isatty() or os.environ.get("LADRESSE_CONSOLE", "1") == "1":
+        threading.Thread(target=console, args=(server,), daemon=True).start()
     try:
         server.start()
     except OSError as e:

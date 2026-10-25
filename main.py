@@ -89,17 +89,27 @@ _optimize_ursina()
 import typography
 typography.apply_ui_font()
 
+import crash_handler
+crash_handler.install()
+
 from game_manager import GameManager
 
 game = GameManager(app)
 
 
 def update():
-    game.update(utime.dt)
+    try:
+        game.update(utime.dt)
+    except Exception:
+        # une erreur ponctuelle ne doit pas fermer le jeu : elle est journalisée (crash.log)
+        crash_handler.log_exception("update")
 
 
 def input(key):
-    game.on_input(key)
+    try:
+        game.on_input(key)
+    except Exception:
+        crash_handler.log_exception("input " + str(key))
 
 
 if __name__ == "__main__":

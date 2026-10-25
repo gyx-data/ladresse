@@ -38,7 +38,9 @@ def wait(n):
         yield
 
 
-def start_game():
+def start_game(outside=False):
+    from config import settings
+    settings["quartier"] = outside
     game.ui.menu.hide()
     game._stop_menu()
     game.reset_game_objects()
@@ -59,11 +61,76 @@ def close_ui():
         game.ui.choice.yes.on_click()
 
 
+def neighborhood_tests():
+    """Quartier : phase extérieure, PNJ, supérette, carte fidélité, antivol, entrée dans la maison."""
+    from shop import CATALOG_BY_ID, bank_balance
+    from fidelite import Loyalty
+    start_game(outside=True)
+    yield from wait(10)
+    nb, p = game.neighborhood, game.player
+    check(nb is not None and nb.outside_phase and p.zone == "dehors", "nouvelle partie : départ dans le quartier (dehors)")
+    check(len(nb.npcs) >= 10 and len(nb.traffic) >= 2, f"{len(nb.npcs)} PNJ et {len(nb.traffic)} voitures en circulation")
+    check(nb.loyalty.active == "9531700001", "carte fidélité par défaut 9531700001")
+    # trajet jusqu'au magasin : le sol existe partout (pas de chute)
+    tp(21.0, 0.0, -19.0, 180.0)
+    yield from wait(10)
+    check(abs(p.pos[1]) < 0.2, "sol praticable dans la rue")
+    tp(14.85, 0.0, -27.0, 90.0)
+    yield from wait(5)
+    check(p.zone == "magasin", "zone magasin détectée")
+    bal0 = bank_balance(game.state)
+    nb.take(CATALOG_BY_ID["piles"])
+    nb.take(CATALOG_BY_ID["eau"])
+    # antivol : sortir sans payer ramène dans le magasin
+    tp(21.0, 0.0, -22.0, 0.0)
+    yield from wait(3)
+    tp(21.0, 0.0, -20.4, 0.0)
+    yield from wait(5)
+    check(nb.theft_warnings == 1 and p.pos[2] < -21.5, "portique antivol : retour dans le magasin")
+    co = nb.checkout
+    co.open(nb._on_paid)
+    co._scan_all()
+    co._create_card()
+    new_card = co.card
+    check(new_card == "9531700002", f"nouvelle carte numérotée 9531700002 ({new_card})")
+    co._pay()
+    co._do_pay()
+    yield from wait(3)
+    check(game.state.has("pile", 2) and game.state.has("eau"), "articles payés ajoutés à l'inventaire")
+    check(abs((bal0 - bank_balance(game.state)) - (4.49 + 0.69)) < 0.01, "prix carte appliqués et débit bancaire")
+    check(Loyalty(nb.loyalty.path).card("9531700002")["points"] == 5, "points fidélité enregistrés sur disque")
+    check("Carte fidélité 9531 700 002" in co.ticket_text(), "ticket de caisse avec la carte")
+    co.close()
+    check(nb.basket.count == 0 and not nb.ui.enabled, "panier vidé après paiement")
+    # restaurant
+    h0 = p.health = 50.0
+    nb.counter.open()
+    nb.counter._order("pan_bagnat")
+    nb.counter.close()
+    check(p.health > h0, "repas chez Nino : santé rendue")
+    # PNJ : parler
+    n0 = game.state.stats.get("discussions", 0)
+    nb.npcs[0].talk()
+    check(game.state.stats.get("discussions", 0) == n0 + 1, "dialogue avec un PNJ")
+    # entrée dans la maison
+    tp(7.0, 0.0, -1.2, 0.0)
+    from ursina import held_keys
+    held_keys["w"] = 1
+    for _ in range(60):
+        yield
+        if not nb.outside_phase:
+            break
+    held_keys["w"] = 0
+    check(not nb.outside_phase and game.state.flag("play_started"), "entrer dans la maison lance la nuit")
+    game.timers.clear()
+
+
 def scenario():
     while game.mode == "loading":
         yield
     check(game.mode == "menu", "démarrage : le menu principal s'affiche")
     yield from wait(5)
+    yield from neighborhood_tests()
     start_game()
     yield from wait(5)
     p, ia = game.player, game.interactions

@@ -10,7 +10,7 @@ Repère local : y = haut, +z = avant du personnage, pieds en y = 0.
 """
 import math
 
-from ursina import Entity, Vec3, color, destroy
+from ursina import Entity, color, destroy
 
 from room_builder import MeshBuilder
 

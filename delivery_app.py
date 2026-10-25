@@ -246,6 +246,10 @@ class DeliveryApp(App):
     def confirm(self):
         game = self.phone.game
         st = game.state
+        nb = getattr(game, "neighborhood", None)
+        if nb is not None and nb.outside_phase:
+            self.phone.toast("Commande possible une fois arrivé à l'adresse (17 rue des Lilas).")
+            return
         st.order_attempts += 1
         sound.play("paiement", 0.8, channel="voice")
         self.page = "loading"

@@ -34,7 +34,8 @@ class BankApp(App):
         label(self.root, "Connecté", 0.17, 0.32, 0.4, rgb(180, 220, 255), origin=(0.5, 0))
         rect(self.root, 0, 0.22, SW - 0.03, 0.11, rgb(24, 40, 90))
         label(self.root, "Compte courant", -0.18, 0.25, 0.5, rgb(170, 190, 240), origin=(-0.5, 0), z=-0.03)
-        label(self.root, fmt_eur(gd.BANK_BALANCE), -0.18, 0.21, 1.5, color.white, origin=(-0.5, 0), z=-0.03)
+        from shop import bank_balance
+        label(self.root, fmt_eur(bank_balance(st)), -0.18, 0.21, 1.5, color.white, origin=(-0.5, 0), z=-0.03)
         label(self.root, "Solde disponible", -0.18, 0.18, 0.4, rgb(170, 190, 240), origin=(-0.5, 0), z=-0.03)
         label(self.root, "Dernières opérations", -0.18, 0.13, 0.6, color.white, origin=(-0.5, 0))
         y = 0.095
@@ -42,6 +43,8 @@ class BankApp(App):
         refused = st.flags.get("refused_orders", [])
         for r in reversed(refused):
             rows.append((r[0], r[1], r[2], True))
+        for r in reversed(st.flags.get("purchases", [])):
+            rows.append((r[0], r[1], r[2], False))
         for name, amount, date in gd.BANK_TRANSACTIONS:
             rows.append((name, amount, date, False))
         for name, amount, date, bad in rows[:8]:

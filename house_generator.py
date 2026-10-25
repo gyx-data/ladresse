@@ -708,7 +708,7 @@ class House:
             b.sphere("herbe", lx, 0.9, lz, 1.1, (0.32, 0.42, 0.3), lat=5, lon=8, sy=0.8)
         # villas voisines : enduits ocre/rose, toits de tuiles
         for (nx, nw, nh, tex) in ((-26, 12, 8, "crepi_rose"), (-10, 7, 6, "crepi"), (28, 9, 7, "crepi_rose"), (40, 10, 9, "crepi")):
-            for (z0, z1, dark) in ((10.0, 22.0, 0.42), (-34.0, -26.0, 0.36)):
+            for (z0, z1, dark) in ((10.0, 22.0, 0.42),):
                 x0, x1 = (nx, nx + nw) if z0 > 0 else (nx - 1, nx + nw + 3)
                 hh = nh if z0 > 0 else nh + 2
                 b.box(tex, x0, 0.0, z0, x1, hh, z1, (dark, dark * 0.95, dark * 0.9))
@@ -817,6 +817,10 @@ class House:
 
     def zone_at(self, x, z, y):
         lvl = self.level_at(y)
+        if lvl == 0:
+            for (x0, z0, x1, z1, name) in getattr(self, "extra_zones", ()):
+                if x0 <= x <= x1 and z0 <= z <= z1:
+                    return name
         if lvl == 0 and z > 12.0 and 6.0 <= x <= 8.0:
             return "escalier_cave"
         if lvl == 0 and (x < -0.3 or x > 16.3 or z < -0.3 or z > 12.3):
@@ -882,6 +886,12 @@ class House:
         return best
 
     def set_level_visibility(self, level):
+        if getattr(self, "outside_view", False):
+            for root in self.level_roots.values():
+                root.enabled = True
+            if self.exterior_root:
+                self.exterior_root.enabled = True
+            return
         for lvl, root in self.level_roots.items():
             if lvl == -1:
                 root.enabled = level in (-1, 0)

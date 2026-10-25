@@ -4,6 +4,19 @@ import os
 HOST = os.environ.get("LADRESSE_HOST", "0.0.0.0")
 PORT = int(os.environ.get("LADRESSE_PORT", "27303"))        # IP publique : 5.180.34.43
 MAX_PLAYERS = 4
+PROTOCOL_VERSION = "2.0"
+MOTD = os.environ.get("LADRESSE_MOTD", "Bienvenue au 17 rue des Lilas.")
+LOG_FILE = os.environ.get("LADRESSE_LOG", os.path.join(os.path.dirname(os.path.abspath(__file__)), "server.log"))
+
+# Robustesse réseau
+MAX_CONNECTIONS = 16           # connexions TCP simultanées (lobby + curieux)
+MAX_PER_IP = 4                 # par adresse IP
+CLIENT_TIMEOUT = 25.0          # secondes sans aucun message -> déconnexion (le client pinge toutes les 4 s)
+MAX_LINE = 16 * 1024           # taille maximale d'un message JSON
+SEND_QUEUE_MAX = 2000          # messages en attente avant de couper un client trop lent
+RATE_PER_SEC = 90.0            # messages TCP par seconde tolérés (seau à jetons)
+RATE_BURST = 180
+FLOOD_KICK = 600               # messages rejetés avant exclusion
 TICK_RATE = 20                                              # ticks par seconde
 TICK_DT = 1.0 / TICK_RATE
 

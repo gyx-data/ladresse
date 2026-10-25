@@ -15,6 +15,14 @@ ITEM_DEFS = {
     "adresse_piege": ("Papier : adresse barrée", "4 impasse du Calvaire, 06300 (barrée)", (0.9, 0.7, 0.6), False),
     "adresse_erreur": ("Papier : petite annonce", "23 avenue du Grand Champ", (0.8, 0.8, 0.75), False),
     "numero_barre": ("Papier : numéro barré", "Un numéro de téléphone barré plusieurs fois.", (0.85, 0.85, 0.8), False),
+    "batterie_externe": ("Batterie externe", "Recharge le téléphone à 80 %.", (0.25, 0.25, 0.3), True),
+    "bougie": ("Bougie chauffe-plat", "Une petite flamme pendant deux minutes.", (0.95, 0.9, 0.8), True),
+    "pansement": ("Pansements", "Rend 35 points de santé.", (0.9, 0.7, 0.6), True),
+    "barre": ("Barre chocolatée", "Réconfortant. -25 de stress.", (0.5, 0.28, 0.15), True),
+    "eau": ("Bouteille d'eau", "Récupère toute l'endurance.", (0.55, 0.75, 0.95), True),
+    "energisant": ("Boisson énergisante", "Endurance quasi illimitée pendant 60 s.", (0.2, 0.6, 0.9), True),
+    "journal": ("Nice-Matin", "Le journal du jour.", (0.92, 0.92, 0.9), True),
+    "courses": ("Sac de courses", "Des courses ordinaires. Ça rassure.", (0.9, 0.4, 0.3), False),
 }
 
 

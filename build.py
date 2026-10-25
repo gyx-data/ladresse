@@ -27,6 +27,8 @@ GAME_MODULES = [
     "entity_behaviors", "cinematic_engine", "intro_cinematic", "quest_system", "sound_engine", "texture_generator",
     "effects", "lighting_system", "shaders", "ui_manager", "ui_widgets", "settings_menu", "multiplayer_client",
     "multiplayer_manager", "interaction_system", "inventory", "jumpscare_system", "save_system", "particle_system",
+    "typography", "ui_theme", "illustrations", "character_model", "neighborhood", "shop", "fidelite", "achievements",
+    "crash_handler",
 ]
 
 
@@ -72,6 +74,8 @@ def main():
         "--hidden-import", "screeninfo",
         "--exclude-module", "tkinter.test",
         "--exclude-module", "server",
+        # serveur embarqué (bouton « Héberger une partie » du lobby)
+        "--add-data", f"{os.path.join(HERE, 'server')}{os.pathsep}server",
     ]
     for m in GAME_MODULES:
         cmd += ["--hidden-import", m]

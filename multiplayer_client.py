@@ -12,6 +12,8 @@ import threading
 import time
 
 
+PROTOCOL_VERSION = "2.0"      # doit correspondre à server_config.PROTOCOL_VERSION (version majeure)
+
 class NetClient:
     def __init__(self):
         self.sock = None
@@ -52,13 +54,16 @@ class NetClient:
         self.name = name
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.settimeout(None)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        self.tok = None
+        self._buf = b""
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.settimeout(0.2)
         self.connected = True
         threading.Thread(target=self._tcp_loop, daemon=True).start()
         threading.Thread(target=self._udp_loop, daemon=True).start()
-        self.send(dict(type="connect", name=name))
+        self.send(dict(type="connect", name=name, version=PROTOCOL_VERSION))
 
     def close(self):
         self._stop = True
@@ -90,8 +95,11 @@ class NetClient:
                     msg = json.loads(line.decode("utf-8"))
                 except ValueError:
                     continue
+                if not isinstance(msg, dict):
+                    continue
                 if msg.get("type") == "welcome":
-                    self.id = msg["id"]
+                    self.id = msg.get("id")
+                    self.tok = msg.get("tok")
                     self.send_udp(dict(type="hello", id=self.id))
                 elif msg.get("type") == "pong":
                     self.ping = (time.time() - msg.get("t", time.time())) * 1000.0
@@ -109,9 +117,11 @@ class NetClient:
             except OSError:
                 break
             try:
-                self.inbox.put(json.loads(data.decode("utf-8")))
-            except ValueError:
+                msg = json.loads(data.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
                 continue
+            if isinstance(msg, dict) and self.inbox.qsize() < 2000:
+                self.inbox.put(msg)
 
     # ------------------------------------------------------------------
     def send(self, obj):
@@ -127,6 +137,8 @@ class NetClient:
     def send_udp(self, obj):
         if self.udp is None or self.addr is None:
             return
+        if getattr(self, "tok", None) and "tok" not in obj:
+            obj = dict(obj, tok=self.tok)
         try:
             self.udp.sendto(json.dumps(obj, separators=(",", ":")).encode("utf-8"), self.addr)
         except OSError:

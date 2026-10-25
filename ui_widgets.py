@@ -222,7 +222,8 @@ class UISlider(Entity):
         t = (mouse.x - (p[0] - self.w / 2)) / self.w
         t = max(0.0, min(1.0, t))
         v = self.lo + t * (self.hi - self.lo)
-        v = int(round(v / self.step) * self.step)
+        v = round(v / self.step) * self.step
+        v = int(v) if float(self.step).is_integer() and isinstance(self.lo, int) else round(v, 2)
         v = max(self.lo, min(self.hi, v))
         if v != self.value:
             self.value = v

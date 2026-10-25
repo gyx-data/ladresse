@@ -269,7 +269,7 @@ class Player:
         return self.house.level_at(self.pos[1])
 
     def add_stress(self, amount):
-        self.stress = min(100.0, self.stress + amount)
+        self.stress = min(100.0, self.stress + amount * config.diff("stress"))
 
     def relieve_stress(self, amount):
         self.stress = max(0.0, self.stress - amount)
@@ -509,8 +509,10 @@ class Player:
 
     def _vitals(self, dt):
         # stamina
+        self.energy_t = max(0.0, getattr(self, "energy_t", 0.0) - dt)
         if self.sprinting and self.moving:
-            self.stamina = max(0.0, self.stamina - config.STAMINA_DRAIN * dt)
+            drain = config.STAMINA_DRAIN * (0.1 if self.energy_t > 0 else 1.0)
+            self.stamina = max(0.0, self.stamina - drain * dt)
             self.stamina_delay = 1.2
         else:
             self.stamina_delay = max(0.0, self.stamina_delay - dt)

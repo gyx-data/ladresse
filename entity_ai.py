@@ -10,6 +10,8 @@ import random
 
 from ursina import Entity, Vec3
 
+import config
+
 from house_generator import NavGrid
 from room_builder import MeshBuilder
 from shaders import shader_state
@@ -471,7 +473,7 @@ class EntityAI:
     # --- états ----------------------------------------------------------
     def _speed_for(self, state):
         base = self.behavior.speeds.get(state, 1.0)
-        s = base * self.speed_mult * (1.0 + self.aggression * 0.4 if state == "chase" else 1.0)
+        s = base * self.speed_mult * (1.0 + self.aggression * 0.4 if state == "chase" else 1.0) * config.diff("entity")
         if self.arriving:
             s *= 0.6
         return s

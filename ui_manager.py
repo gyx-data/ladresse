@@ -4,30 +4,51 @@ Tout est construit avec des entités Ursina rattachées à `camera.ui`.
 """
 import random
 
+from PIL import Image
+
 from ursina import Entity, Text, Button, color, camera, Vec3, invoke, destroy
 
 import config
 import game_data as gd
 from sound_engine import engine as sound
 from texture_generator import textures
-from ui_widgets import label, rect, button, clear, rgb, star, Toast, text_scale
+from ui_widgets import label, rect, button, clear, rgb, star, Toast, text_scale, panel, image, ProgressBar
+import illustrations as ill
+import typography as T
+import ui_theme as theme
+
+
+_TITLE_CACHE = {}
+
+
+def title_image(text, px=170, glow=(150, 30, 30), subtitle=None, seed=3):
+    key = (text, px, glow, subtitle, seed)
+    if key not in _TITLE_CACHE:
+        _TITLE_CACHE[key] = T.render_title(text, px, glow=glow, subtitle=subtitle, seed=seed)
+    return _TITLE_CACHE[key]
+
+
+def title_entity(parent, text, x, y, height, glow=(150, 30, 30), subtitle=None, z=0.0, seed=3):
+    img = title_image(text, 170, glow, subtitle, seed)
+    return image(parent, img, x, y, height * img.width / img.height, height, z)
 
 
 class LoadingScreen:
     def __init__(self):
         self.root = Entity(parent=camera.ui, z=-20)
-        rect(self.root, 0, 0, 2.4, 1.3, color.black, z=1)
-        self.title = label(self.root, gd.CINEMATIC_CAPTIONS["titre"], 0, 0.1, 4.0, color.white, z=0)
-        rect(self.root, 0, -0.1, 0.62, 0.018, rgb(40, 40, 44), z=0)
-        self.bar = rect(self.root, -0.31, -0.1, 0.001, 0.012, rgb(220, 220, 225), z=-0.01)
-        self.bar.origin = (-0.5, 0)
-        self.text = label(self.root, "Génération des assets...", 0, -0.15, 0.8, color.gray, z=0)
-        self.tip = label(self.root, random.choice(gd.LOADING_TIPS), 0, -0.4, 0.8, rgb(150, 150, 160), z=0)
+        rect(self.root, 0, 0, 2.6, 1.4, color.black, z=1)
+        try:
+            self.title = title_entity(self.root, config.GAME_TITLE, 0, 0.12, 0.2, z=0)
+        except Exception:
+            self.title = label(self.root, config.GAME_TITLE, 0, 0.1, 4.0, color.white, z=0)
+        self.bar = ProgressBar(self.root, 0, -0.08, 0.6, 0.014)
+        self.text = label(self.root, "Génération des assets...", 0, -0.13, 0.75, rgb(150, 148, 145), z=0)
+        self.tip = label(self.root, random.choice(gd.LOADING_TIPS), 0, -0.4, 0.75, rgb(130, 128, 125), z=0)
         self.value = 0.0
 
     def set(self, frac, text=None):
         self.value = frac
-        self.bar.scale_x = max(0.001, 0.62 * frac)
+        self.bar.set(frac)
         if text:
             self.text.text = text
 
@@ -44,9 +65,20 @@ class MainMenu:
     def __init__(self, game):
         self.game = game
         self.root = Entity(parent=camera.ui, z=-3, enabled=False)
-        self.title_pos = Vec3(0, 0.27, 0)
-        self.title = label(self.root, config.GAME_TITLE, 0, 0.27, 6.0, color.white, z=0)
-        self.sub = label(self.root, config.GAME_SUBTITLE, 0, 0.17, 1.6, rgb(190, 190, 200), z=0)
+        # dégradé latéral pour la lisibilité du menu (à gauche)
+        grad = Image.new("RGBA", (256, 4), (0, 0, 0, 0))
+        for x in range(256):
+            a = int(225 * max(0.0, 1.0 - x / 256.0) ** 1.4)
+            for yy in range(4):
+                grad.putpixel((x, yy), (4, 3, 4, a))
+        image(self.root, grad, -0.55, 0, 1.5, 1.2, z=1)
+        self.title_pos = Vec3(-0.5, 0.27, 0)
+        try:
+            self.title = title_entity(self.root, config.GAME_TITLE, -0.47, 0.29, 0.14, z=0)
+        except Exception:
+            self.title = label(self.root, config.GAME_TITLE, -0.5, 0.29, 6.0, color.white, z=0)
+        self.sub = label(self.root, config.GAME_SUBTITLE.upper() + "  ·  NICE", -0.5, 0.17, 0.95, rgb(200, 150, 130), z=0)
+        rect(self.root, -0.5, 0.135, 0.36, 0.002, rgb(150, 40, 34), z=0)
         self.buttons = []
         self.page = "main"
         self.lobby = None
@@ -58,27 +90,36 @@ class MainMenu:
         self.window_glow = []
         self.glow_t = 0.0
         self.sil = None
-        self.ver = label(self.root, f"v{config.VERSION}", 0.85, -0.47, 0.6, color.gray, origin=(0.5, 0), z=0)
+        self.ver = label(self.root, f"v{config.VERSION}  ·  F5 : vue 3e personne  ·  Échap : pause", 0.86, -0.47, 0.55,
+                         rgb(120, 118, 115), origin=(0.5, 0), z=0)
 
     def _build_main(self):
         for b in self.buttons:
             destroy(b)
         self.buttons = []
         has_save = self.game.saves.exists()
-        items = [("Nouvelle Partie", self.game.new_game, True),
-                 ("Continuer", self.game.continue_game, has_save),
-                 ("Multijoueur", self.game.show_multiplayer, True),
-                 ("Paramètres", self.game.show_settings, True),
-                 ("Quitter", self.game.quit_game, True)]
-        y = 0.02
-        for text, cb, enabled in items:
-            col = rgb(12, 12, 14, 200) if enabled else rgb(12, 12, 14, 120)
-            b = button(self.root, text, 0, y, 0.42, 0.06, cb if enabled else None, col,
-                       color.white if enabled else rgb(90, 90, 96), size=1.0)
+        items = [("Nouvelle partie", self.game.new_game, True, "primary"),
+                 ("Continuer", self.game.continue_game, has_save, "dark"),
+                 ("Coopératif en ligne", self.game.show_multiplayer, True, "dark"),
+                 ("Paramètres", self.game.show_settings, True, "dark"),
+                 ("Succès", self.show_achievements, True, "dark"),
+                 ("Crédits", self.show_credits, True, "dark"),
+                 ("Quitter", self.game.quit_game, True, "ghost")]
+        y = 0.05
+        for text, cb, enabled, style in items:
+            b = button(self.root, text, -0.5, y, 0.36, 0.058, cb if enabled else None, style=style if enabled else "card",
+                       text_col=None if enabled else rgb(100, 100, 106), size=0.9)
             if not enabled:
-                b.highlight_color = col
+                b.highlight_color = b.color
             self.buttons.append(b)
-            y -= 0.075
+            y -= 0.072
+
+    def show_achievements(self):
+        self.game.achievements.open_screen()
+
+    def show_credits(self):
+        lines = [t for t, _ in gd.CREDITS if t]
+        self.game.ui.docs.open("Crédits", ["\n".join(lines)])
 
     def show(self):
         self.root.enabled = True
@@ -95,9 +136,9 @@ class MainMenu:
             return
         self.t += dt
         self.idle += dt
-        # titre légèrement tremblant (0,5 px par frame)
-        j = 0.5 / 1080.0
-        self.title.position = Vec3(random.uniform(-j, j) * 2, 0.27 + random.uniform(-j, j) * 2, 0)
+        # titre légèrement tremblant
+        j = 0.6 / 1080.0
+        self.title.position = Vec3(-0.47 + random.uniform(-j, j) * 2, 0.29 + random.uniform(-j, j) * 2, 0)
         # éclairs
         self.next_lightning -= dt
         if self.next_lightning <= 0:
@@ -117,16 +158,24 @@ class PauseMenu:
     def __init__(self, game):
         self.game = game
         self.root = Entity(parent=camera.ui, z=-12, enabled=False)
-        rect(self.root, 0, 0, 2.4, 1.3, rgb(0, 0, 0, 190), z=1)
-        label(self.root, "PAUSE", 0, 0.25, 3.0, color.white, z=0)
+        rect(self.root, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 170), z=1)
+        panel(self.root, 0, 0, 0.56, 0.7, "panel", z=0.8)
+        label(self.root, "PAUSE", 0, 0.28, 2.2, color.white, z=0)
+        rect(self.root, 0, 0.235, 0.2, 0.003, rgb(170, 50, 40), z=0)
         self.items = []
-        y = 0.1
-        for text, cb in (("Reprendre", game.resume), ("Paramètres", game.show_settings), ("Menu principal", game.confirm_main_menu), ("Quitter", game.quit_game)):
-            button(self.root, text, 0, y, 0.4, 0.06, cb, rgb(20, 20, 24, 235), size=1.0)
-            y -= 0.08
-        self.hint = label(self.root, "Les parties solo sont sauvegardées automatiquement aux changements d'acte.", 0, -0.32, 0.6, color.gray, z=0)
+        y = 0.14
+        for text, cb, style in (("Reprendre", game.resume, "primary"), ("Paramètres", game.show_settings, "dark"),
+                                ("Menu principal", game.confirm_main_menu, "dark"), ("Quitter le jeu", game.quit_game, "ghost")):
+            self.items.append(button(self.root, text, 0, y, 0.4, 0.06, cb, style=style, size=0.9))
+            y -= 0.078
+        self.info = label(self.root, "", 0, -0.2, 0.65, rgb(200, 196, 190), z=0, wrap=48)
+        self.hint = label(self.root, "Sauvegarde automatique à chaque étape importante.", 0, -0.3, 0.55, rgb(130, 128, 125), z=0)
 
     def show(self):
+        g = self.game
+        m, s_ = divmod(int(g.state.stats.get("play_time", 0)), 60)
+        obj = g.ui.hud.obj.text.strip() or "—"
+        self.info.text = f"Objectif : {obj}\nTemps de jeu : {m} min {s_:02d} s   ·   Vue : {config.settings['vue']}"
         self.root.enabled = True
 
     def hide(self):
@@ -286,7 +335,7 @@ class GameOverScreen:
     def __init__(self, game):
         self.game = game
         self.root = Entity(parent=camera.ui, z=-16, enabled=False)
-        self.bg = rect(self.root, 0, 0, 2.4, 1.3, color.black, z=1)
+        self.bg = rect(self.root, 0, 0, 2.6, 1.4, color.black, z=1)
         self.items = Entity(parent=self.root)
 
     def show(self, first_death=False):
@@ -299,14 +348,21 @@ class GameOverScreen:
 
     def _reveal(self, first_death):
         self.items.enabled = True
-        label(self.items, gd.GAMEOVER_TITLE, 0, 0.16, 3.2, color.white, z=0)
-        label(self.items, gd.GAMEOVER_RATING, -0.04, 0.03, 1.0, rgb(180, 180, 185), z=0)
+        try:
+            title_entity(self.items, gd.GAMEOVER_TITLE.upper(), 0, 0.2, 0.15, glow=(170, 20, 20), seed=9, z=0)
+        except Exception:
+            label(self.items, gd.GAMEOVER_TITLE, 0, 0.18, 3.2, color.white, z=0)
+        label(self.items, gd.GAMEOVER_RATING, -0.08, 0.05, 0.95, rgb(190, 186, 182), z=0)
         for i in range(5):
-            star(self.items, 0.16 + i * 0.035, 0.03, 0.03, color.rgb32(255, 200, 40) if i == 0 else rgb(60, 60, 66), z=0)
-        button(self.items, "Réessayer", -0.14, -0.12, 0.24, 0.07, self.game.retry, rgb(30, 30, 34, 240), size=1.0)
-        button(self.items, "Menu principal", 0.14, -0.12, 0.24, 0.07, self.game.to_main_menu, rgb(30, 30, 34, 240), size=1.0)
+            star(self.items, 0.12 + i * 0.038, 0.05, 0.032, color.rgb32(255, 200, 40) if i == 0 else rgb(60, 60, 66), z=0)
+        button(self.items, "Réessayer", -0.13, -0.1, 0.24, 0.065, self.game.retry, style="primary", size=0.9)
+        button(self.items, "Menu principal", 0.13, -0.1, 0.24, 0.065, self.game.to_main_menu, style="dark", size=0.9)
+        st = self.game.state.stats
+        m, s_ = divmod(int(st.get("play_time", 0)), 60)
+        label(self.items, f"Survécu {m} min {s_:02d} s  ·  {st.get('photos', 0)} photo(s)  ·  morts : {st.get('deaths', 0)}", 0, -0.2,
+              0.62, rgb(140, 138, 134), z=0)
         if first_death:
-            label(self.items, gd.GAMEOVER_TIP, 0, -0.38, 0.75, rgb(200, 190, 150), z=0, wrap=70)
+            label(self.items, gd.GAMEOVER_TIP, 0, -0.38, 0.72, rgb(220, 196, 150), z=0, wrap=70)
 
     def hide(self):
         self.root.enabled = False
@@ -418,39 +474,54 @@ class EndingScreen:
 
 
 class HUD:
+    """Interface en jeu : objectif, batteries (icônes), invite d'interaction avec touche, sous-titres,
+    endurance / santé, notifications de quête."""
+
     def __init__(self, game):
         self.game = game
         self.root = Entity(parent=camera.ui, z=-1, enabled=False)
         r = self.root
-        # objectif (haut gauche)
-        self.obj = Text(parent=r, text=" ", position=(-0.86, 0.46), origin=(-0.5, 0.5), scale=0.95 * text_scale(), color=rgb(255, 255, 255, 170))
-        # lampe torche (bas droite)
-        self.fl_icon = rect(r, 0.78, -0.43, 0.025, 0.04, rgb(210, 200, 150, 190))
-        rect(r, 0.78, -0.43 - 0.03, 0.05, 0.012, rgb(40, 40, 40, 180))
-        self.fl_bar = rect(r, 0.755, -0.46, 0.05, 0.008, rgb(220, 220, 140, 220))
-        self.fl_bar.origin = (-0.5, 0)
-        self.fl_bar.x = 0.755
-        # téléphone (bas gauche)
-        self.ph_icon = rect(r, -0.8, -0.43, 0.03, 0.05, rgb(180, 200, 255, 190))
-        rect(r, -0.8, -0.46, 0.05, 0.012, rgb(40, 40, 40, 180))
-        self.ph_bar = rect(r, -0.825, -0.46, 0.05, 0.008, rgb(130, 200, 255, 220))
-        self.ph_bar.origin = (-0.5, 0)
-        self.ph_bar.x = -0.825
+        ts = text_scale()
+        # objectif (haut gauche) : pastille + texte
+        self.obj_bar = rect(r, -0.865, 0.448, 0.005, 0.032, rgb(226, 90, 60, 230), z=0.05, radius=0.5)
+        self.obj_title = label(r, "OBJECTIF", -0.852, 0.458, 0.5, rgb(226, 120, 90, 230), origin=(-0.5, 0), z=0)
+        self.obj = Text(parent=r, text=" ", position=(-0.852, 0.447), origin=(-0.5, 0.5), scale=0.82 * ts, color=rgb(255, 255, 255, 215))
+        # téléphone (bas gauche) et lampe (bas droite) : icône + jauge
+        self.ph_img_on = ill.icon_phone(96, True)
+        self.ph_icon = image(r, self.ph_img_on, -0.83, -0.425, 0.05, 0.05, z=0)
+        self.ph_bar = ProgressBar(r, -0.76, -0.425, 0.09, 0.012, (120, 190, 255))
+        self.ph_pct = label(r, "100 %", -0.76, -0.45, 0.45, rgb(180, 190, 210), z=0)
+        self.fl_tex_on = theme._tex(ill.icon_flashlight(96, True))
+        self.fl_tex_off = theme._tex(ill.icon_flashlight(96, False))
+        self.fl_icon = Entity(parent=r, model="quad", texture=self.fl_tex_on, position=(0.83, -0.425, 0), scale=0.055)
+        self.fl_bar = ProgressBar(r, 0.755, -0.425, 0.09, 0.012, (240, 220, 140))
+        self.fl_pct = label(r, "100 %", 0.755, -0.45, 0.45, rgb(210, 200, 170), z=0)
         # réticule
-        self.reticle = rect(r, 0, 0, 0.004, 0.004, rgb(255, 255, 255, 140))
-        # invite d'interaction
-        self.prompt = label(r, "", 0, -0.06, 1.0, color.white, z=-0.1)
+        self.reticle = rect(r, 0, 0, 0.005, 0.005, rgb(255, 255, 255, 150), radius=0.5)
+        # invite d'interaction : touche + texte sur pilule
+        self.prompt_root = Entity(parent=r, y=-0.075, enabled=False)
+        self.prompt_bg = panel(self.prompt_root, 0, 0, 0.3, 0.05, "panel", z=0.05, radius=0.5)
+        kt, kw = theme.keycap_texture(config.settings.key("interagir").upper(), 64)
+        self.prompt_key = Entity(parent=self.prompt_root, model="quad", texture=kt, scale=0.042, x=-0.13, z=0)
+        self.prompt = label(self.prompt_root, "", -0.1, 0, 0.8, color.white, origin=(-0.5, 0), z=-0.01)
         # sous-titres / pensées
-        self.sub = label(r, "", 0, -0.36, 1.0, color.white, wrap=70, z=-0.1)
-        self.sub_bg = rect(r, 0, -0.36, 1.1, 0.06, rgb(0, 0, 0, 0), z=0.1)
+        self.sub_bg = rect(r, 0, -0.33, 1.1, 0.062, rgb(0, 0, 0, 0), z=0.1, radius=0.25)
+        self.sub = label(r, "", 0, -0.33, 0.92, color.white, wrap=72, z=-0.1)
         self.sub_t = 0.0
-        self.quest_note = label(r, "", 0, 0.4, 1.0, rgb(255, 230, 160), z=-0.1)
+        # notification de quête (bandeau haut centre)
+        self.quest_root = Entity(parent=r, y=0.38, enabled=False)
+        panel(self.quest_root, 0, 0, 0.62, 0.06, "panel", z=0.05, radius=0.4)
+        rect(self.quest_root, -0.29, 0, 0.006, 0.036, rgb(255, 200, 90), z=0, radius=0.5)
+        self.quest_note = label(self.quest_root, "", 0, 0, 0.85, rgb(255, 230, 160), z=-0.1)
         self.quest_t = 0.0
-        self.tips = label(r, "", 0, -0.2, 0.8, rgb(200, 200, 205), wrap=80, z=-0.1)
+        self.tips = label(r, "", 0, -0.2, 0.72, rgb(205, 205, 210), wrap=80, z=-0.1)
         self.tips_t = 0.0
-        self.stamina_bar = rect(r, 0, -0.47, 0.001, 0.004, rgb(255, 255, 255, 90))
+        # endurance / santé (sous le réticule)
+        self.stamina = ProgressBar(r, 0, -0.47, 0.16, 0.007, (235, 235, 235))
+        self.health = ProgressBar(r, 0, -0.455, 0.16, 0.007, (220, 60, 50))
         self.vol_icon = None
         self.hint_line = None
+        self._last_key = None
 
     def show(self):
         self.root.enabled = True
@@ -459,16 +530,22 @@ class HUD:
         self.root.enabled = False
 
     def set_objective(self, text):
-        self.obj.text = text
+        self.obj.text = text or " "
+        self.obj_bar.enabled = bool(text)
+        self.obj_title.enabled = bool(text)
 
     def say(self, text, duration=3.5, speaker=None):
         self.sub.text = (f"{speaker} : " if speaker else "") + text
         self.sub_t = duration
         self.sub.color = color.white
+        w = min(1.4, 0.08 + len(self.sub.text) * 0.0105)
+        self.sub_bg.scale_x = w
 
     def quest(self, text, duration=4.0):
         self.quest_note.text = text
         self.quest_t = duration
+        self.quest_root.enabled = True
+        sound.play("ui_open", 0.35, channel="voice")
 
     def tip(self, text, duration=8.0):
         self.tips.text = text
@@ -476,44 +553,63 @@ class HUD:
 
     def update(self, dt, game):
         p = game.player
-        self.fl_bar.scale_x = max(0.001, 0.05 * p.flashlight.battery / 100.0)
-        self.fl_bar.color = rgb(220, 220, 140, 220) if p.flashlight.battery > 20 else rgb(240, 120, 70, 230)
-        self.fl_icon.color = rgb(255, 245, 190, 230) if p.flashlight.on else rgb(120, 115, 90, 150)
+        fb = p.flashlight.battery
+        self.fl_bar.set(fb / 100.0)
+        self.fl_pct.text = f"{int(fb)} %"
+        self.fl_bar.fill.color = color.rgb32(240, 220, 140) if fb > 20 else color.rgb32(240, 110, 70)
+        self.fl_icon.texture = self.fl_tex_on if p.flashlight.on else self.fl_tex_off
         b = game.phone.model.battery
-        self.ph_bar.scale_x = max(0.001, 0.05 * b / 100.0)
-        self.ph_bar.color = rgb(130, 200, 255, 220) if b > 20 else rgb(240, 90, 80, 230)
-        # la stamina est un trait discret sous le réticule quand elle est entamée
-        if p.stamina < 99:
-            self.stamina_bar.scale_x = 0.12 * p.stamina / 100.0
-            self.stamina_bar.enabled = True
-        else:
-            self.stamina_bar.enabled = False
+        self.ph_bar.set(b / 100.0)
+        self.ph_pct.text = f"{int(b)} %"
+        self.ph_bar.fill.color = color.rgb32(120, 190, 255) if b > 20 else color.rgb32(240, 90, 80)
+        # endurance : visible seulement quand entamée ; santé : seulement si blessé
+        self.stamina.enabled = p.stamina < 99
+        if self.stamina.enabled:
+            self.stamina.set(p.stamina / 100.0)
+            self.stamina.fill.color = color.rgb32(235, 235, 235) if getattr(p, "energy_t", 0) <= 0 else color.rgb32(90, 200, 255)
+        self.health.enabled = p.health < 99
+        if self.health.enabled:
+            self.health.set(p.health / 100.0)
         if self.sub_t > 0:
             self.sub_t -= dt
             a = min(1.0, self.sub_t / 0.5)
             self.sub.color = color.rgba32(255, 255, 255, int(255 * a))
-            self.sub_bg.color = rgb(0, 0, 0, int(110 * a))
+            self.sub_bg.color = rgb(0, 0, 0, int(140 * a))
             if self.sub_t <= 0:
                 self.sub.text = ""
         if self.quest_t > 0:
             self.quest_t -= dt
-            a = min(1.0, self.quest_t / 0.6, (4.0 - self.quest_t) / 0.4 + 0.0)
-            self.quest_note.color = rgb(255, 230, 160, int(255 * max(0.0, min(1.0, a))))
+            a = max(0.0, min(1.0, self.quest_t / 0.6))
+            self.quest_note.color = rgb(255, 230, 160, int(255 * a))
             if self.quest_t <= 0:
                 self.quest_note.text = ""
+                self.quest_root.enabled = False
         if self.tips_t > 0:
             self.tips_t -= dt
             if self.tips_t <= 0:
                 self.tips.text = ""
         # invite
         target = game.interactions.target
-        if target is not None and not game.phone.is_open and not game.paused:
-            pr = target.current_prompt()
-            self.prompt.text = f"[E] {pr}" if pr else ""
-            self.reticle.scale = 0.007
+        pr = target.current_prompt() if (target is not None and not game.phone.is_open and not game.paused) else None
+        if pr:
+            k = config.settings.key("interagir").upper()
+            if k != self._last_key:
+                self._last_key = k
+                self.prompt_key.texture = theme.keycap_texture(k, 64)[0]
+            if self.prompt.text != pr:
+                self.prompt.text = pr
+                w = 0.1 + len(pr) * 0.0098
+                self.prompt_root.x = 0
+                self.prompt_key.x = -w / 2 + 0.03
+                self.prompt.x = -w / 2 + 0.06
+                destroy(self.prompt_bg)
+                self.prompt_bg = panel(self.prompt_root, 0, 0, w, 0.05, "panel", z=0.05, radius=0.5)
+            self.prompt_root.enabled = True
+            self.reticle.scale = 0.008
         else:
+            self.prompt_root.enabled = False
             self.prompt.text = ""
-            self.reticle.scale = 0.004
+            self.reticle.scale = 0.005
 
 
 class UIManager:
@@ -541,6 +637,10 @@ class UIManager:
         self.hud.quest(text)
 
     def refresh_objective(self):
+        nb = getattr(self.game, "neighborhood", None)
+        if nb is not None and nb.outside_phase:
+            self.hud.set_objective(nb.objective())
+            return
         self.hud.set_objective(self.game.quests.current_objective())
 
     def update(self, dt):

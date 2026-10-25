@@ -497,3 +497,58 @@ TUTORIAL_HINTS = [
     "ZQSD : se déplacer — Maj : courir — C : s'accroupir — E : interagir",
     "F : lampe torche — T : téléphone — Tab : inventaire",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Quartier du Mont-Boron (avant d'entrer dans la maison)
+# ---------------------------------------------------------------------------
+LINE_OUTSIDE_START = "17 rue des Lilas... C'est là. Je devrais peut-être prendre deux-trois trucs au Carrefour avant."
+OUTSIDE_HINT = "Le quartier est libre d'accès : supérette, restaurant, voisins. Entrez dans la maison quand vous êtes prêt."
+
+NPC_LINES = {
+    "Mme Bianchi": [
+        "Vous allez au 17 ? Chez Garnier ? Faites bien attention à vous, mon petit.",
+        "Depuis qu'il est mort, il y a de la lumière au grenier certaines nuits. Personne n'y habite pourtant.",
+        "Moi je ne commande plus rien après 23 heures. Plus jamais.",
+    ],
+    "Karim": [
+        "Salut ! Pas le temps, je finis mon tour du Mont-Boron.",
+        "Le livreur de l'autre nuit ? Il est entré au 17... Je l'ai jamais vu ressortir.",
+    ],
+    "Jean-Mi": [
+        "Belle soirée, hein ? Enfin, pour ici.",
+        "Les volets du 17 sont cloués de l'intérieur. De l'intérieur, vous comprenez ?",
+        "Si on vous appelle d'un numéro masqué cette nuit, ne décrochez pas.",
+    ],
+    "Lucie": [
+        "On fête l'anniversaire de Théo. La socca de Nino, c'est la meilleure de Nice.",
+        "Le quartier est mort après 22 heures. Sauf ici.",
+    ],
+    "Théo": [
+        "Trente ans aujourd'hui. Et vous, vous faites quoi dans le coin à cette heure-ci ?",
+        "Gardien de nuit au 17 ? Sérieux ? Bon courage, mec.",
+    ],
+    "Nino": ["Bonsoir ! Une socca bien chaude ?"],
+    "Sandrine": [
+        "La caisse 1 est fermée, utilisez les caisses automatiques.",
+        "Vous avez la carte fidélité ? Ça fait des points, hein. Les piles sont en promo avec la carte.",
+        "M. Garnier venait tous les soirs. Toujours du gros sel. Des kilos de gros sel...",
+    ],
+    "Moussa": [
+        "Bonsoir.",
+        "Les articles restent dans le magasin tant qu'ils ne sont pas payés.",
+    ],
+    "Brigadier Rossi": [
+        "Bonsoir. Contrôle de routine, rien de grave.",
+        "Vous êtes le gardien pour le 17 ? On a eu trois signalements de disparition dans cette rue.",
+        "Si vous entendez frapper à la porte cette nuit... appelez-nous. Enfin, essayez.",
+    ],
+    "Gardien Martin": [
+        "Circulez, s'il vous plaît.",
+        "Le scooter retrouvé sur la Promenade... On n'a jamais retrouvé le livreur.",
+    ],
+    "Inès": [
+        "Le 33 est encore en retard...",
+        "Le 17 rue des Lilas ? La maison avec les volets cloués ? Bon courage.",
+    ],
+}

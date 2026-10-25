@@ -190,6 +190,16 @@ class HouseEvents:
         g.player.emit_noise(5.0, door.pos, "porte")
 
     def lock_front_door(self):
+        g = self.game
+        p = g.player
+        # le joueur est ressorti dans le quartier : on attend qu'il soit à l'intérieur
+        if p.zone not in ("rdc", "etage", "grenier", "sous_sol", "escalier_cave"):
+            g.timers.after(15.0, self.lock_front_door)
+            return
+        if g.neighborhood is not None:
+            g.house.outside_view = False
+            g.neighborhood.deactivate()
+            g.house.set_level_visibility(p.level)
         door = self.house.doors["front"]
         self.front_locked = True
         self.state.set("front_locked")

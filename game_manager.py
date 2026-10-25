@@ -19,9 +19,14 @@ from house_events import HouseEvents
 from house_generator import House
 from interaction_system import InteractionSystem
 from intro_cinematic import build_intro, PLAYER_START
+
+OUTSIDE_START = (11.2, 0.0, -10.4)      # à côté de la voiture garée, rue des Lilas
 from inventory import Inventory, InventoryPanel
 from jumpscare_system import JumpscareSystem
 from lighting_system import LightingManager, LightSource
+from neighborhood import Neighborhood
+from achievements import Achievements
+from room_builder import MeshBuilder
 from particle_system import ParticleManager
 from phone_system import PhoneUI
 from player import Player
@@ -48,6 +53,7 @@ class GameManager:
         self.playtime = 0.0
         self.is_multiplayer = False
         self.mp = None
+        self.neighborhood = None
         self.camera_mode = False
         self.house = None
         self.player = None
@@ -161,6 +167,7 @@ class GameManager:
         self.sky = SkyDome()
         self.fl_cone = FlashlightCone(self.player.cone_anchor)
         self.settings_menu = SettingsMenu(self)
+        self.achievements = Achievements(self)
         self.phone_light = LightSource((0, 0, 0), (0.7, 0.8, 1.0), 0.0, 4.5, kind="static", enabled=False, name="telephone")
         self.house.lights.append(self.phone_light)
         self.viewfinder = self._build_viewfinder()
@@ -289,6 +296,9 @@ class GameManager:
 
     def _fresh_world(self):
         """Reconstruit toute la maison et les systèmes qui la référencent."""
+        if self.neighborhood is not None:
+            self.neighborhood.destroy()
+            self.neighborhood = None
         self.phone.close()
         self.entity.despawn()
         self._build_world()
@@ -320,6 +330,15 @@ class GameManager:
         self.cine.play(build_intro(self), on_done=lambda: self.begin_play(fresh=True))
 
     def continue_game(self):
+        try:
+            self._continue_game()
+        except Exception:
+            import crash_handler
+            crash_handler.log_exception("continue_game")
+            self.say("Sauvegarde illisible : nouvelle partie.", 4.0)
+            self.new_game()
+
+    def _continue_game(self):
         data = self.saves.load()
         if data is None:
             return
@@ -372,11 +391,19 @@ class GameManager:
         self.cine.root.enabled = False
         self.lighting.lights = self.house.lights
         self.lighting.ambient_boost = 0.0
+        outside = fresh and not self.is_multiplayer and settings.get("quartier", True)
+        if self.neighborhood is not None:
+            self.neighborhood.destroy()
+            self.neighborhood = None
+        if outside:
+            self.neighborhood = Neighborhood(self)
+            self.neighborhood.begin_outside()
         if fresh:
-            p.place(PLAYER_START, 0.0, 0.0)
-            p.flashlight.on = True
+            start = OUTSIDE_START if outside else PLAYER_START
+            p.place(start, -12.0 if outside else 0.0, 0.0)
+            p.flashlight.on = not outside
             self.state.act = 1
-            self.state.player_pos = list(PLAYER_START)
+            self.state.player_pos = list(start)
         else:
             pos = self.state.player_pos or list(PLAYER_START)
             p.place(pos, self.state.player_yaw, 0.0)
@@ -392,19 +419,38 @@ class GameManager:
         self.lighting.set_zone(self.house.zone_at(p.pos[0], p.pos[2], p.pos[1]), instant=True)
         p.zone = None
         self.set_mouse(free=False)
-        if fresh:
+        if outside:
+            self.house.doors["front"].open(silent=True)
+            self.house.outside_view = True
+            self.house.set_level_visibility(0)
+            self.ui.refresh_objective()
+            self.timers.after(1.5, self.say, gd.LINE_OUTSIDE_START)
+            self.timers.after(6.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[0], 9.0)
+            self.timers.after(16.0, self.ui.hud.tip, gd.OUTSIDE_HINT, 9.0)
+        elif fresh:
+            self._start_house_timeline()
+        else:
+            self._restore_runtime(data)
+        shader_state.push()
+
+    def on_enter_house(self):
+        """Le joueur franchit la porte du 17 rue des Lilas : la nuit commence vraiment."""
+        self.playtime = 0.0
+        self.ui.refresh_objective()
+        self._start_house_timeline(entered=True)
+
+    def _start_house_timeline(self, entered=False):
+        if True:
             self.quests.on_event("game_started")
             self.timers.after(5.0, lambda: self.house.doors["front"].close(0.6, slam=False))
             self.timers.after(1.5, self.say, gd.LINE_START)
-            self.timers.after(6.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[0], 9.0)
+            if not entered:
+                self.timers.after(6.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[0], 9.0)
             self.timers.after(16.0, self.ui.hud.tip, gd.TUTORIAL_HINTS[1], 9.0)
             self.timers.after(300.0, self.events.lock_front_door)
             self.timers.after(540.0, self._force_hunger)
             self.state.set("play_started")
             self.save_checkpoint("debut")
-        else:
-            self._restore_runtime(data)
-        shader_state.push()
 
     def _restore_runtime(self, data):
         """Reprise d'une sauvegarde : rétablit l'entité, le chrono et les événements."""
@@ -497,6 +543,9 @@ class GameManager:
                            self.to_main_menu, lambda: self.ui.pause.show(), "Quitter la partie", "Annuler")
 
     def to_main_menu(self):
+        if self.neighborhood is not None:
+            self.neighborhood.deactivate()
+            self.house.outside_view = False
         if self.mp is not None:
             self.mp.disconnect()
         self.is_multiplayer = False
@@ -561,6 +610,9 @@ class GameManager:
                 self.toggle_pause()
             return
         if self.paused or self.player.dead:
+            return
+        if self.neighborhood is not None and self.neighborhood.ui_visible():
+            self.neighborhood.on_key(key)
             return
         if self.ui.choice.visible or self.ui.rating.root.enabled:
             return
@@ -771,7 +823,56 @@ class GameManager:
         elif item == "sel":
             if self.assistance.use_salt():
                 pass
+        elif item == "batterie_externe":
+            self.phone.model.charge(80.0)
+            st.remove_item(item)
+            self.say("Le téléphone se recharge.")
+            sound.play("piles_ok", 0.8)
+        elif item == "pansement":
+            self.player.health = min(100.0, self.player.health + 35.0)
+            st.remove_item(item)
+            self.say("Ça ira mieux.")
+        elif item == "barre":
+            self.player.relieve_stress(25.0)
+            st.remove_item(item)
+            self.say("Du sucre. Ça calme un peu.")
+        elif item == "eau":
+            self.player.stamina = 100.0
+            self.player.relieve_stress(5.0)
+            st.remove_item(item)
+        elif item == "energisant":
+            self.player.energy_t = 60.0
+            self.player.stamina = 100.0
+            st.remove_item(item)
+            self.say("Le cœur s'emballe. J'ai de l'énergie pour un moment.")
+        elif item == "bougie":
+            st.remove_item(item)
+            self._place_candle()
+        elif item == "journal":
+            self.inv_panel.hide()
+            self.ui.docs.open("Nice-Matin", ["\n\n".join(gd.NEWSPAPER_HEADLINES)])
+            return
         self.inv_panel.refresh()
+
+    def _place_candle(self):
+        p = self.player
+        pos = p.pos + Vec3(p.forward[0] * 0.6, 0.05, p.forward[2] * 0.6)
+        b = MeshBuilder("bougie")
+        b.cyl("platre", pos[0], pos[1], pos[2], 0.04, 0.03, 8, (0.95, 0.95, 0.9))
+        b.sphere("neon", pos[0], pos[1] + 0.06, pos[2], 0.012, (1.0, 0.7, 0.3), lat=3, lon=5, sy=1.8)
+        ents = b.build(parent=self.house.level_roots.get(p.level), emit=1.0)
+        light = LightSource((pos[0], pos[1] + 0.25, pos[2]), (1.0, 0.62, 0.3), 1.1, 4.5, kind="candle", name="bougie")
+        self.house.lights.append(light)
+        sound.play("briquet", 0.6)
+        self.say("Une petite flamme. C'est mieux que rien.")
+
+        def _out():
+            light.enabled = False
+            for e in ents:
+                destroy(e)
+            if light in self.house.lights:
+                self.house.lights.remove(light)
+        self.timers.after(120.0, _out)
 
     def reread_doc(self, doc):
         pages = {
@@ -909,6 +1010,8 @@ class GameManager:
 
     def _update(self, dt):
         dt = min(dt, 0.1)
+        if getattr(self, "achievements", None) is not None and self.mode != "loading":
+            self.achievements.update(dt)
         if self.mode == "loading":
             import time as _t
             t0 = _t.time()
@@ -937,6 +1040,14 @@ class GameManager:
         if self.paused:
             self.ui.update(dt)
             return
+        if self._frame % 10 == 0 and settings.get("pause_auto", True) and not self.is_multiplayer:
+            try:
+                win = application.base.win
+                if win is not None and not win.getProperties().getForeground():
+                    self.toggle_pause()
+                    return
+            except Exception:
+                pass
         self._update_playing(dt)
 
     def _cine_world(self, dt):
@@ -985,6 +1096,8 @@ class GameManager:
         self.sky.update()
         self.fl_cone.update(p.flashlight, self.phone.is_open)
         self.events.update(dt)
+        if self.neighborhood is not None:
+            self.neighborhood.update(dt)
         self.assistance.update(dt)
         self.entity.update(dt)
         self.phone.update(dt)

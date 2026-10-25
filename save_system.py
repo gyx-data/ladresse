@@ -14,14 +14,12 @@ class SaveSystem:
     def __init__(self):
         self.path = os.path.join(config.app_data_dir(), "save.json")
 
-    def exists(self):
-        return os.path.exists(self.path)
-
     def delete(self):
-        try:
-            os.remove(self.path)
-        except OSError:
-            pass
+        for p in (self.path, self.path + ".bak"):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
     def save(self, game, tag=""):
         if game.is_multiplayer:
@@ -39,14 +37,35 @@ class SaveSystem:
             tmp = self.path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            # garde la sauvegarde précédente en secours (fichier corrompu, coupure de courant...)
+            if os.path.exists(self.path):
+                try:
+                    os.replace(self.path, self.path + ".bak")
+                except OSError:
+                    pass
             os.replace(tmp, self.path)
             return True
         except Exception:
             return False
 
+    @staticmethod
+    def _valid(d):
+        return (isinstance(d, dict) and isinstance(d.get("state"), dict) and isinstance(d["state"].get("act", 1), int)
+                and isinstance(d.get("quests", {}), dict) and isinstance(d.get("assistance", {}), dict))
+
     def load(self):
-        try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, ValueError):
-            return None
+        """Charge la sauvegarde ; si elle est illisible, bascule sur la copie de secours (.bak)."""
+        for path in (self.path, self.path + ".bak"):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                if self._valid(d):
+                    return d
+            except (OSError, ValueError, UnicodeDecodeError):
+                continue
+        return None
+
+    def exists(self):
+        return self.load() is not None if (os.path.exists(self.path) or os.path.exists(self.path + ".bak")) else False

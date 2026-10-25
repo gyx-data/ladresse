@@ -747,6 +747,59 @@ def s_end_beep(rng):
     return normalize(tone(950, 0.35, (1.0,)), 0.5)
 
 
+@snd("scan_bip")
+def s_scan_beep(rng):
+    n = int(SR * 0.09)
+    return normalize(sine(2900, 0.09) * adsr(n, 0.002, 0.0, 1.0, 0.01), 0.35)
+
+
+@snd("caisse_ok")
+def s_checkout_ok(rng):
+    return normalize(melody([76, 81, 84], 0.12, (1.0, 0.3)), 0.4)
+
+
+@snd("antivol")
+def s_alarm(rng):
+    t = taxis(1.2)
+    x = square(1800, 1.2) * (np.sin(2 * np.pi * 4 * t) > 0)
+    return normalize(lowpass(x, 5000) * adsr(len(x), 0.005, 0.0, 1.0, 0.05), 0.4)
+
+
+@snd("paiement_nfc")
+def s_nfc(rng):
+    return normalize(melody([88, 93], 0.09, (1.0,)), 0.35)
+
+
+@snd("klaxon")
+def s_horn(rng):
+    t = taxis(0.45)
+    x = saw(410, 0.45) + 0.8 * saw(500, 0.45)
+    return normalize(lowpass(x, 2600) * adsr(len(t), 0.01, 0.05, 0.9, 0.05), 0.6)
+
+
+@snd("sirene_courte")
+def s_siren_chirp(rng):
+    t = taxis(0.9)
+    f = 700 + 600 * np.clip(np.sin(np.pi * t / 0.9), 0, 1)
+    x = np.sin(2 * np.pi * np.cumsum(f) / SR)
+    return normalize(x * adsr(len(t), 0.02, 0.0, 1.0, 0.15), 0.5)
+
+
+@snd("porte_auto")
+def s_auto_door(rng):
+    n = int(SR * 0.8)
+    x = bandpass(rng.standard_normal(n), 200, 1800) * adsr(n, 0.15, 0.2, 0.5, 0.3)
+    return normalize(x, 0.25)
+
+
+@snd("briquet")
+def s_lighter(rng):
+    n = int(SR * 0.5)
+    x = bandpass(rng.standard_normal(n), 2000, 9000) * decay(n, 0.02)
+    x[int(SR * 0.08):] += bandpass(rng.standard_normal(n - int(SR * 0.08)), 300, 2500) * 0.3 * decay(n - int(SR * 0.08), 0.25)
+    return normalize(x, 0.4)
+
+
 @snd("ui_hover")
 def s_ui_hover(rng):
     n = int(SR * 0.05)

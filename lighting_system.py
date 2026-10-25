@@ -18,10 +18,12 @@ ZONES = {
     "grenier": (0.140, (0.015, 0.015, 0.02), (0.030, 0.034, 0.05), 0.85),
     "sous_sol": (0.210, (0.0, 0.01, 0.03), (0.020, 0.030, 0.055), 0.95),
     "escalier_cave": (0.19, (0.0, 0.01, 0.03), (0.02, 0.028, 0.05), 0.95),
-    "dehors": (0.040, (0.03, 0.035, 0.06), (0.17, 0.19, 0.30), 1.0),
+    "dehors": (0.032, (0.03, 0.035, 0.06), (0.17, 0.19, 0.30), 1.0),
     "bureau": (0.030, (0.035, 0.04, 0.055), (0.19, 0.20, 0.24), 1.0),
     "voiture": (0.040, (0.0, 0.0, 0.012), (0.06, 0.06, 0.09), 1.0),
     "cine_phone": (0.12, (0.0, 0.0, 0.0), (0.05, 0.05, 0.07), 1.0),
+    "magasin": (0.018, (0.08, 0.09, 0.11), (0.50, 0.52, 0.56), 0.55),
+    "resto": (0.030, (0.06, 0.04, 0.03), (0.30, 0.22, 0.17), 0.7),
 }
 
 
@@ -181,7 +183,7 @@ class Flashlight:
 
     def update(self, dt, cam_pos, cam_forward):
         if self.on:
-            self.battery = max(0.0, self.battery - config.FLASHLIGHT_DRAIN * dt)
+            self.battery = max(0.0, self.battery - config.FLASHLIGHT_DRAIN * config.diff("battery") * dt)
             if self.battery <= 0:
                 self.on = False
                 self.dead_timer = 4.0

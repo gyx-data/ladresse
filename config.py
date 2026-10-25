@@ -137,6 +137,9 @@ DEFAULT_SETTINGS = {
     "cam_lissage": True,              # caméra 3e personne amortie
     "bob_camera": True,               # balancement de la tête en marchant
     "difficulte": "Normal",           # Facile / Normal / Cauchemar
+    "quartier": True,                 # phase d'exploration du quartier avant la maison
+    "pause_auto": True,               # pause quand la fenêtre perd le focus
+    "afficher_fps": False,
     "keys": dict(DEFAULT_KEYS),
     # Accessibilité
     "reduire_jumpscares": False,
@@ -228,6 +231,17 @@ class Settings:
 
 
 settings = Settings()
+
+DIFFICULTY = {
+    # vitesse du livreur, consommation des batteries, gain de stress
+    "Facile": dict(entity=0.82, battery=0.7, stress=0.7),
+    "Normal": dict(entity=1.0, battery=1.0, stress=1.0),
+    "Cauchemar": dict(entity=1.18, battery=1.35, stress=1.3),
+}
+
+
+def diff(key):
+    return DIFFICULTY.get(settings.get("difficulte", "Normal"), DIFFICULTY["Normal"])[key]
 
 # --- Couleurs (r, g, b) 0..1 -------------------------------------------------
 COL_WHITE = (1.0, 1.0, 1.0)
