@@ -116,6 +116,10 @@ crash_handler.install()
 from game_manager import GameManager
 
 game = GameManager(app)
+_autoplay = None
+if os.environ.get("LADRESSE_AUTOPLAY") == "1":
+    import autoplay
+    _autoplay = autoplay.install(game, app)
 
 
 def update():
@@ -124,6 +128,8 @@ def update():
     except Exception:
         # une erreur ponctuelle ne doit pas fermer le jeu : elle est journalisée (crash.log)
         crash_handler.log_exception("update")
+    if _autoplay is not None:
+        _autoplay()
 
 
 def input(key):

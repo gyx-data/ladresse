@@ -28,7 +28,7 @@ GAME_MODULES = [
     "effects", "lighting_system", "shaders", "ui_manager", "ui_widgets", "settings_menu", "multiplayer_client",
     "multiplayer_manager", "interaction_system", "inventory", "jumpscare_system", "save_system", "particle_system",
     "typography", "ui_theme", "illustrations", "character_model", "neighborhood", "shop", "fidelite", "achievements",
-    "crash_handler", "tts", "tutorial", "selftest",
+    "crash_handler", "tts", "tutorial", "selftest", "autoplay",
 ]
 
 
@@ -76,6 +76,8 @@ def main():
         "--exclude-module", "server",
         # serveur embarqué (bouton « Héberger une partie » du lobby)
         "--add-data", f"{os.path.join(HERE, 'server')}{os.pathsep}server",
+        # polices libres embarquées (rendu identique sur tous les PC)
+        "--add-data", f"{os.path.join(HERE, 'fonts')}{os.pathsep}fonts",
     ]
     for m in GAME_MODULES:
         cmd += ["--hidden-import", m]

@@ -1,7 +1,7 @@
 """Typographie de L'ADRESSE : choix des polices, titres stylisés, pages manuscrites.
 
-Aucune police n'est embarquée : on cherche les plus belles polices disponibles sur la machine
-(Windows : Segoe UI, Georgia, Consolas, Ink Free...) avec repli sur celles livrées avec Ursina.
+Polices libres embarquées (dossier fonts/ : Inter, DejaVu, Liberation — licences OFL / libres) utilisées en
+priorité pour un rendu identique sur tous les PC ; repli sur les polices du système puis celles d'Ursina.
 Les titres, journaux, lettres et reçus sont rendus avec Pillow (effets de grain, de rayures,
 d'encre, de décalage chromatique) puis utilisés comme textures.
 """
@@ -16,20 +16,22 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 
 WIN_FONTS = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")
+import sys as _sys
+BUNDLED_DIR = os.path.join(getattr(_sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "fonts")
 LINUX_DIRS = ["/usr/share/fonts", "/usr/local/share/fonts", os.path.expanduser("~/.fonts"), "/Library/Fonts", "/System/Library/Fonts"]
 
 CANDIDATES = {
     # (clair, gras)
-    "sans": [("segoeui.ttf", "segoeuib.ttf"), ("Inter-Regular.otf", "Inter-Bold.otf"), ("Carlito-Regular.ttf", "Carlito-Bold.ttf"),
+    "sans": [("Inter-Regular.otf", "Inter-Bold.otf"), ("segoeui.ttf", "segoeuib.ttf"), ("Carlito-Regular.ttf", "Carlito-Bold.ttf"),
              ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"), ("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf")],
-    "serif": [("georgia.ttf", "georgiab.ttf"), ("pala.ttf", "palab.ttf"), ("times.ttf", "timesbd.ttf"),
-              ("DejaVuSerif.ttf", "DejaVuSerif-Bold.ttf"), ("LiberationSerif-Regular.ttf", "LiberationSerif-Bold.ttf")],
-    "mono": [("consola.ttf", "consolab.ttf"), ("cour.ttf", "courbd.ttf"), ("DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf"),
+    "serif": [("DejaVuSerif.ttf", "DejaVuSerif-Bold.ttf"), ("georgia.ttf", "georgiab.ttf"), ("pala.ttf", "palab.ttf"),
+              ("times.ttf", "timesbd.ttf"), ("LiberationSerif-Regular.ttf", "LiberationSerif-Bold.ttf")],
+    "mono": [("DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf"), ("consola.ttf", "consolab.ttf"), ("cour.ttf", "courbd.ttf"),
              ("LiberationMono-Regular.ttf", "LiberationMono-Bold.ttf")],
     "hand": [("Inkfree.ttf", "Inkfree.ttf"), ("segoesc.ttf", "segoescb.ttf"), ("LHANDW.TTF", "LHANDW.TTF"),
              ("DejaVuSerif-Italic.ttf", "DejaVuSerif-BoldItalic.ttf"), ("LiberationSerif-Italic.ttf", "LiberationSerif-BoldItalic.ttf")],
-    "title": [("georgiab.ttf", "georgiab.ttf"), ("palab.ttf", "palab.ttf"), ("timesbd.ttf", "timesbd.ttf"),
-              ("DejaVuSerif-Bold.ttf", "DejaVuSerif-Bold.ttf"), ("LiberationSerif-Bold.ttf", "LiberationSerif-Bold.ttf")],
+    "title": [("DejaVuSerif-Bold.ttf", "DejaVuSerif-Bold.ttf"), ("georgiab.ttf", "georgiab.ttf"), ("palab.ttf", "palab.ttf"),
+              ("timesbd.ttf", "timesbd.ttf"), ("LiberationSerif-Bold.ttf", "LiberationSerif-Bold.ttf")],
 }
 
 _index = None
@@ -41,7 +43,7 @@ def _build_index():
     if _index is not None:
         return _index
     _index = {}
-    dirs = [WIN_FONTS] + LINUX_DIRS
+    dirs = [BUNDLED_DIR, WIN_FONTS] + LINUX_DIRS
     for d in dirs:
         if not os.path.isdir(d):
             continue
