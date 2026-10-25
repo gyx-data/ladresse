@@ -574,6 +574,31 @@ def tex_paper(rng):
     return to_img(arr)
 
 
+@register("emballage", 256)
+def tex_packaging(rng):
+    """Emballage crème avec bandeau, faux texte et code-barres stylisé."""
+    s = 256
+    n = fbm(s, rng, base=12, octaves=4, persistence=0.52)
+    arr = lerp_color(n, (238, 232, 215), (255, 251, 239))
+    img = to_img(arr)
+    draw = ImageDraw.Draw(img)
+
+    draw.rectangle((0, 0, s, 64), fill=(38, 104, 116))
+    draw.rectangle((0, 58, s, 64), fill=(222, 177, 77))
+
+    for y in (91, 105, 119, 133, 147, 161):
+        right = int(rng.integers(146, 229))
+        draw.rounded_rectangle((24, y, right, y + 3), radius=1, fill=(104, 101, 91))
+
+    x = 35
+    while x < 222:
+        width = int(rng.integers(1, 5))
+        top = int(rng.integers(190, 199))
+        draw.rectangle((x, top, x + width - 1, 239), fill=(24, 24, 25))
+        x += width + int(rng.integers(1, 4))
+    return img
+
+
 @register("drap", 256)
 def tex_sheet(rng):
     s = 256

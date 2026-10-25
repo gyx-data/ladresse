@@ -421,6 +421,9 @@ class Neighborhood:
             self.shop_lights.append(l)
         # rayons (gondoles) : 4 allées le long de z
         self.shelf_slots = {}
+        product_labels = ("Crousti'Chips", "Eau Pure", "Pasta Bella", "Choco Max", "Café Noir", "Savon Doux",
+                          "Biscuits Miel", "Lait des Alpes", "Jus Soleil", "Tropi'Fruits")
+        product_index = 0
         aisle_x = [14.0, 18.5, 23.5, 28.0]
         shelves = ["bazar", "epicerie", "presse", "epicerie"]
         for i, ax in enumerate(aisle_x):
@@ -430,19 +433,29 @@ class Neighborhood:
                 yy = 0.25 + lvl * 0.42
                 for side in (-1, 1):
                     b.box("metal", ax + side * 0.45, yy, sz0, ax + side * 0.62, yy + 0.03, sz1, (0.75, 0.76, 0.8))
-                    # produits décoratifs
                     z = sz0 + 0.1
                     while z < sz1 - 0.2:
-                        w = rng.uniform(0.15, 0.32)
+                        d = rng.uniform(0.17, 0.3)
+                        if z + d > sz1 - 0.08:
+                            break
+                        w = rng.uniform(0.14, 0.22)
                         hgt = rng.uniform(0.18, 0.34)
                         c = rng.choice([(0.85, 0.2, 0.2), (0.2, 0.4, 0.8), (0.95, 0.8, 0.2), (0.3, 0.6, 0.3), (0.9, 0.9, 0.88),
                                         (0.55, 0.3, 0.15), (0.95, 0.5, 0.1)])
-                        b.box("papier", ax + side * 0.47, yy + 0.03, z, ax + side * 0.6, yy + 0.03 + hgt, z + w, c)
-                        z += w + 0.03
+                        b.product_box(ax + side * 0.535, yy + 0.03, z + d / 2, w, hgt, d, c,
+                                      product_labels[product_index % len(product_labels)])
+                        product_index += 1
+                        z += d + 0.03
             # panneau d'allée suspendu
             sign(self.root, ["BAZAR / PILES", "ÉPICERIE", "PRESSE / BOISSONS", "ÉPICERIE FINE"][i], (ax, H - 0.55, sz1 + 0.6), 0.22,
                  180, (255, 255, 255), (18, 72, 160, 255), px=64)
             self.shelf_slots[shelves[i]] = self.shelf_slots.get(shelves[i], []) + [(ax, sz0, sz1)]
+        # panneau suspendu au-dessus de l'entrée
+        for xx in (19.5, 22.5):
+            b.box("metal", xx - 0.025, H - 0.48, -22.28, xx + 0.025, H - 0.04, -22.2, (0.28, 0.3, 0.33))
+        b.box("metal", 18.8, 2.82, -22.3, 23.2, 3.2, -22.18, (0.06, 0.12, 0.24))
+        sign(self.root, "← FRAIS   ÉPICERIE →", (21.0, 3.01, -22.16), 0.26, 180,
+             (255, 255, 255), (18, 72, 160, 255), px=76)
         # mur frigo au fond
         b.box("metal", x0 + 1.0, 0, z0 + 0.25, x1 - 1.0, 2.2, z0 + 1.0, (0.88, 0.9, 0.94), collide=True)
         b.box("vitre", x0 + 1.0, 0.2, z0 + 1.0, x1 - 1.0, 2.1, z0 + 1.05, (0.7, 0.85, 0.95))
@@ -454,6 +467,11 @@ class Neighborhood:
                       rng.choice([(0.9, 0.9, 0.95), (0.3, 0.55, 0.85), (0.95, 0.85, 0.3), (0.85, 0.3, 0.3)]))
             x += 0.38
         sign(self.root, "FRAIS", (21.0, 2.7, z0 + 0.28), 0.4, 180, (255, 255, 255), (18, 72, 160, 255), px=72)
+        # affiches promotionnelles au-dessus du frigo
+        for xx, text, bg in ((14.5, "2+1 GRATUIT", (214, 36, 46, 255)),
+                             (21.0, "NOUVEAU", (18, 72, 160, 255)),
+                             (27.5, "BIO & LOCAL", (46, 139, 87, 255))):
+            sign(self.root, text, (xx, 3.22, z0 + 0.28), 0.24, 180, (255, 255, 255), bg, px=64)
         # caisses automatiques (2 bornes) + caisse fermée + portiques
         self.kiosks = [Vec3(12.6, 0, -23.2), Vec3(15.0, 0, -23.2)]
         for k in self.kiosks:
@@ -463,6 +481,9 @@ class Neighborhood:
             be.box("neon", k[0] - 0.22, 1.33, k[2] + 0.13, k[0] + 0.22, 1.62, k[2] + 0.14, (0.35, 0.6, 1.0))
             be.box("neon", k[0] - 0.4, 0.9, k[2] - 0.35, k[0] + 0.4, 0.93, k[2] + 0.35, (0.2, 0.9, 0.4))
         sign(self.root, "CAISSES AUTOMATIQUES", (13.8, 2.6, -23.5), 0.22, 180, (255, 255, 255), (214, 36, 46, 255), px=60)
+        # repères de file jaune au sol devant les bornes
+        for zz in (-24.95, -24.65, -24.35):
+            b.box("carrelage", 11.8, 0.035, zz, 15.8, 0.048, zz + 0.045, (1.0, 0.82, 0.08), tile=0.5)
         b.box("bois_meuble", 17.6, 0, -24.4, 18.6, 0.95, -22.0, (0.7, 0.72, 0.78), collide=True)
         sign(self.root, "CAISSE FERMÉE", (18.1, 1.25, -23.2), 0.12, 0, (255, 255, 255), (214, 36, 46, 255), px=48)
         for gx in (SHOP_DOOR_X - 1.15, SHOP_DOOR_X + 1.15):
@@ -494,6 +515,36 @@ class Neighborhood:
             self.door_panels.append((root, s))
         self.door_open = 0.0
         b.box("crepi", d0 - 0.1, 2.5, z1 - 0.2, d1 + 0.1, H, z1, (0.85, 0.85, 0.85))
+
+        # --- éléments extérieurs ---
+        # tapis d'entrée
+        b.box("moquette", SHOP_DOOR_X - 1.6, 0.01, z1 + 0.18, SHOP_DOOR_X + 1.6, 0.04, z1 + 1.25,
+              (0.16, 0.17, 0.19), tile=1.0)
+        # bacs en bois (fruits/légumes) devant la vitrine gauche
+        produce_colors = ((0.78, 0.12, 0.1), (0.94, 0.62, 0.08), (0.25, 0.58, 0.18),
+                          (0.86, 0.26, 0.12), (0.42, 0.68, 0.18), (0.96, 0.78, 0.16))
+        for bin_i, cx in enumerate((12.6, 15.4, 18.2)):
+            bx0, bx1 = cx - 0.9, cx + 0.9
+            bz0, bz1 = z1 + 0.32, z1 + 1.12
+            wood = (0.48, 0.29, 0.16) if bin_i % 2 == 0 else (0.56, 0.35, 0.2)
+            b.box("bois_meuble", bx0, 0, bz0, bx1, 0.68, bz1, wood, collide=True, skip=("+y",))
+            b.box("bois_meuble", bx0, 0.68, bz0, bx1, 0.78, bz0 + 0.08, wood)
+            b.box("bois_meuble", bx0, 0.68, bz1 - 0.08, bx1, 0.78, bz1, wood)
+            b.box("bois_meuble", bx0, 0.68, bz0 + 0.08, bx0 + 0.08, 0.78, bz1 - 0.08, wood)
+            b.box("bois_meuble", bx1 - 0.08, 0.68, bz0 + 0.08, bx1, 0.78, bz1 - 0.08, wood)
+            for fruit_i in range(6):
+                fx = bx0 + 0.2 + (fruit_i % 3) * 0.48
+                fz = bz0 + 0.2 + (fruit_i // 3) * 0.35
+                fc = produce_colors[(bin_i * 2 + fruit_i) % len(produce_colors)]
+                b.box("papier", fx, 0.42, fz, fx + 0.36, 0.63, fz + 0.26, fc)
+        # distributeur de sacs
+        b.box("metal", 23.35, 0, z1 + 0.32, 23.82, 0.88, z1 + 0.62, (0.48, 0.5, 0.54), collide=True)
+        b.box("ecran_noir", 23.43, 0.56, z1 + 0.63, 23.74, 0.74, z1 + 0.65, (0.8, 0.84, 0.88))
+        # cartouche OUVERT lumineux
+        b.box("metal", SHOP_DOOR_X - 1.1, 2.68, z1 + 0.16, SHOP_DOOR_X + 1.1, 3.18, z1 + 0.22, (0.08, 0.12, 0.1))
+        be.box("neon", SHOP_DOOR_X - 0.96, 2.76, z1 + 0.225, SHOP_DOOR_X + 0.96, 3.1, z1 + 0.24,
+               (0.2, 1.0, 0.38))
+        sign(self.root, "OUVERT", (SHOP_DOOR_X, 2.93, z1 + 0.25), 0.25, 180, (255, 255, 255), px=82)
 
     def _carrefour_logo(self, x, y, z):
         """Logo Carrefour simplifié (losange rouge/bleu) sur la façade."""

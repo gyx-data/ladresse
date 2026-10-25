@@ -55,6 +55,30 @@ def _rot_y(p, deg):
     return (p[0] * c + p[2] * s, p[1], -p[0] * s + p[2] * c)
 
 
+_PRODUCT_LABEL_TEXTURES = {}
+
+
+def _product_label_texture(label_text):
+    """Retourne une petite étiquette texturée, partagée entre les produits identiques."""
+    if label_text in _PRODUCT_LABEL_TEXTURES:
+        return _PRODUCT_LABEL_TEXTURES[label_text]
+    name = f"_marque_produit_{label_text}"
+
+    from PIL import Image, ImageDraw
+    import typography as T
+
+    img = Image.new("RGBA", (256, 96), (248, 244, 225, 255))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((2, 2, 253, 93), outline=(80, 78, 68, 255), width=4)
+    font = T.pil_font("sans", 46, True)
+    while T.text_width(label_text, font) > 232 and font.size > 16:
+        font = T.pil_font("sans", font.size - 2, True)
+    draw.text((128, 48), label_text, font=font, fill=(34, 35, 38, 255), anchor="mm")
+    textures.images[name] = img
+    _PRODUCT_LABEL_TEXTURES[label_text] = name
+    return name
+
+
 class MeshBuilder:
     """Accumule des quads/triangles groupés par texture."""
 
@@ -76,8 +100,9 @@ class MeshBuilder:
         """Quad p0..p3 ; p0->p1 = axe u, p0->p3 = axe v. `normal` = normale voulue."""
         g = self._grp(tex)
         t = tile or TILE.get(tex, 1.0)
-        du = _len(_sub(p1, p0)) / t
-        dv = _len(_sub(p3, p0)) / t
+        tu, tv = t if isinstance(t, (tuple, list)) else (t, t)
+        du = _len(_sub(p1, p0)) / tu
+        dv = _len(_sub(p3, p0)) / tv
         uv = [(uv_off[0], uv_off[1]), (uv_off[0] + du, uv_off[1]),
               (uv_off[0] + du, uv_off[1] + dv), (uv_off[0], uv_off[1] + dv)]
         pts = [p0, p1, p2, p3]
@@ -139,6 +164,38 @@ class MeshBuilder:
             self.quad(ts, (x1, y0, z0), (x1, y0, z1), (x1, y1, z1), (x1, y1, z0), (1, 0, 0), col, tile)
         if collide:
             self.colliders.append((x0, y0, z0, x1, y1, z1))
+
+    def product_box(self, cx, y0, cz, w, h, d, col, label_text=None):
+        """Ajoute un emballage papier avec une face avant imprimée et sa marque."""
+        self.obox("papier", cx, y0, cz, w, h, d, 0, col)
+
+        front_z = cz + d / 2 + 0.001
+        margin_x = min(w * 0.06, 0.012)
+        margin_y = min(h * 0.04, 0.012)
+        x0, x1 = cx - w / 2 + margin_x, cx + w / 2 - margin_x
+        y0_panel, y1_panel = y0 + margin_y, y0 + h - margin_y
+        self.quad("emballage", (x0, y0_panel, front_z), (x1, y0_panel, front_z),
+                  (x1, y1_panel, front_z), (x0, y1_panel, front_z), (0, 0, 1), (1, 1, 1),
+                  tile=(x1 - x0, y1_panel - y0_panel))
+
+        brightness = 0.299 * col[0] + 0.587 * col[1] + 0.114 * col[2]
+        band = (0.08, 0.18, 0.46) if brightness > 0.58 else (0.96, 0.78, 0.12)
+        band_z = front_z + 0.001
+        band_y0, band_y1 = y0 + h * 0.73, y0 + h * 0.96
+        self.quad("papier", (x0, band_y0, band_z), (x1, band_y0, band_z),
+                  (x1, band_y1, band_z), (x0, band_y1, band_z),
+                  (0, 0, 1), band, tile=(x1 - x0, band_y1 - band_y0))
+
+        if label_text:
+            label_h = max(0.025, h * 0.25)
+            label_w = max(0.04, (x1 - x0) * 0.88)
+            label_x0, label_x1 = cx - label_w / 2, cx + label_w / 2
+            label_y0 = y0 + h * 0.43 - label_h / 2
+            label_z = front_z + 0.002
+            self.quad(_product_label_texture(label_text),
+                      (label_x0, label_y0, label_z), (label_x1, label_y0, label_z),
+                      (label_x1, label_y0 + label_h, label_z), (label_x0, label_y0 + label_h, label_z),
+                      (0, 0, 1), (1, 1, 1), tile=(label_w, label_h))
 
     def obox(self, tex, cx, y0, cz, sx, sy, sz, rot=0.0, col=(1, 1, 1), tile=None,
              collide=False, skip=()):
