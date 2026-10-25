@@ -375,8 +375,6 @@ class MultiplayerManager:
             a.send(m["text"])
         else:
             a.remote_option(pid, m.get("option", "A"), m["text"])
-            if m.get("option") == "B" or (m.get("option") == "A" and False):
-                pass
 
     def _on_event(self, m):
         g = self.game

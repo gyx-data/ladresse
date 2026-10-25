@@ -584,7 +584,6 @@ class EntityAI:
             ang = math.atan2(fwd[0], fwd[2]) + random.uniform(-0.8, 0.8)
             dist = random.uniform(6.0, 10.0)
             c = Vec3(p.pos[0] + math.sin(ang) * dist, p.pos[1], p.pos[2] + math.cos(ang) * dist)
-            k = self.nav.key(lvl, c[0], c[2])
             k = self.nav._nearest_cell(lvl, c[0], c[2], 3)
             if k is None:
                 continue
@@ -717,7 +716,7 @@ class EntityAI:
                     continue
                 npos = n["pos"]
                 if abs(npos[1] - self.pos[1]) > 4.0 and n["kind"] not in ("voix",):
-                    pass
+                    continue
                 walls = house.wall_count(eye_e, Vec3(npos[0], npos[1] + 1.0, npos[2]))
                 eff = n["radius"] * (0.55 ** walls) * mult * self.behavior.hearing_for(n["kind"])
                 d = math.hypot(npos[0] - self.pos[0], npos[2] - self.pos[2])

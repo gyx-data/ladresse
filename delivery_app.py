@@ -64,7 +64,7 @@ class DeliveryApp(App):
         self.render()
 
     def go_back(self):
-        if self.page in ("home", "tracking") and self.page == "home":
+        if self.page in ("home", "tracking"):
             return False
         if self.page in ("loading",):
             return True
