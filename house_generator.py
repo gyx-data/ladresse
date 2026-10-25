@@ -740,6 +740,8 @@ class House:
         self.anchors["car_pos"] = Vec3(9.5, 0.0, -9.4)
         b.build(parent=self.exterior_root)
         self.builders["exterieur"] = b
+        self.colliders.extend(b.colliders)
+        self.surfaces.append(Surface(-30, -16, 46, 40, 0.0, level=0))
         # lumières extérieures
         lamp = LightSource((3.6, 4.7, -7.0), (1.0, 0.8, 0.5), 1.6, 12.0, kind="flicker", name="lampadaire")
         self.anchors["lamp_light"] = lamp
