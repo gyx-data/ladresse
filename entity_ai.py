@@ -469,7 +469,10 @@ class EntityAI:
     def _remote_step(self, dt):
         tgt = getattr(self, "_remote_target", None)
         if tgt is not None:
-            self.pos = self.pos + (tgt - self.pos) * min(1.0, dt * 8.0)
+            if (tgt - self.pos).length() > 4.0:       # téléportation (Silencieux) : pas de glissade
+                self.pos = tgt
+            else:
+                self.pos = self.pos + (tgt - self.pos) * min(1.0, dt * 10.0)
         self._update_visuals(dt)
         self._effects(dt)
 

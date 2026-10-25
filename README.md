@@ -66,27 +66,27 @@ python build.py
 `build.py` génère l'icône (maison sombre + point lumineux) et un écran de démarrage (« L'ADRESSE » en blanc sur fond
 noir), puis appelle PyInstaller (`--onefile --windowed --name LADRESSE`). Résultat : `dist/LADRESSE.exe`.
 
-## Serveur multijoueur (mode coopératif 2-4 joueurs)
+## Multijoueur (parties publiques, 1 à 8 joueurs)
 
-Le serveur est autonome (Python pur, aucune dépendance), prévu pour un hébergement Pterodactyl avec Python 3.11 :
+Le serveur `5.180.34.43:27326` est un **relais** autonome (Python pur, aucune dépendance, Pterodactyl) :
 
 ```bash
 cd server
-python server.py          # écoute en TCP + UDP sur 0.0.0.0:27303
+python server.py          # écoute en TCP + UDP sur 0.0.0.0:27326
 ```
 
-Le client est pré-rempli avec `5.180.34.43:27303` ; l'adresse se change dans l'écran *Multijoueur*.
-Le serveur gère : lobby (le premier connecté est l'hôte), IA de l'entité, messages d'assistance **différents pour
-chaque joueur**, mort / spectateur, état des portes, chat, validation des positions (anti-triche basique), 20 ticks/s.
-Variables d'environnement : `LADRESSE_HOST`, `LADRESSE_PORT`, `LADRESSE_TIME_SCALE`, `LADRESSE_MOTD`, `LADRESSE_LOG`.
+* L'écran *Multijoueur* liste les parties disponibles ; n'importe qui peut **créer** la sienne (nom, joueurs
+  maximum, mot de passe facultatif) ou en **rejoindre** une.
+* La partie tourne **chez l'hôte** (`coop_host.py` : IA de l'entité, minuteries, messages d'assistance différents
+  pour chaque joueur, morts, victoire). Le relais ne fait que suivre les paquets : **mettre le jeu à jour ne demande
+  pas de mettre le serveur à jour**, seuls les joueurs d'une même partie doivent avoir la même version.
+* Positions en UDP de joueur à joueur (repli TCP automatique), interpolation côté client pour des mouvements fluides.
+* Robustesse du relais : limiteurs de débit TCP/UDP, taille maximale, délais d'inactivité, limites par IP,
+  jeton de session UDP anti-usurpation, arrêt propre, console (`list`, `kick`, `close`, `say`, `stats`, `stop`).
+  Détails : `server/LISEZMOI_SERVEUR.md`.
 
-Robustesse : file d'envoi + thread d'écriture par client (un client lent ne bloque pas le tick), limiteur de débit,
-taille maximale des messages, délai d'inactivité (25 s), limite de connexions par IP, jeton de session UDP
-anti-usurpation, version de protocole, pseudos nettoyés et uniques, journal `server.log`, arrêt propre
-(SIGTERM/SIGINT) et console d'administration : `help`, `list`, `kick <id>`, `say <texte>`, `reset`, `stop`.
-
-Le lobby propose aussi **« Héberger une partie »** : le serveur tourne alors directement dans le jeu (port 27303,
-TCP + UDP à ouvrir sur la box pour jouer par Internet).
+Le bouton **Serveur local (LAN)** lance le relais dans le jeu (port 27326, TCP + UDP à ouvrir sur la box pour
+jouer par Internet sans le serveur officiel).
 
 ## Fiabilité
 
@@ -110,7 +110,8 @@ quest_system.py         quêtes                      sound_engine.py (synthèse 
 texture_generator.py    textures (Pillow/numpy)     shaders.py / lighting_system.py / effects.py / particle_system.py
 jumpscare_system.py     jumpscares                  ui_manager.py / settings_menu.py / ui_widgets.py
 save_system.py          sauvegarde JSON             multiplayer_client.py / multiplayer_manager.py
-server/                 server.py, server_config.py, game_state.py
+coop_host.py            partie multijoueur chez l'hôte      coop_state.py (état, IA) / coop_rules.py (règles)
+server/                 server.py, server_config.py (relais : salons + transfert des paquets)
 tests/smoke_test.py     test de fumée (xvfb-run -a python tests/smoke_test.py)
 ```
 

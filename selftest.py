@@ -162,19 +162,22 @@ def _server():
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
     s.close()
-    srv = mod.GameServer("127.0.0.1", port)
-    threading.Thread(target=srv.start, daemon=True).start()
-    time.sleep(0.6)
+    srv = mod.RelayServer("127.0.0.1", port)
+    srv.start(block=False)
+    time.sleep(0.3)
     c = socket.create_connection(("127.0.0.1", port), timeout=5)
-    c.sendall((json.dumps(dict(type="connect", name="Selftest", version="2.0")) + "\n").encode())
+    c.sendall((json.dumps(dict(type="hello", name="Selftest", proto=mod.cfg.PROTOCOL_VERSION)) + "\n").encode())
+    c.sendall((json.dumps(dict(type="create", name="Auto-test", max=4, game="selftest")) + "\n").encode())
     buf = b""
     t = time.time()
-    while b"welcome" not in buf and time.time() - t < 5:
+    while b'"type":"room"' not in buf and time.time() - t < 5:
         buf += c.recv(4096)
     c.close()
     srv.running = False
-    assert b"welcome" in buf, buf[:200]
-    return f"connexion locale OK (port {port})"
+    assert b'"type":"room"' in buf, buf[:200]
+    # la partie tourne chez l'hôte : le module de partie doit être embarqué
+    import coop_host  # noqa: F401
+    return f"relais local OK (port {port}), salon créé"
 
 
 def _tts(rep):
@@ -207,7 +210,7 @@ def run():
     rep.step("données du jeu", _data)
     rep.step("carte fidélité", _loyalty)
     rep.step("sauvegarde", _save)
-    rep.step("serveur embarqué", _server)
+    rep.step("relais embarqué", _server)
     try:
         _tts(rep)
     except Exception:

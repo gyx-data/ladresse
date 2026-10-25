@@ -17,6 +17,7 @@ import main as M                                   # noqa: E402
 from ursina import application                     # noqa: E402
 from main import app, game                         # noqa: E402
 from config import settings                        # noqa: E402
+import config                                      # noqa: E402
 from ui_widgets import audit_overflow              # noqa: E402
 
 problems = []
@@ -67,7 +68,16 @@ def screens():
     yield from wait(2)
     g.mp.players = {i: dict(id=i, name=n, color=[0.7, 0.3, 0.2]) for i, n in enumerate(["Adrien", "Une très longue pseudo", "Bob", "Zoé"], 1)}
     g.mp.host = 1
-    g.mp._refresh_players()
+    g.mp.room = dict(id="K7QF2", name="Une partie au nom vraiment très long pour tester", max=4, locked=True, players=4)
+    g.mp._render("room")
+    yield from wait(2)
+    audit("lobby_salon")
+    g.mp.rooms = [dict(id=f"R{i}", name=f"Partie numéro {i} avec un long nom", host_name="Une très longue pseudo", players=i % 5,
+                       max=4, phase="lobby" if i % 3 else "playing", locked=i % 2 == 0, game=config.VERSION) for i in range(9)]
+    g.mp._render("browser")
+    yield from wait(2)
+    audit("lobby_liste")
+    g.mp._render("create")
     yield from wait(2)
     audit("lobby")
     g.mp.back()

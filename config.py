@@ -11,7 +11,7 @@ CACHE_VERSION = "v4"
 
 # --- Réseau ---------------------------------------------------------------
 SERVER_HOST = "5.180.34.43"
-SERVER_PORT = 27303
+SERVER_PORT = 27326          # serveur relais (salons) — la partie tourne chez l'hôte
 TICK_RATE = 20
 MAX_PLAYERS = 4
 
@@ -153,6 +153,7 @@ DEFAULT_SETTINGS = {
     # Multijoueur
     "mp_adresse": f"{SERVER_HOST}:{SERVER_PORT}",
     "mp_pseudo": "Joueur",
+    "mp_max": 4,                      # limite de joueurs proposée à la création d'une partie
 }
 
 FOG_DENSITY = {"Près": 0.16, "Moyen": 0.11, "Loin": 0.075}
@@ -191,6 +192,9 @@ class Settings:
                             self.data["keys"][a] = key
                 elif k in self.data and _compatible(self.data[k], v):
                     self.data[k] = v
+            # ancien serveur dédié (avant le relais) : on bascule sur le nouveau port
+            if self.data.get("mp_adresse") in ("5.180.34.43:27303", "5.180.34.43"):
+                self.data["mp_adresse"] = DEFAULT_SETTINGS["mp_adresse"]
         except (OSError, ValueError, TypeError):
             pass
         self._clamp()
@@ -198,7 +202,7 @@ class Settings:
     def _clamp(self):
         """Ramène les valeurs numériques dans des bornes sûres (fichier édité à la main, ancienne version...)."""
         bounds = {"fov": (60, 110), "sensibilite": (1, 30), "cam_distance": (1.2, 4.5), "vol_main": (0, 100),
-                  "vol_music": (0, 100), "vol_sfx": (0, 100), "vol_voice": (0, 100), "msaa": (0, 8)}
+                  "vol_music": (0, 100), "vol_sfx": (0, 100), "vol_voice": (0, 100), "msaa": (0, 8), "mp_max": (1, 8)}
         for k, (lo, hi) in bounds.items():
             try:
                 self.data[k] = type(DEFAULT_SETTINGS[k])(max(lo, min(hi, self.data[k])))
