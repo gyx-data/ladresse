@@ -258,7 +258,7 @@ class QuestSystem:
         need = {"bank": (), "call": ("bank",), "retry": ("bank", "call")}[step]
         if any(k not in q.done_steps for k in need):
             return
-        self.game.say(getattr(gd, self.HINTS[step]), voice=False)
+        self.game.say(getattr(gd, self.HINTS[step]))
 
     def _check_explore(self):
         st = self.game.state

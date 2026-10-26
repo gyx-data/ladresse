@@ -1068,7 +1068,7 @@ class GameManager:
             ai.stall(3.0)
             ai.last_seen_pos = Vec3(*p.pos)
             ai.set_state("search")
-        self.say("Il m'a lâché... Faut que je bouge.", 3.5, voice=False)
+        self.say("Il m'a lâché... Faut que je bouge.", 3.5)
 
     def _on_death(self, cause):
         kind, scared, cause = self._death_kind or (None, False, cause)
@@ -1346,7 +1346,7 @@ class GameManager:
         st = self.state
         if self.ending_d_t is None and not st.phone_used and self.playtime >= 1200.0 and st.act <= 1 and not self.ending_active:
             self.ending_d_t = 0.0
-            self.say("La maison est étrangement calme...", 5.0, voice=False)
+            self.say("La maison est étrangement calme...", 5.0)
         if self.ending_d_t is not None and not self.ending_active:
             self.ending_d_t += dt
             for k, h in list(self.events.handles.items()):
