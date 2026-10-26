@@ -933,8 +933,34 @@ class Neighborhood:
                             lambda it: g.say("« R. GARNIER ». Débordante de prospectus... et d'avis de passage QuickEats."), 0,
                             radius=0.3, reach=2.0))
         b = MeshBuilder("bal")
-        b.box("metal", 8.2, 0.9, -6.0, 8.6, 1.3, -5.8, (0.65, 0.5, 0.15))
+        # boîte aux lettres sur pied : caisson, toit arrondi, fente, porte-étiquette, prospectus qui dépassent
+        b.box("metal", 8.37, 0.0, -5.93, 8.43, 0.9, -5.87, (0.2, 0.2, 0.2))
+        b.box("metal", 8.18, 0.9, -6.08, 8.62, 1.28, -5.82, (0.62, 0.48, 0.14))
+        b.cyl("metal", 8.4, 1.28, -5.95, 0.13, 0.01, 12, (0.55, 0.42, 0.12))
+        b.box("metal", 8.25, 1.17, -6.085, 8.55, 1.19, -6.08, (0.05, 0.05, 0.05))
+        b.box("papier", 8.28, 1.16, -6.12, 8.5, 1.24, -6.085, (0.9, 0.88, 0.8))
+        b.box("papier", 8.32, 1.0, -6.083, 8.48, 1.06, -6.081, (0.95, 0.95, 0.92))
+        # jardinières en terre cuite devant les commerces et bancs publics sur le trottoir
+        for (px, pz) in ((SHOP_DOOR_X - 2.4, SHOP[3] + 1.4), (SHOP_DOOR_X + 2.4, SHOP[3] + 1.4),
+                         (RESTO_DOOR_X - 1.6, RESTO[3] + 2.6), (RESTO_DOOR_X + 1.6, RESTO[3] + 2.6)):
+            b.box("crepi", px - 0.45, 0.0, pz - 0.25, px + 0.45, 0.45, pz + 0.25, (0.72, 0.4, 0.26))
+            b.box("herbe", px - 0.4, 0.45, pz - 0.2, px + 0.4, 0.5, pz + 0.2, (0.25, 0.32, 0.2))
+            for k in range(4):
+                b.sphere("geranium", px - 0.3 + k * 0.2, 0.6, pz, 0.12, (0.9, 0.3, 0.3), lat=4, lon=6)
+            b.colliders.append((px - 0.45, 0, pz - 0.25, px + 0.45, 0.6, pz + 0.25))
+        for bx in (-14.0, 30.0, 64.0):
+            bz = ROAD_Z1 + 1.0
+            for dx in (-0.7, 0.7):
+                b.box("metal", bx + dx - 0.04, 0.0, bz - 0.2, bx + dx + 0.04, 0.42, bz + 0.2, (0.15, 0.16, 0.15))
+            for k in range(3):
+                b.box("planches", bx - 0.85, 0.42, bz - 0.22 + k * 0.15, bx + 0.85, 0.46, bz - 0.1 + k * 0.15, (0.55, 0.4, 0.28))
+            b.box("planches", bx - 0.85, 0.5, bz + 0.2, bx + 0.85, 0.85, bz + 0.25, (0.55, 0.4, 0.28))
+            b.colliders.append((bx - 0.9, 0, bz - 0.25, bx + 0.9, 0.85, bz + 0.27))
         b.build(parent=self.root, emit=0.05)
+        # plaques émaillées niçoises : numéro du 17 et nom de la rue (lettres blanches sur fond bleu)
+        sign(self.root, "17", (7.95, 2.25, -0.14), 0.16, 0, (255, 255, 255), (20, 60, 140, 255), px=72)
+        sign(self.root, "RUE DES LILAS", (1.2, 2.7, -0.14), 0.2, 0, (255, 255, 255), (20, 60, 140, 255), px=60)
+        sign(self.root, "BOULEVARD DU MONT-BORON", (BLVD_X0 - 0.15, 2.7, ROAD_Z0 - 2.6), 0.2, 270, (255, 255, 255), (20, 60, 140, 255), px=60)
 
     def _register_zones(self):
         x0, z0, x1, z1 = SHOP

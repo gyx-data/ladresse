@@ -794,6 +794,25 @@ class House:
         b.quad("beton", (6.4, -0.02, -6.0), (7.6, -0.02, -6.0), (7.6, -0.02, 0.0), (6.4, -0.02, 0.0), (0, 1, 0), (0.85, 0.85, 0.85), tile=1.0)
         # marche de porte
         b.box("beton", 6.4, 0.0, -0.6, 7.6, 0.12, 0.0, (0.8, 0.8, 0.8))
+        # habillage de façade (comme les villas) : soubassement en pierre, bandeau d'étage, corniche sous le toit
+        stone, band = (0.6, 0.58, 0.55), (0.93, 0.91, 0.87)
+        for (xa, xb) in ((-0.13, 6.42), (7.58, 16.13)):                       # façade, coupée par la porte
+            b.box("beton", xa, 0.0, -0.13, xb, 0.6, -0.1, stone)
+        b.box("beton", -0.13, 0.0, -0.1, -0.1, 0.6, 12.13, stone)                  # pignons et arrière
+        b.box("beton", 16.1, 0.0, -0.1, 16.13, 0.6, 12.13, stone)
+        b.box("beton", -0.1, 0.0, 12.1, 16.1, 0.6, 12.13, stone)
+        for (y0b, y1b, d) in ((2.95, 3.08, 0.06), (5.9, 6.06, 0.12)):
+            b.box("crepi", -0.1 - d, y0b, -0.1 - d, 16.1 + d, y1b, -0.1, band)
+            b.box("crepi", -0.1 - d, y0b, -0.1, -0.1, y1b, 12.1 + d, band)
+            b.box("crepi", 16.1, y0b, -0.1, 16.1 + d, y1b, 12.1 + d, band)
+        # marquise en fer forgé et verre au-dessus de la porte d'entrée
+        b.box("metal", 6.25, 2.42, -0.95, 7.75, 2.46, -0.1, (0.14, 0.14, 0.15))
+        b.box("vitre", 6.3, 2.46, -0.9, 7.7, 2.48, -0.12, (0.5, 0.55, 0.55))
+        for xs in (6.3, 7.66):
+            b.obox("metal", xs + 0.02, 1.95, -0.5, 0.03, 0.5, 0.8, 0, (0.14, 0.14, 0.15))
+        # applique murale (ampoule cassée) à gauche de la porte
+        b.box("metal", 5.82, 1.9, -0.18, 5.98, 2.15, -0.1, (0.12, 0.12, 0.12))
+        b.box("vitre", 5.84, 1.95, -0.26, 5.96, 2.1, -0.18, (0.35, 0.33, 0.3))
         # pots de géraniums de part et d'autre de l'entrée
         b.flower_pot(6.15, 0.0, -0.4)
         b.flower_pot(7.85, 0.0, -0.4, 0.14, 0.26)
