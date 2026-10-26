@@ -74,10 +74,27 @@ def _motif(d, kind, w, h, accent):
         for k in range(5):
             x, y = cx - r + (k % 3) * r * 0.8, cy - r * 0.5 + (k // 3) * r * 0.8
             d.ellipse((x - r * 0.45, y - r * 0.3, x + r * 0.45, y + r * 0.3), fill=accent, outline=(170, 110, 20), width=2)
+    elif kind == "bubbles":
+        for (x, y, s) in ((0.3, 0.45, 0.13), (0.62, 0.38, 0.09), (0.55, 0.58, 0.16), (0.78, 0.52, 0.07), (0.22, 0.6, 0.06)):
+            d.ellipse((w * x - w * s, h * y - w * s, w * x + w * s, h * y + w * s), fill=(255, 255, 255), outline=accent, width=3)
+    elif kind == "rolls":
+        for k in range(3):
+            x = cx - r * 1.5 + k * r * 1.05
+            d.ellipse((x, cy - r * 0.55, x + r * 0.95, cy + r * 0.4), fill=(252, 252, 250), outline=(190, 200, 215), width=3)
+            d.ellipse((x + r * 0.33, cy - r * 0.22, x + r * 0.62, cy + r * 0.08), fill=accent)
+    elif kind == "sponge":
+        for k in range(2):
+            y = cy - r * 0.6 + k * r * 0.75
+            d.rectangle((cx - r * 1.3, y, cx + r * 1.3, y + r * 0.42), fill=(250, 215, 50))
+            d.rectangle((cx - r * 1.3, y + r * 0.42, cx + r * 1.3, y + r * 0.62), fill=accent)
+    elif kind == "bulb":
+        d.ellipse((cx - r * 0.9, cy - r * 1.1, cx + r * 0.9, cy + r * 0.5), fill=(255, 245, 190), outline=accent, width=3)
+        for k in range(3):
+            d.rectangle((cx - r * 0.38, cy + r * (0.45 + k * 0.22), cx + r * 0.38, cy + r * (0.58 + k * 0.22)), fill=(190, 190, 195))
 
 
-def _art(key, size, bg, bg2, brand, name, sub="", motif=None, accent=(255, 210, 40), fg=(255, 255, 255)):
-    """Emballage générique : dégradé, pastille de marque, illustration, nom, poids, code-barres, Nutri-Score."""
+def _art(key, size, bg, bg2, brand, name, sub="", motif=None, accent=(255, 210, 40), fg=(255, 255, 255), nutri=True):
+    """Emballage générique : dégradé, pastille de marque, illustration, nom, poids, code-barres, Nutri-Score (alimentaire)."""
     def draw(img, d):
         w, h = img.size
         _grad(d, w, h, bg, bg2)
@@ -91,7 +108,7 @@ def _art(key, size, bg, bg2, brand, name, sub="", motif=None, accent=(255, 210, 
         for k in range(14):                                       # code-barres
             x = w * 0.74 + k * w * 0.014
             d.rectangle((x, h * 0.86, x + (2 if k % 3 else 1), h * 0.95), fill=(20, 20, 20))
-        cols = [(0, 140, 70), (130, 190, 40), (250, 200, 0), (240, 130, 30), (220, 50, 30)]
+        cols = [(0, 140, 70), (130, 190, 40), (250, 200, 0), (240, 130, 30), (220, 50, 30)] if nutri else []
         for k, c in enumerate(cols):                              # Nutri-Score
             x = w * 0.08 + k * w * 0.07
             d.rectangle((x, h * 0.955, x + w * 0.065, h * 0.99), fill=c)
@@ -174,6 +191,32 @@ JARS = [("confiture", (180, 20, 40), (230, 60, 80)), ("miel", (230, 160, 20), (2
 SODAS = [("cola", (150, 10, 10), (230, 30, 30)), ("limonade", (60, 160, 220), (200, 240, 255)), ("orange", (240, 120, 10), (255, 190, 60))]
 
 
+# --- droguerie / bazar --------------------------------------------------------
+BAZAR = {
+    "lessive": [((40, 90, 190), (20, 50, 130), "Lavéclat", "LESSIVE", "40 lavages", (120, 200, 255)),
+                ((230, 120, 20), (190, 70, 10), "Lavéclat", "LESSIVE COULEURS", "30 lavages", (255, 220, 120)),
+                ((40, 150, 90), (20, 100, 60), "Lavéclat", "LESSIVE ÉCO", "35 lavages", (190, 250, 200))],
+    "rouleaux": [((235, 240, 250), (190, 205, 230), "Douceur+", "PAPIER TOILETTE", "6 rouleaux", (120, 160, 220)),
+                 ((250, 235, 240), (230, 190, 205), "Douceur+", "ESSUIE-TOUT", "4 rouleaux", (220, 120, 150))],
+    "eponge": [((60, 150, 60), (30, 100, 40), "Maison Net", "ÉPONGES", "x 3", (40, 120, 40)),
+               ((40, 110, 200), (20, 70, 150), "Maison Net", "ÉPONGES INOX", "x 2", (170, 175, 185))],
+    "ampoule": [((250, 250, 250), (215, 220, 230), "Lumiled", "AMPOULE LED", "E27 · 9 W", (240, 180, 20)),
+                ((30, 40, 60), (15, 20, 35), "Lumiled", "AMPOULE LED", "GU10 · 5 W", (250, 200, 40))],
+    "spray": [((240, 240, 245), (200, 215, 235), "Maison Net", "NETTOYANT", "500 ml", (60, 140, 220)),
+              ((250, 240, 200), (240, 210, 120), "Maison Net", "DÉGRAISSANT", "500 ml", (220, 140, 20))],
+}
+BAZAR_SIZE = {"lessive": (200, 256), "rouleaux": (256, 256), "eponge": (256, 160), "ampoule": (128, 224), "spray": (256, 128)}
+BAZAR_MOTIF = {"lessive": "bubbles", "rouleaux": "rolls", "eponge": "sponge", "ampoule": "bulb", "spray": "bubbles"}
+
+
+def _bazar_tex(kind, variant):
+    lst = BAZAR[kind]
+    c0, c1, brand, name, sub, acc = lst[variant % len(lst)]
+    fg = (20, 40, 90) if sum(c0) > 600 else (255, 255, 255)
+    return _art(f"bazar_{kind}_{variant % len(lst)}", BAZAR_SIZE[kind], c0, c1, brand, name, sub, BAZAR_MOTIF[kind],
+                accent=acc, fg=fg, nutri=False), c0
+
+
 def _epicerie_tex(i):
     k, size, c0, c1, brand, name, sub, motif, acc = EPICERIE[i % len(EPICERIE)]
     return _art("epi_" + k, size, c0, c1, brand, name, sub, motif, accent=acc), size
@@ -208,7 +251,10 @@ def milk(f, w):
             prof = [(0.0, 0.034), (0.01, 0.038), (0.17, 0.038), (0.2, 0.03), (0.235, 0.016), (0.25, 0.016)]
             f.lathe("papier", lx, lz, prof, (0.97, 0.97, 0.98), seg=14)
             f.cyl("metal", lx, 0.25, lz, 0.018, 0.02, (0.15, 0.35, 0.8), seg=10)
-        f.front(tex, lx, 0.04, 0.155, 0.068, 0.12)
+        # étiquette enroulée autour de la bouteille de devant (une vignette plate traversait le flacon arrondi)
+        cx, cz = _local(f.x, f.z, f.rot, lx, 0.12)
+        band = [_ring(cx, cz, f.y + y, 0.0395, 0.0395, f.rot + 90.0, 2.0, seg=14) for y in (0.04, 0.16)]
+        f.b.loft(tex, band, (1, 1, 1), tile=(2 * math.pi * 0.0395, 0.12))
 
 
 def yogurt(f, w, flavor, col):
@@ -232,7 +278,7 @@ def cheese(f, w, k):
             for lz in (-0.1, 0.05):
                 for j in range(2):
                     cx, cz = _local(f.x, f.z, f.rot, lx, lz)
-                    rings = [_ring(cx, cz, f.y + y, 0.056, 0.056, f.rot, 2.0, seg=18) for y in (j * 0.045, j * 0.045 + 0.04)]
+                    rings = [_ring(cx, cz, f.y + y, 0.056, 0.056, f.rot + 90.0, 2.0, seg=18) for y in (j * 0.045, j * 0.045 + 0.04)]
                     f.b.loft(tex, rings, (1, 1, 1), tile=(2 * math.pi * 0.056, 0.04))
                     f.b.cap("papier", rings[1], (0, 1, 0), (0.92, 0.84, 0.62))
     else:
@@ -263,7 +309,7 @@ def ham(f, w):
     for lx in _span(w, 0.17):
         for j in range(3):
             f.box("papier", lx, j * 0.026, -0.03 + j * 0.01, 0.16, 0.024, 0.22, (0.93, 0.93, 0.95), front_tex=tex)
-            f.top("papier", lx, j * 0.026 + 0.0245, -0.03 + j * 0.01, 0.13, 0.17, (0.95, 0.66, 0.68))
+            f.top("papier", lx, j * 0.026 + 0.026, -0.03 + j * 0.01, 0.13, 0.17, (0.95, 0.66, 0.68))
 
 
 def juice(f, w, k):
@@ -368,7 +414,11 @@ def build_fridges(b, be, x0, x1, z_back, z_front):
             last = cat
         # caisson : fond blanc, cloisons, plafond, socle ventilé, auvent
         b.box("platre", ux0, H_BASE, z_back, ux1, H_TOP, z_back + 0.08, WHITE)
-        b.box("metal", ux0, 0.0, z_back, ux0 + 0.04, H_CAN, z_front, ALU)
+        if i == 0:
+            # joue d'extrémité 1 cm plus large que le caisson (auvent, socle, plafond ne sont plus coplanaires avec elle)
+            b.box("metal", ux0 - 0.01, 0.0, z_back, ux0 + 0.04, H_CAN + 0.005, z_front + 0.08, ALU)
+        else:
+            b.box("metal", ux0, 0.0, z_back, ux0 + 0.04, H_CAN, z_front, ALU)
         b.box("platre", ux0, H_TOP, z_back, ux1, H_TOP + 0.04, z_front, WHITE)
         b.box("metal", ux0, 0.0, z_back, ux1, H_BASE, z_front - 0.02, DARK)
         for k in range(4):
@@ -407,7 +457,7 @@ def build_fridges(b, be, x0, x1, z_back, z_front):
             b.box("metal", hx, 0.75, zf + 0.06, hx + 0.022, 1.55, zf + 0.082, CHROME)
             for hy in (0.8, 1.48):
                 b.box("metal", hx + 0.004, hy, zf + 0.03, hx + 0.018, hy + 0.025, zf + 0.06, CHROME)
-    b.box("metal", x1 - 0.04, 0.0, z_back, x1, H_CAN, z_front, ALU)
+    b.box("metal", x1 - 0.04, 0.0, z_back, x1 + 0.01, H_CAN + 0.005, z_front + 0.08, ALU)    # joue d'extrémité droite
     return headers
 
 
@@ -432,7 +482,7 @@ def _item(f, kind, variant, lz):
         tex = _can_tex(name, c0, acc)
         cx, cz = _local(f.x, f.z, f.rot, 0.0, lz)
         for s_ in range(2):                                          # deux boîtes empilées
-            rings = [_ring(cx, cz, f.y + s_ * 0.103 + h, 0.037, 0.037, f.rot, 2.0, seg=16) for h in (0.0, 0.1)]
+            rings = [_ring(cx, cz, f.y + s_ * 0.103 + h, 0.037, 0.037, f.rot + 90.0, 2.0, seg=16) for h in (0.0, 0.1)]
             f.b.loft(tex, rings, (1, 1, 1), tile=(2 * math.pi * 0.037, 0.1))
             f.b.cap("metal", rings[1], (0, 1, 0), CHROME)
         return 0.078
@@ -444,9 +494,31 @@ def _item(f, kind, variant, lz):
         f.lathe("papier", 0.0, lz, [(0.005, 0.033), (0.095, 0.033)], fill, seg=14)
         f.cyl("metal", 0.0, 0.11, lz, 0.032, 0.018, (0.85, 0.75, 0.2) if variant % 2 else CHROME, seg=14)
         cx, cz = _local(f.x, f.z, f.rot, 0.0, lz)
-        band = [_ring(cx, cz, f.y + h, 0.0365, 0.0365, f.rot, 2.0, seg=14) for h in (0.025, 0.075)]
-        f.b.loft(tex, band, (1, 1, 1), tile=(2 * math.pi * 0.0365, 0.05))
+        band = [_ring(cx, cz, f.y + h, 0.0375, 0.0375, f.rot + 90.0, 2.0, seg=14) for h in (0.025, 0.075)]
+        f.b.loft(tex, band, (1, 1, 1), tile=(2 * math.pi * 0.0375, 0.05))
         return 0.076
+    if kind in ("lessive", "rouleaux", "eponge", "ampoule"):
+        tex, c0 = _bazar_tex(kind, variant)
+        side = tuple(c / 255 for c in c0)
+        w, h, d = {"lessive": (0.2, 0.28, 0.11), "rouleaux": (0.22, 0.22, 0.11), "eponge": (0.13, 0.075, 0.05),
+                   "ampoule": (0.07, 0.13, 0.07)}[kind]
+        f.box("papier", 0.0, 0.0, lz, w, h, d, side, front_tex=tex)
+        if kind == "lessive":                                       # poignée de transport sur le dessus
+            f.box("papier", 0.0, h, lz, 0.08, 0.025, 0.02, (0.92, 0.92, 0.94))
+        elif kind == "eponge":                                      # deux sachets empilés
+            f.box("papier", 0.0, h, lz, w, h, d, side, front_tex=tex)
+        return w
+    if kind == "spray":
+        tex, c0 = _bazar_tex(kind, variant)
+        body = tuple(c / 255 for c in c0)
+        f.lathe("papier", 0.0, lz, [(0.0, 0.03), (0.01, 0.034), (0.17, 0.034), (0.2, 0.016), (0.215, 0.014)], body, seg=16)
+        cx, cz = _local(f.x, f.z, f.rot, 0.0, lz)
+        band = [_ring(cx, cz, f.y + h, 0.0355, 0.0355, f.rot + 90.0, 2.0, seg=16) for h in (0.04, 0.15)]
+        f.b.loft(tex, band, (1, 1, 1), tile=(2 * math.pi * 0.0355, 0.11))
+        f.box("papier", 0.0, 0.215, lz, 0.032, 0.045, 0.03, (0.95, 0.95, 0.95))       # tête de pulvérisation
+        f.box("papier", 0.0, 0.235, lz + 0.03, 0.022, 0.018, 0.035, (0.95, 0.95, 0.95))  # buse
+        f.box("papier", 0.0, 0.17, lz + 0.03, 0.012, 0.05, 0.012, (0.2, 0.5, 0.9))       # gâchette
+        return 0.072
     # bouteille
     name, c0, acc = SODAS[variant % len(SODAS)]
     tex = _soda_tex(name, c0, acc)
@@ -459,8 +531,11 @@ def _item(f, kind, variant, lz):
 LEVEL_KINDS = {
     "epicerie": {0: ("bottle", "box", "bag"), 1: ("can", "jar", "box"), 2: ("box", "jar", "can"), 3: ("box", "bag")},
     "boissons": {0: ("bottle",), 1: ("bottle", "can"), 2: ("bottle",), 3: ("box",)},
+    # droguerie du rayon bazar : gros volumes en bas, petits articles à hauteur des yeux
+    "bazar": {0: ("lessive", "rouleaux"), 1: ("eponge", "spray", "ampoule"), 2: ("ampoule", "eponge", "spray"), 3: ("rouleaux", "lessive")},
 }
-DEPTH_ROWS = {"box": (0.025, -0.045), "bag": (0.03, -0.035), "can": (0.045, -0.04), "jar": (0.045, -0.04), "bottle": (0.048, -0.034)}
+DEPTH_ROWS = {"box": (0.025, -0.045), "bag": (0.03, -0.035), "can": (0.045, -0.04), "jar": (0.045, -0.04), "bottle": (0.048, -0.034),
+              "lessive": (0.025,), "rouleaux": (0.025,), "eponge": (0.03, -0.04), "ampoule": (0.045, -0.04), "spray": (0.048, -0.034)}
 
 
 def shelf_food(b, x, y, z0, z1, side, aisle, level, rng):

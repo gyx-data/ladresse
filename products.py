@@ -314,10 +314,11 @@ def _bottle(f, lx, lz, height, r, glass_col, label_tex, cap_col, neck=0.32):
     prof = [(0.0, r * 0.92), (0.01, r), (hb * 0.95, r), (hb, r * 0.95), (hb + height * neck * 0.4, r * 0.45),
             (height * 0.95, r * 0.38), (height, r * 0.38)]
     f.lathe("vitre", lx, lz, prof, glass_col)
-    # étiquette : bande cylindrique légèrement plus large que le corps
+    # étiquette : bande cylindrique légèrement plus large que le corps, centre de l'image face au client (+90°)
     cx, cz = _local(f.x, f.z, f.rot, lx, lz)
-    band = [_ring(cx, cz, f.y + y, r * 1.01, r * 1.01, f.rot, 2.0, seg=20) for y in (hb * 0.3, hb * 0.75)]
-    f.b.loft(label_tex, band, (1, 1, 1), tile=(2 * math.pi * r * 1.01, hb * 0.45))
+    rb = r + 0.0015                                       # 1,5 mm au-dessus du verre : pas de scintillement de loin
+    band = [_ring(cx, cz, f.y + y, rb, rb, f.rot + 90.0, 2.0, seg=20) for y in (hb * 0.3, hb * 0.75)]
+    f.b.loft(label_tex, band, (1, 1, 1), tile=(2 * math.pi * rb, hb * 0.45))
     f.cyl("metal", lx, height, lz, r * 0.42, 0.018, cap_col, seg=12)
 
 
@@ -374,7 +375,7 @@ def _sel(f):
     tex = _tex_sel()
     for lx in (-0.1, 0.1):
         cx, cz = _local(f.x, f.z, f.rot, lx, 0.0)
-        rings = [_ring(cx, cz, f.y + yy, 0.048, 0.048, f.rot, 2.0, seg=24) for yy in (0.0, 0.17)]
+        rings = [_ring(cx, cz, f.y + yy, 0.048, 0.048, f.rot + 90.0, 2.0, seg=24) for yy in (0.0, 0.17)]
         f.b.loft(tex, rings, (1, 1, 1), tile=(2 * math.pi * 0.048, 0.17))
         f.b.cap("metal", rings[1], (0, 1, 0), (0.85, 0.85, 0.9))
         f.b.cap("papier", rings[0], (0, -1, 0), (0.2, 0.4, 0.75))
@@ -398,7 +399,7 @@ def _energisant(f):
     for j, lx in enumerate((-0.15, -0.075, 0.0, 0.075, 0.15)):
         cx, cz = _local(f.x, f.z, f.rot, lx, 0.02 * (j % 2))
         prof = [(0.0, 0.026), (0.008, 0.032), (0.105, 0.032), (0.115, 0.027)]
-        rings = [_ring(cx, cz, f.y + yy, r, r, f.rot, 2.0, seg=20) for (yy, r) in prof]
+        rings = [_ring(cx, cz, f.y + yy, r, r, f.rot + 90.0, 2.0, seg=20) for (yy, r) in prof]
         f.b.loft("metal", [rings[0], rings[1]], CHROME)
         f.b.loft(tex, [rings[1], rings[2]], (1, 1, 1), tile=(2 * math.pi * 0.032, 0.097))
         f.b.loft("metal", [rings[2], rings[3]], CHROME)
@@ -437,15 +438,24 @@ def _lait(f):
 
 def _baguette(f):
     tex = _tex_baguette()
-    # panier en osier, baguettes debout
-    cx, cz = _local(f.x, f.z, f.rot, 0.0, 0.0)
-    basket = [_ring(cx, cz, f.y + yy, r, r * 0.6, f.rot, 2.4, seg=24) for (yy, r) in ((0.0, 0.15), (0.12, 0.19))]
-    f.b.loft("planches", basket, (0.75, 0.55, 0.3))
-    f.b.cap("planches", basket[0], (0, 1, 0), (0.6, 0.45, 0.25))
-    for j, (lx, lz, lean) in enumerate(((-0.1, -0.02, 0.0), (-0.035, 0.03, 0.0), (0.03, -0.03, 0.0), (0.1, 0.02, 0.0))):
-        bx, bz = _local(f.x, f.z, f.rot, lx, lz)
-        prof = [(0.0, 0.012), (0.03, 0.026), (0.3, 0.03), (0.55, 0.026), (0.6, 0.008)]
-        rings = [_ring(bx, bz, f.y + 0.02 + yy, r, r * 0.85, f.rot + j * 40, 2.0, seg=14) for (yy, r) in prof]
+    # corbeille en osier basse, baguettes couchées en long (debout, elles traversaient l'étagère du dessus)
+    wicker = (0.75, 0.55, 0.3)
+    f.box("planches", 0.0, 0.0, -0.005, 0.5, 0.012, 0.22, (0.6, 0.45, 0.25))
+    for lz in (-0.111, 0.101):                                                     # longs côtés
+        f.box("planches", 0.0, 0.0, lz, 0.5, 0.06, 0.012, wicker)
+    for lx in (-0.244, 0.244):                                                     # petits côtés
+        f.box("planches", lx, 0.0, -0.005, 0.012, 0.06, 0.2, wicker)
+    prof = [(-0.28, 0.008), (-0.26, 0.022), (-0.2, 0.027), (0.2, 0.027), (0.26, 0.022), (0.28, 0.008)]
+    for j, (lz, ly) in enumerate(((-0.075, 0.0), (-0.025, 0.0), (0.025, 0.0), (0.075, 0.0),
+                                  (-0.05, 0.046), (0.0, 0.046), (0.05, 0.046))):
+        rings = []
+        for (x, r) in prof:
+            ring = []
+            for k in range(14):
+                a = 2 * math.pi * k / 14 + j                               # rayures décalées d'une baguette à l'autre
+                ring.append(f.p(x + (0.004 if j % 2 else -0.004), 0.012 + 0.026 + ly + math.cos(a) * r * 0.85,
+                                lz + math.sin(a) * r))
+            rings.append(ring)
         f.b.loft(tex, rings, (1, 1, 1), tile=(0.17, 0.6))
 
 
