@@ -251,6 +251,8 @@ class CourierStory:
             return
         if GATE_CODE in digits:
             self.set("code_given")
+            if self.game.is_multiplayer and self.game.net is not None:
+                self.game.net.send_code_given()
             self.game.timers.after(2.0, self.say, "Merci.")
             self.game.timers.after(4.5, self._gate_beep)
             self.game.quests.on_event("courier_code")

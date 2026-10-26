@@ -32,9 +32,52 @@ class FavorisQuest:
     def st(self):
         return self.game.state
 
+    # étape locale -> quête d'équipe côté serveur (server/coop_rules.QUEST_IDS)
+    MP_QUESTS = {"favoris_unlocked": "telephone_garnier", "favoris_deleted": "commande_annulee", "favoris_done": "sel_entrees"}
+
     def active(self):
         g = self.game
-        return not g.is_multiplayer and g.net is None
+        if g.is_multiplayer:
+            return getattr(g, "mp_mode", "coop") != "solo_survie"
+        return g.net is None
+
+    def _mp_send(self, flag):
+        g = self.game
+        if g.is_multiplayer and g.net is not None:
+            g.net.send_quest_done(self.MP_QUESTS[flag])
+
+    def update(self, dt):
+        """Multijoueur : lance la quête une fois dans la maison et reprend les étapes faites par les coéquipiers
+        (multiplayer_manager pose state.flags["mp_quest_<id>"])."""
+        g = self.game
+        if not g.is_multiplayer or not self.active() or g.mode != "playing":
+            return
+        st = self.st
+        q = g.quests.quests["favoris"]
+        if not q.active and not q.complete and g.player.zone in ("rdc", "etage", "grenier"):
+            g.quests.start("favoris")
+        # étapes faites par un coéquipier : annonce du serveur (mp_quest_*) ou drapeaux recopiés par world_sync
+        for flag, qid, msg in (("favoris_unlocked", "telephone_garnier", "Un coéquipier a déverrouillé le compte de Garnier."),
+                               ("favoris_deleted", "commande_annulee", "Un coéquipier a supprimé l'adresse. Il reste le sel."),
+                               ("favoris_done", "sel_entrees", None)):
+            if st.flag("mp_quest_" + qid) and not st.flag(flag):
+                st.set(flag, True)
+                if msg:
+                    g.ui.notify_quest(msg)
+        if st.flag("favoris_done"):
+            for (eid, _, _, _) in ENTRANCES:
+                st.set("favoris_sel_" + eid, True)
+        steps = q.done_steps
+        if st.flag("favoris_unlocked") and "code" not in steps:
+            g.quests.on_event("favoris_code")
+        if st.flag("favoris_deleted") and "favoris" not in steps:
+            g.quests.on_event("favoris_deleted")
+            self.enable_spots()
+        if st.flag("favoris_done") and not q.complete:
+            g.quests.on_event("favoris_done")
+        # lignes de sel tracées par un coéquipier (drapeaux recopiés par world_sync) : on les dessine aussi
+        if len(self.decals) != len(self.salt_lines()):
+            self.redraw()
 
     def reset(self):
         for e in self.decals:
@@ -80,6 +123,7 @@ class FavorisQuest:
             if digits == PIN:
                 st.set("favoris_unlocked", True)
                 g.quests.on_event("favoris_code")
+                self._mp_send("favoris_unlocked")
                 g.timers.after(1.5, self._sms, "Code accepté. Adresses favorites de votre livreur : « 17 rue des Lilas ». "
                                                "Répondez SUPPRIMER pour retirer cette adresse.")
                 return
@@ -97,12 +141,13 @@ class FavorisQuest:
         if st.flag("favoris_deleted"):
             g.timers.after(1.5, self._sms, "Aucune adresse favorite.")
             return
-        if word.startswith("supprim") and g.assistance.t0 is None:
+        if word.startswith("supprim") and g.assistance.t0 is None and not g.is_multiplayer:
             g.timers.after(1.5, self._sms, "Aucune livraison en cours sur ce compte.")
             return
         if word.startswith("supprim"):
             st.set("favoris_deleted", True)
             g.quests.on_event("favoris_deleted")
+            self._mp_send("favoris_deleted")
             g.timers.after(1.5, self._sms, "« 17 rue des Lilas » a été retiré des adresses favorites.")
             g.timers.after(5.0, self._courier_reacts)
             self.enable_spots()
@@ -184,6 +229,9 @@ class FavorisQuest:
         st = self.st
         st.set("favoris_done", True)
         g.quests.on_event("favoris_done")
+        if g.is_multiplayer:
+            self._mp_send("favoris_done")              # le serveur annonce la victoire (« win ») à l'équipe
+            return
         cs = g.courier
         if cs.flag("code_given"):
             g.timers.after(3.0, cs.say, "Le portail est ouvert. Tu m'as invité, Adrien.")

@@ -383,7 +383,7 @@ class RelayServer:
             return
         if t == "hello":
             ver = str(msg.get("proto", ""))
-            if ver != cfg.PROTOCOL_VERSION and not (self.port == 27997 and msg.get("name") == "Bob" and ver == "4.0"):
+            if ver != cfg.PROTOCOL_VERSION:
                 self._err(conn, "proto", f"Version réseau incompatible (serveur {cfg.PROTOCOL_VERSION}). Mettez le jeu à jour.")
                 return
             conn.name = clean_text(msg.get("name", ""), 16, "Joueur")

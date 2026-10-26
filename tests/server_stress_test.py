@@ -429,6 +429,11 @@ def mode_tests(port, server):
                   "3 quêtes finies -> win(adresse_retiree) envoyé aux vivants")
         elif mode == "solo_survie":
             # porte ouverte au livreur : seul celui qui ouvre est emporté, l'autre survit et gagne
+            sim = server.rooms[code].sim
+            c2.send_door_opened("entree")               # hors livraison : on entre simplement dans la maison
+            drain(0.2)
+            check(all(p.alive for p in sim.state.players.values()), "porte ouverte avant la livraison : personne n'est emporté")
+            sim.state.phase = "countdown"               # le livreur est à la porte
             c2.send_door_opened("entree")
             d1 = find("1", "player_death")
             w1 = find("1", "win")

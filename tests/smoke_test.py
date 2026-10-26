@@ -341,7 +341,8 @@ def scenario():
         yield
     code = (mp.room or {}).get("id")
     sock = socket.create_connection(("127.0.0.1", 27997))
-    sock.sendall((json.dumps({"type": "hello", "name": "Bob", "proto": "4.0"}) + "\n").encode())
+    import multiplayer_client
+    sock.sendall((json.dumps({"type": "hello", "name": "Bob", "proto": multiplayer_client.PROTOCOL_VERSION}) + "\n").encode())
     sock.sendall((json.dumps({"type": "join", "room": code, "game": config.VERSION}) + "\n").encode())
     for _ in range(30):
         yield

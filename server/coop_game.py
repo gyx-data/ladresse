@@ -121,7 +121,8 @@ class RoomGame:
         elif t == "enter_house":
             self._on_enter_house(ps)
         elif t == "door_opened":
-            if msg.get("door", "entree") in ("entree", "front", "porte"):
+            # fatal seulement quand il est à la porte (on ouvre aussi cette porte pour entrer dans la maison)
+            if msg.get("door", "entree") in ("entree", "front", "porte") and s.phase in ("countdown", "survival"):
                 self._kill(ps, "porte")
         elif t == "code_given":
             ps.code_given = True

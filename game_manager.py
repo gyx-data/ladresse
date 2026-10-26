@@ -1283,6 +1283,7 @@ class GameManager:
             self.tutorial.update(dt)
         self.assistance.update(dt)
         self.courier.update(dt)
+        self.favoris.update(dt)
         self.entity.update(dt)
         self.phone.update(dt)
         self.interactions.find_target(eye, p.forward)

@@ -186,6 +186,8 @@ class HouseEvents:
                 g.player.add_stress(5)
                 return
             if not door.is_open:
+                if g.is_multiplayer and g.net is not None and g.assistance.t0 is not None:
+                    g.net.send_door_opened("entree")          # le serveur décide (fatal seulement s'il est à la porte)
                 if g.assistance.front_door_opened():
                     return
         if door.is_open:
