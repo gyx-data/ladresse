@@ -22,6 +22,12 @@ def _quad(texture_name, scale, col=color.white):
     return e
 
 
+def _show(e, v):
+    """Active/désactive une entité seulement si l'état change (stash/unstash coûtent cher à chaque image)."""
+    if e.enabled != v:
+        e.enabled = v
+
+
 class DustField:
     """Poussière : visible uniquement dans le faisceau de la lampe torche (calcul vectorisé)."""
 
@@ -45,9 +51,9 @@ class DustField:
     def update(self, dt, player, extra_light=None):
         import numpy as np
         if not settings["particules"]:
-            self.parent.enabled = False
+            _show(self.parent, False)
             return
-        self.parent.enabled = True
+        _show(self.parent, True)
         c = player.eye_pos
         fwd = player.forward
         on = player.flashlight.on and player.flashlight.battery > 0
@@ -116,9 +122,9 @@ class RainField:
 
     def update(self, dt, cam_pos=None):
         if not settings["particules"]:
-            self.parent.enabled = False
+            _show(self.parent, False)
             return
-        self.parent.enabled = self.enabled
+        _show(self.parent, self.enabled)
         if not self.enabled:
             return
         h = self.size[1]
@@ -143,13 +149,13 @@ class InsectField:
 
     def update(self, dt, player):
         if not settings["particules"]:
-            self.parent.enabled = False
+            _show(self.parent, False)
             return
-        self.parent.enabled = True
+        _show(self.parent, True)
         for s in self.spots:
             d = (s["c"] - player.pos).length()
             vis = d < 8 and abs(s["c"][1] - player.pos[1]) < 3.5
-            s["e"].enabled = vis
+            _show(s["e"], vis)
             if vis:
                 s["a"] += dt * s["s"]
                 s["e"].world_position = s["c"] + Vec3(math.cos(s["a"]) * s["r"], math.sin(s["a"] * 1.3) * s["r"] * 0.7, math.sin(s["a"] * 0.7) * s["r"])
@@ -169,7 +175,7 @@ class MistField:
             e.parent = self.parent
             e.position = Vec3(center[0] + rnd.uniform(-size[0] / 2, size[0] / 2), y + rnd.uniform(0.05, 0.3), center[1] + rnd.uniform(-size[1] / 2, size[1] / 2))
             self.parts.append((e, rnd.uniform(0, 6.28), rnd.uniform(0.05, 0.12)))
-        self.parent.enabled = False
+        _show(self.parent, False)
 
     def update(self, dt, t):
         if not self.parent.enabled:
@@ -202,7 +208,7 @@ class ParticleManager:
         p = self.game.player
         self.dust.update(dt, p)
         zone = p.zone
-        self.mist.parent.enabled = zone in ("sous_sol", "escalier_cave") and settings["particules"]
+        _show(self.mist.parent, zone in ("sous_sol", "escalier_cave") and bool(settings["particules"]))
         self.mist.update(dt, self.t)
         self.insects.update(dt, p)
         # pluie : visible uniquement par les fenêtres non condamnées (grenier) ou dehors

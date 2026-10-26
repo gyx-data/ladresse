@@ -27,7 +27,7 @@ MODELS = [
     "Chandelier_01", "pull_chain_light_socket",
     # supérette : fruits et légumes, boulangerie, conserves, cagettes
     "food_apple_01", "lemon", "food_lime_01", "food_avocado_01", "food_kiwi_01", "food_pears_asian_01",
-    "food_pomegranate_01", "yellow_onion", "sweet_potato", "food_ginger_01", "bananas", "croissant", "hamburger_buns",
+    "food_pomegranate_01", "yellow_onion", "sweet_potato", "food_ginger_01", "bananas", "food_lychee_01", "croissant", "hamburger_buns",
     "russian_food_cans_01", "plastic_crate_01", "wine_bottles_01",
 ]
 

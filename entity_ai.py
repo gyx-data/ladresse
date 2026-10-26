@@ -767,6 +767,14 @@ class EntityAI:
             p.add_stress(7.0 * prox * dt)
         elif prox > 0.2 and d < 10.0:
             p.add_stress(2.5 * prox * dt)
+        # râle rauque quand il est proche (Les Multiples ; le Silencieux reste muet, Rampant et Imposteur ont leurs sons)
+        if self.visible and d < 9.0 and not self.dormant and self.kind == "multiple":
+            self.rasp_t = getattr(self, "rasp_t", 1.0) - dt
+            if self.rasp_t <= 0:
+                chase = self.state == "chase"
+                self.rasp_t = random.uniform(1.4, 2.2) if chase else random.uniform(3.0, 5.5)
+                sound.play_at("livreur_rale", Vec3(self.pos[0], self.pos[1] + 1.8, self.pos[2]), 0.9 if chase else 0.65,
+                              pitch=random.uniform(0.92, 1.05), ref=3.0)
         shader_state.ent_pos = Vec3(self.pos[0], self.pos[1] + 1.0, self.pos[2]) if self.visible else Vec3(0, -500, 0)
         shader_state.ent_distort = max(0.0, 1.0 - d / 5.0) if self.visible else 0.0
 

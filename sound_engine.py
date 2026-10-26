@@ -971,6 +971,44 @@ def s_bones(rng):
     return normalize(reverb(buf, rng, 0.35, 0.4), 0.8)
 
 
+@snd("livreur_rale", spatial=True)
+def s_courier_rasp(rng):
+    """Râle du Livreur : longue inspiration rauque et mouillée, gorge qui accroche, expiration en gargouillis."""
+    d = 2.6
+    t = taxis(d)
+    n = len(t)
+    buf = np.zeros(n)
+    # inspiration (0 → 1,1 s) : souffle filtré + grésillement de gorge (impulsions irrégulières ~38 Hz)
+    ni = int(SR * 1.1)
+    env = np.sin(np.pi * np.arange(ni) / ni) ** 1.5
+    air = bandpass(rng.standard_normal(ni), 350, 2600) * env
+    rate = 38 + 10 * np.sin(np.arange(ni) / SR * 5.0)
+    phase = np.cumsum(rate / SR)
+    creak = (np.mod(phase, 1.0) < 0.12).astype(float) * rng.uniform(0.6, 1.0, ni)
+    creak = bandpass(creak, 90, 1400) * env
+    place(buf, 0.55 * air + 0.9 * creak, 0.05)
+    # expiration (1,35 → 2,5 s) : plus grave, gargouillis
+    no = int(SR * 1.15)
+    env2 = np.sin(np.pi * np.arange(no) / no) * np.exp(-np.arange(no) / (SR * 0.9))
+    gurgle = bandpass(rng.standard_normal(no), 120, 900) * (0.6 + 0.4 * np.sin(2 * np.pi * 9 * np.arange(no) / SR)) ** 2
+    phase2 = np.cumsum((26 + 6 * np.sin(np.arange(no) / SR * 3.0)) / SR)
+    creak2 = bandpass((np.mod(phase2, 1.0) < 0.15).astype(float), 70, 900)
+    place(buf, (0.7 * gurgle + 0.7 * creak2) * env2, 1.35)
+    return normalize(reverb(buf, rng, 0.3, 0.25), 0.75)
+
+
+@snd("livreur_raclement", spatial=True)
+def s_courier_scrape(rng):
+    """Semelle qui racle le sol (jambe droite qui traîne)."""
+    d = 0.55
+    n = int(SR * d)
+    t = np.arange(n) / SR
+    env = np.clip(t / 0.05, 0, 1) * np.exp(-np.clip(t - 0.05, 0, None) / 0.22)
+    grit = bandpass(rng.standard_normal(n), 900, 5200) * (0.7 + 0.3 * rng.random(n))
+    rub = bandpass(rng.standard_normal(n), 180, 900) * 0.6
+    return normalize((grit + rub) * env, 0.55)
+
+
 @snd("respiration_saccadee", spatial=True)
 def s_ragged_breath(rng):
     d = 1.6
@@ -1304,12 +1342,16 @@ class SoundEngine:
         dy = (h.pos[1] - lpos[1]) * 0.7
         dz = h.pos[2] - lpos[2]
         dist = math.sqrt(dx * dx + dy * dy + dz * dz)
-        walls = 0
-        if self.occluder is not None and h.muffled is not None:
+        # occlusion recalculée ~7 fois par seconde (lancer de rayon coûteux, lissé ensuite par occ_mix)
+        h._occ_t = getattr(h, "_occ_t", 0.0) - dt
+        walls = getattr(h, "_walls", 0)
+        if self.occluder is not None and h.muffled is not None and h._occ_t <= 0:
+            h._occ_t = 0.15
             try:
                 walls = self.occluder(lpos, h.pos)
             except Exception:
                 walls = 0
+            h._walls = walls
         target_occ = min(1.0, walls * 0.7)
         h.occ_mix += (target_occ - h.occ_mix) * min(1.0, dt * 8.0)
         h.atten = 1.0 / (1.0 + (dist / h.ref) ** 2) * (0.75 ** walls)

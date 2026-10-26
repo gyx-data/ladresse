@@ -945,7 +945,7 @@ class GameManager:
             self.player.health = min(100.0, self.player.health + 8.0)
             self.player.relieve_stress(8.0)
             st.remove_item(item)
-            raw = item in ("primeur_yellow_onion", "primeur_food_ginger_01", "primeur_sweet_potato")
+            raw = item in ("primeur_yellow_onion", "primeur_food_ginger_01", "primeur_sweet_potato", "primeur_pomme_de_terre")
             self.say("Cru... c'est pas terrible. Mais ça cale." if raw else "Un truc frais. Ça fait du bien.")
         elif item == "journal":
             self.inv_panel.hide()

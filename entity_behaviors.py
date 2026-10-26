@@ -64,6 +64,10 @@ class Behavior:
     # --- boucle -----------------------------------------------------------
     def on_step(self, ai):
         sound.play_at("pas_entite", ai.pos, 1.0, ref=4.0)
+        # un pas sur deux : la semelle droite racle le sol (le Livreur boite)
+        self._step_n = getattr(self, "_step_n", 0) + 1
+        if self._step_n % 2 == 0 and self.puppet_kind == "humanoide":
+            sound.play_at("livreur_raclement", ai.pos, 0.7, pitch=random.uniform(0.9, 1.1), ref=3.5)
 
     def update(self, ai, dt):
         return False

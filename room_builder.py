@@ -401,7 +401,29 @@ class MeshBuilder:
     def flower_pot(self, cx, y0, cz, r=0.17, h=0.3):
         """Pot en terre cuite avec géraniums rouges."""
         self.cyl("tuiles", cx, y0, cz, r, h, 9, (0.95, 0.75, 0.65))
-        self.sphere("geranium", cx, y0 + h + 0.06, cz, r * 0.95, (1, 1, 1), lat=4, lon=8, sy=0.7)
+        self.geraniums(cx, y0 + h, cz, r * 1.7, r * 1.7, seed=int(abs(cx * 13 + cz * 7)))
+
+    def geraniums(self, cx, y0, cz, w, d, seed=0, col=(0.88, 0.12, 0.14)):
+        """Touffe de géraniums : feuillage arrondi vert foncé + ombelles de fleurs sur tiges, au-dessus de (cx, y0, cz)."""
+        rnd = random.Random(seed)
+        n_leaf = max(3, int(w * d * 60))
+        for _ in range(n_leaf):                                       # feuilles rondes un peu aplaties
+            x, z = cx + rnd.uniform(-w / 2, w / 2) * 0.85, cz + rnd.uniform(-d / 2, d / 2) * 0.85
+            g = rnd.uniform(0.75, 1.1)
+            self.sphere("etoffe", x, y0 + rnd.uniform(0.03, 0.08), z, rnd.uniform(0.045, 0.065),
+                        (0.11 * g, 0.25 * g, 0.08 * g), lat=4, lon=7, sy=0.45)
+        n_fl = max(2, int(w * d * 28))
+        for _ in range(n_fl):                                         # ombelles : petites fleurs groupées
+            x, z = cx + rnd.uniform(-w / 2, w / 2) * 0.7, cz + rnd.uniform(-d / 2, d / 2) * 0.7
+            top = y0 + rnd.uniform(0.15, 0.22)
+            self.box("etoffe", x - 0.004, y0 + 0.04, z - 0.004, x + 0.004, top, z + 0.004, (0.2, 0.36, 0.14))
+            tint = rnd.uniform(0.85, 1.1)
+            c = (min(1.0, col[0] * tint), col[1] * tint, col[2] * tint)
+            for k in range(6):
+                a = k * 1.047 + rnd.uniform(-0.3, 0.3)
+                self.sphere("etoffe", x + math.cos(a) * 0.022, top + rnd.uniform(-0.006, 0.01), z + math.sin(a) * 0.022,
+                            0.014, c, lat=3, lon=5)
+            self.sphere("etoffe", x, top + 0.012, z, 0.014, c, lat=3, lon=5)
 
     def persienne(self, axis, fixed, a0, a1, y0, y1, outward=-1, col=(0.32, 0.5, 0.42)):
         """Volet persienne vert provençal plaqué contre la façade (côté extérieur)."""

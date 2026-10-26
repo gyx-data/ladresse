@@ -744,19 +744,23 @@ class HUD:
         p = game.player
         fb = p.flashlight.battery
         self.fl_bar.set(fb / 100.0)
-        self.fl_pct.text = f"{int(fb)} %"
+        if self.fl_pct.text != f"{int(fb)} %":          # Text reconstruit ses glyphes à chaque affectation
+            self.fl_pct.text = f"{int(fb)} %"
         self.fl_bar.fill.color = color.rgb32(240, 220, 140) if fb > 20 else color.rgb32(240, 110, 70)
         self.fl_icon.texture = self.fl_tex_on if p.flashlight.on else self.fl_tex_off
         b = game.phone.model.battery
         self.ph_bar.set(b / 100.0)
-        self.ph_pct.text = f"{int(b)} %"
+        if self.ph_pct.text != f"{int(b)} %":
+            self.ph_pct.text = f"{int(b)} %"
         self.ph_bar.fill.color = color.rgb32(120, 190, 255) if b > 20 else color.rgb32(240, 90, 80)
         # endurance : visible seulement quand entamée ; santé : seulement si blessé
-        self.stamina.enabled = p.stamina < 99
+        if self.stamina.enabled != (p.stamina < 99):
+            self.stamina.enabled = p.stamina < 99
         if self.stamina.enabled:
             self.stamina.set(p.stamina / 100.0)
             self.stamina.fill.color = color.rgb32(235, 235, 235) if getattr(p, "energy_t", 0) <= 0 else color.rgb32(90, 200, 255)
-        self.health.enabled = p.health < 99
+        if self.health.enabled != (p.health < 99):
+            self.health.enabled = p.health < 99
         if self.health.enabled:
             self.health.set(p.health / 100.0)
         if self.sub_t > 0:
@@ -780,7 +784,9 @@ class HUD:
         # invite
         target = game.interactions.target
         modal = game.modal_open()
-        self.quest_root.enabled = bool(self.quest_note.text.strip()) and not modal and self.quest_t > 0
+        qv = bool(self.quest_note.text.strip()) and not modal and self.quest_t > 0
+        if self.quest_root.enabled != qv:
+            self.quest_root.enabled = qv
         pr = target.current_prompt() if (target is not None and not game.phone.is_open and not modal) else None
         if pr:
             k = config.settings.key("interagir").upper()

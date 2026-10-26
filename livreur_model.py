@@ -22,8 +22,8 @@ from room_builder import MeshBuilder, _ring
 JACKET = (0.56, 0.27, 0.1)           # orange QuickEats délavé, sali
 JACKET_DARK = (0.34, 0.16, 0.06)
 PANTS = (0.13, 0.135, 0.16)
-SKIN = (0.4, 0.39, 0.37)             # gris cadavérique
-SKIN_DARK = (0.27, 0.26, 0.25)
+SKIN = (0.34, 0.33, 0.31)            # gris cadavérique
+SKIN_DARK = (0.22, 0.21, 0.2)
 SHOE = (0.09, 0.08, 0.08)
 BLACK = (0.02, 0.02, 0.025)
 STAIN = (0.22, 0.12, 0.08)
@@ -147,11 +147,21 @@ class LivreurModel:
                     (0.305, 0.01, 0.012, -0.012)]
             _tube(b, "peau", SKIN, prof, n=2.0, seg=16, caps=False)
             # joues creusées, arcades saillantes, nez fin, oreilles
+            from character_model import _ellipsoid
             for x in (-1, 1):
-                b.sphere("peau", x * 0.06, 0.08, 0.06, 0.03, SKIN_DARK, lat=4, lon=6, sy=1.4, sx=0.5)
-                b.obox("peau", x * 0.037, 0.175, 0.095, 0.045, 0.014, 0.02, 0, SKIN)
-                b.obox("peau", x * 0.088, 0.14, -0.005, 0.014, 0.06, 0.035, 0, SKIN_DARK)
-            b.obox("peau", 0, 0.125, 0.112, 0.016, 0.05, 0.022, 0, SKIN)
+                # joues creusées (ombre), arcades saillantes, oreilles décollées
+                b.loft("peau", [_ring(x * 0.058, 0.0, 0.08 + dy, 0.012 * f, 0.03 * f, 0.0, 2.0, 10, 0.0, 0.06)
+                                for dy, f in ((-0.035, 0.3), (-0.02, 0.9), (0.0, 1.0), (0.02, 0.9), (0.035, 0.3))], SKIN_DARK)
+                b.loft("peau", [_ring(x * 0.038, 0.0, 0.175 + dy, 0.026 * f, 0.012 * f, 0.0, 2.0, 10, 0.0, 0.094)
+                                for dy, f in ((-0.01, 0.4), (-0.005, 1.0), (0.005, 1.0), (0.01, 0.4))], SKIN)
+                b.loft("peau", [_ring(x * 0.09, 0.0, 0.14 + dy, 0.008 * f, 0.022 * f, 0.0, 2.0, 10, 0.0, -0.005)
+                                for dy, f in ((-0.035, 0.3), (-0.02, 0.9), (0.01, 1.0), (0.032, 0.4))], SKIN_DARK)
+            # nez long et fin (arête + narines)
+            b.loft("peau", [_ring(0.0, 0.0, 0.1 + dy, 0.012 * f, 0.016 * f, 0.0, 2.0, 10, 0.0, 0.106 + oz)
+                            for dy, f, oz in ((0.0, 0.7, 0.004), (0.02, 1.0, 0.004), (0.045, 0.75, 0.0), (0.065, 0.45, -0.006))], SKIN)
+            # crasse et marbrures sur la peau
+            for (x, y, z, r) in ((-0.05, 0.22, 0.085, 0.02), (0.06, 0.07, 0.07, 0.018), (0.02, 0.0, 0.07, 0.015)):
+                _ellipsoid(b, "peau", (0.18, 0.15, 0.13), y, r, sx=1.0, sy=1.0, sz=0.35, cz=z, lat=5, seg=8, cx=x)
             # orbites vides (noires et profondes)
             for x in (-0.037, 0.037):
                 b.sphere("platre", x, 0.15, 0.086, 0.023, BLACK, lat=6, lon=10, sy=1.3)

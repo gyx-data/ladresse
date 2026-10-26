@@ -487,6 +487,12 @@ PRODUCE = [
     ("yellow_onion", (0.72, 0.5, 0.22), 0.08, "Oignons", "1,59 €/kg"),
     ("sweet_potato", (0.62, 0.32, 0.2), 0.16, "Patates douces", "2,99 €/kg"),
     ("food_ginger_01", (0.75, 0.62, 0.42), 0.12, "Gingembre", "6,90 €/kg"),
+    ("bananas", (0.95, 0.82, 0.25), 0.16, "Bananes", "1,99 €/kg"),
+    ("food_lychee_01", (0.72, 0.2, 0.22), 0.04, "Litchis", "5,90 €/kg"),
+    # sans modèle 3D (tas modelés seulement)
+    ("tomate", (0.85, 0.14, 0.1), 0.07, "Tomates", "2,89 €/kg"),
+    ("orange", (0.98, 0.52, 0.08), 0.08, "Oranges", "2,29 €/kg"),
+    ("pomme_de_terre", (0.66, 0.5, 0.32), 0.07, "Pommes de terre", "1,29 €/kg"),
 ]
 
 

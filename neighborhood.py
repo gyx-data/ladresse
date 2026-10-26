@@ -417,7 +417,17 @@ class Neighborhood:
         self._spawn_traffic()
         self._shop_interactables()
 
+    def _primeur_stand(self, b, cx, cz, rng, items):
+        """Étal de primeur (fresh_aisle.produce_stand) dont chaque cagette se prend au panier."""
+        fresh_aisle.produce_stand(b, cx, cz, rng, items)
+        # mêmes positions que dans produce_stand : 2 rangées de 4
+        for row, (yy, zz) in enumerate(((0.85, cz - 0.25), (0.55, cz + 0.25))):
+            for k in range(4):
+                self.primeur_points.append((primeur_article(items[(row * 4 + k) % len(items)]),
+                                            Vec3(cx - 1.1 + 0.28 + k * 0.55, yy + 0.12, zz)))
+
     def _build_shop(self, b, be, rng):
+        self.primeur_points = []
         x0, z0, x1, z1 = SHOP
         H = SHOP_H
         # murs (façade vitrée côté rue, porte automatique au centre)
@@ -505,7 +515,7 @@ class Neighborhood:
         for text, hx in headers:
             sign(self.root, text, (hx + 0.6, 2.27, z0 + 1.075), 0.13, 180, (255, 255, 255), px=56)
         # étal de fruits et légumes (vrais modèles 3D) près de l'entrée, à droite
-        fresh_aisle.produce_stand(b, 28.2, -24.6, rng, fresh_aisle.PRODUCE)
+        self._primeur_stand(b, 28.2, -24.6, rng, fresh_aisle.PRODUCE[:8])
         sign(self.root, "FRUITS & LÉGUMES", (28.2, 1.55, -24.06), 0.16, 180, (255, 255, 255), (46, 139, 87, 255), px=56)
         sign(self.root, "FRAIS", (21.0, 2.7, z0 + 0.28), 0.4, 180, (255, 255, 255), (18, 72, 160, 255), px=72)
         # affiches promotionnelles au-dessus du frigo
@@ -564,16 +574,11 @@ class Neighborhood:
         b.box("moquette", SHOP_DOOR_X - 1.6, 0.01, z1 + 0.18, SHOP_DOOR_X + 1.6, 0.04, z1 + 1.25,
               (0.16, 0.17, 0.19), tile=1.0)
         # étals de primeur en gradins devant la vitrine gauche (cagettes posées dessus, ardoises de prix côté rue)
-        self.primeur_points = []
         for stand_i, cx in enumerate((12.9, 15.15)):            # accolés : pas de recoin entre les deux
             cz = z1 + 0.78
+            # 15 sortes pour 16 cagettes : une seule revient (en bout d'étal)
             items = [fresh_aisle.PRODUCE[(stand_i * 8 + k) % len(fresh_aisle.PRODUCE)] for k in range(8)]
-            fresh_aisle.produce_stand(b, cx, cz, rng, items)
-            # une cagette = un article à prendre (mêmes positions que dans produce_stand : 2 rangées de 4)
-            for row, (yy, zz) in enumerate(((0.85, cz - 0.25), (0.55, cz + 0.25))):
-                for k in range(4):
-                    self.primeur_points.append((primeur_article(items[row * 4 + k]),
-                                                Vec3(cx - 1.1 + 0.28 + k * 0.55, yy + 0.12, zz)))
+            self._primeur_stand(b, cx, cz, rng, items)
             for sx in (cx - 1.06, cx + 1.06):                   # pieds en métal qui dépassent sous le plateau
                 b.box("metal", sx - 0.03, 0.0, cz + 0.44, sx + 0.03, 0.06, cz + 0.5, (0.2, 0.2, 0.22))
             # bloc de collision sur toute l'emprise (cagettes comprises) : on ne peut ni entrer ni grimper dessus
@@ -671,7 +676,8 @@ class Neighborhood:
         (encadrements, appuis, persiennes ouvertes), balcon en fer forgé à l'étage, porte avec marche et applique."""
         x1, z1 = x0 + w, z0 + d
         wall = (0.9, 0.88, 0.85)
-        b.box(tex, x0, 0, z0, x1, h, z1, wall, collide=True)
+        # la face côté rue est construite plus bas, percée derrière fenêtres / volets / porte (anti z-fighting)
+        b.box(tex, x0, 0, z0, x1, h, z1, wall, collide=True, skip=("-z",) if street_side < 0 else ("+z",))
         zm = (z0 + z1) / 2
         rc = (0.85, 0.78, 0.74)
         # toit à deux pans débordant + génoises (corniche) + cheminée
@@ -700,6 +706,11 @@ class Neighborhood:
         def zz(a, b_):
             return (min(fz + out * a, fz + out * b_), max(fz + out * a, fz + out * b_))
 
+        # Anti z-fighting : le mur côté rue n'est pas dessiné derrière les éléments de fenêtre (le tampon de
+        # profondeur ne sépare pas des faces à quelques mm / cm de distance vues de loin). Chaque élément est
+        # « encastré » (il part de 2 cm dans le mur) et le mur est percé derrière lui (holes, en x / y).
+        holes = []
+        back = -0.025                                       # = 2 cm à l'intérieur du plan du mur
         for fl in range(floors):
             y = 1.0 + fl * 3.0
             xx = x0 + 1.0
@@ -708,23 +719,30 @@ class Neighborhood:
                     xx += 2.6
                     continue
                 lit = rng.random() < 0.3
-                # vitre (éclairée ou sombre) légèrement en retrait de l'encadrement
-                if lit:
-                    be.quad("neon", (xx, y, fz), (xx + 0.9, y, fz), (xx + 0.9, y + 1.4, fz), (xx, y + 1.4, fz), nrm, (1.0, 0.72, 0.42))
-                else:
-                    b.quad("vitre", (xx, y, fz), (xx + 0.9, y, fz), (xx + 0.9, y + 1.4, fz), (xx, y + 1.4, fz), nrm, (0.3, 0.33, 0.36))
-                a, c = zz(0.0, 0.07)
-                for (u0, u1, v0, v1) in ((xx - 0.08, xx, y - 0.04, y + 1.44), (xx + 0.9, xx + 0.98, y - 0.04, y + 1.44),
+                # vitre (éclairée ou sombre) dans le plan du mur, en deux carreaux de part et d'autre du meneau
+                # (opaque : le mur est percé derrière, il n'y a donc plus de face superposée)
+                for (u0, u1) in ((xx, xx + 0.43), (xx + 0.47, xx + 0.9)):
+                    pts = ((u0, y, fz_wall), (u1, y, fz_wall), (u1, y + 1.4, fz_wall), (u0, y + 1.4, fz_wall))
+                    if lit:
+                        be.quad("neon", *pts, nrm, (1.0, 0.72, 0.42))
+                    else:
+                        b.quad("miroir", *pts, nrm, (0.62, 0.66, 0.7))
+                holes.append((xx, y, xx + 0.9, y + 1.4))
+                a, c = zz(back, 0.07)
+                for (u0, u1, v0, v1) in ((xx - 0.08, xx, y - 0.02, y + 1.4), (xx + 0.9, xx + 0.98, y - 0.02, y + 1.4),
                                          (xx - 0.08, xx + 0.98, y + 1.4, y + 1.52)):
-                    b.box("crepi", u0, v0, a, u1, v1, c, (0.97, 0.96, 0.93))         # encadrement
-                a, c = zz(0.0, 0.14)
+                    b.box("crepi", u0, v0, a, u1, v1, c, (0.97, 0.96, 0.93))         # encadrement (sans recouvrement)
+                    holes.append((u0, v0, u1, v1))
+                a, c = zz(back, 0.14)
                 b.box("beton", xx - 0.12, y - 0.1, a, xx + 1.02, y - 0.02, c, (0.75, 0.73, 0.7))   # appui de fenêtre
-                b.box("metal", xx + 0.43, y, min(fz, fz + out * 0.01), xx + 0.47, y + 1.4,
-                      max(fz, fz + out * 0.01), (0.25, 0.25, 0.25))                                # meneau
+                holes.append((xx - 0.12, y - 0.1, xx + 1.02, y - 0.02))
+                a, c = zz(back, 0.012)
+                b.box("metal", xx + 0.43, y, a, xx + 0.47, y + 1.4, c, (0.25, 0.25, 0.25))   # meneau
                 # persiennes ouvertes de part et d'autre, en relief
-                a, c = zz(0.02, 0.05)
+                a, c = zz(back, 0.05)
                 for sx in (xx - 0.54, xx + 1.04):
                     b.box("volet", sx, y - 0.02, a, sx + 0.44, y + 1.42, c, (0.85, 0.95, 0.9))
+                    holes.append((sx, y - 0.02, sx + 0.44, y + 1.42))
                 xx += 2.6
         # balcon en fer forgé au centre de l'étage
         if floors == 2:
@@ -740,13 +758,31 @@ class Neighborhood:
             for xs in (bx0, bx1 - 0.02):
                 a2, c2 = zz(0.0, 0.73)
                 b.box("metal", xs, by + 0.9, a2, xs + 0.02, by + 0.94, c2, (0.12, 0.12, 0.13))
-        # porte d'entrée : encadrement, marche, applique
-        b.quad("porte", (door_x - 0.5, 0.15, fz + out * 0.01), (door_x + 0.5, 0.15, fz + out * 0.01),
-               (door_x + 0.5, 2.25, fz + out * 0.01), (door_x - 0.5, 2.25, fz + out * 0.01), nrm, (0.75, 0.6, 0.5), tile=(1.0, 2.1))
-        a, c = zz(0.0, 0.1)
-        for (u0, u1, v0, v1) in ((door_x - 0.62, door_x - 0.5, 0.15, 2.37), (door_x + 0.5, door_x + 0.62, 0.15, 2.37),
+        # porte d'entrée : encadrement, marche, applique. La porte est dans le plan du mur (percé derrière) et ne
+        # commence qu'au-dessus du soubassement en pierre, qui la masquait (faces à 2 cm l'une de l'autre).
+        yd = 0.6
+        b.quad("porte", (door_x - 0.5, yd, fz_wall), (door_x + 0.5, yd, fz_wall), (door_x + 0.5, 2.25, fz_wall),
+               (door_x - 0.5, 2.25, fz_wall), nrm, (0.75, 0.6, 0.5), tile=(1.0, 2.1), uv_off=(0.0, (yd - 0.15) / 2.1))
+        holes.append((door_x - 0.5, yd, door_x + 0.5, 2.25))
+        a, c = zz(back, 0.1)
+        for (u0, u1, v0, v1) in ((door_x - 0.62, door_x - 0.5, 0.15, 2.25), (door_x + 0.5, door_x + 0.62, 0.15, 2.25),
                                  (door_x - 0.62, door_x + 0.62, 2.25, 2.4)):
             b.box("crepi", u0, v0, a, u1, v1, c, (0.97, 0.96, 0.93))
+            holes.append((u0, v0, u1, v1))
+        # face du mur côté rue, privée des trous ; ni sous le soubassement (y < 0.6) ni sous la corniche (y > h - 0.26),
+        # qui sont en saillie de 3 / 12 cm devant elle. UV identiques à celles de b.box (texture continue).
+        from room_builder import TILE, PHOTO_SCALE
+        tu = TILE.get(tex, 1.0) * PHOTO_SCALE.get(tex, 1.0)
+        parts = [(x0, 0.6, x1, h - 0.26)]
+        for hole in holes:
+            parts = [q for p in parts for q in rect_minus(p, hole)]
+        for (xa, ya, xb, yb) in parts:
+            if xb - xa < 1e-4 or yb - ya < 1e-4:
+                continue
+            if out < 0:
+                b.quad(tex, (xa, ya, z0), (xb, ya, z0), (xb, yb, z0), (xa, yb, z0), nrm, wall, uv_off=((xa - x0) / tu, ya / tu))
+            else:
+                b.quad(tex, (xb, ya, z1), (xa, ya, z1), (xa, yb, z1), (xb, yb, z1), nrm, wall, uv_off=((x1 - xb) / tu, ya / tu))
         a, c = zz(0.0, 0.45)
         b.box("beton", door_x - 0.8, 0, a, door_x + 0.8, 0.15, c, (0.6, 0.58, 0.55))
         lx, ly, lz = door_x + 0.85, 2.15, fz + out * 0.12
@@ -949,8 +985,7 @@ class Neighborhood:
                          (RESTO_DOOR_X - 1.6, RESTO[3] + 2.6), (RESTO_DOOR_X + 1.6, RESTO[3] + 2.6)):
             b.box("crepi", px - 0.45, 0.0, pz - 0.25, px + 0.45, 0.45, pz + 0.25, (0.72, 0.4, 0.26))
             b.box("herbe", px - 0.4, 0.45, pz - 0.2, px + 0.4, 0.5, pz + 0.2, (0.25, 0.32, 0.2))
-            for k in range(4):
-                b.sphere("geranium", px - 0.3 + k * 0.2, 0.6, pz, 0.12, (0.9, 0.3, 0.3), lat=4, lon=6)
+            b.geraniums(px, 0.48, pz, 0.8, 0.4, seed=int(px * 10))
             b.colliders.append((px - 0.45, 0, pz - 0.25, px + 0.45, 0.6, pz + 0.25))
         for bx in (-14.0, 30.0, 64.0):
             bz = ROAD_Z1 + 1.0

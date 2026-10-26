@@ -16,7 +16,7 @@ import math
 
 from ursina import Entity, color, destroy
 
-from room_builder import MeshBuilder
+from room_builder import MeshBuilder, _ring
 
 SKIN_TONES = [(0.86, 0.68, 0.56), (0.72, 0.52, 0.40), (0.55, 0.38, 0.28), (0.93, 0.78, 0.66)]
 HAIR_COLS = [(0.10, 0.08, 0.07), (0.28, 0.18, 0.10), (0.06, 0.06, 0.06), (0.45, 0.32, 0.18)]
@@ -36,6 +36,27 @@ def _mesh(parent, build_fn, emit=0.05):
     build_fn(b)
     ents = b.build(parent=parent, emit=emit)
     return ents
+
+
+def _tube(b, tex, col, profile, n=2.4, seg=14, caps=True, oz=0.0):
+    """Volume lisse (loft) : profile = [(y, demi-largeur, demi-profondeur), ...] de bas en haut, décalé de oz vers l'avant."""
+    rings = [_ring(0.0, 0.0, y, hw, hd, 0.0, n, seg, 0.0, oz) for (y, hw, hd) in profile]
+    b.loft(tex, rings, col)
+    if caps:
+        b.cap(tex, rings[0], (0, -1, 0), col)
+        b.cap(tex, rings[-1], (0, 1, 0), col)
+
+
+def _ellipsoid(b, tex, col, cy, r, sx=1.0, sy=1.0, sz=1.0, cz=0.0, lat=9, seg=16, top_only=False, cx=0.0):
+    """Ellipsoïde lisse (normales par sommet) centré en (0, cy, cz) ; top_only = calotte supérieure (cheveux)."""
+    prof = [(cy, r * sx, r * sz)] if top_only else []
+    for i in range(lat // 2 + 1 if top_only else 1, lat):
+        th = math.pi * (1 - i / lat)                   # du bas (pi) vers le haut (0)
+        prof.append((cy + r * sy * math.cos(th), r * sx * math.sin(th), r * sz * math.sin(th)))
+    rings = [_ring(cx, 0.0, y, hw, hd, 0.0, 2.0, seg, 0.0, cz) for (y, hw, hd) in prof]
+    b.loft(tex, rings, col)
+    b.cap(tex, rings[-1], (0, 1, 0), col)
+    b.cap(tex, rings[0], (0, -1, 0), col)
 
 
 def _dark(c, k=0.7):
@@ -120,7 +141,8 @@ class CharacterModel:
         self.hips = Entity(parent=self.root, position=(0, 0.92, 0))
 
         def pelvis(b):
-            b.obox(leg_tex, 0, -0.1, 0, B["hips"], 0.2, B["depth"] - 0.02, 0, leg_col if skirt else pc)
+            hw, hd = B["hips"] / 2, (B["depth"] - 0.02) / 2
+            _tube(b, leg_tex, leg_col if skirt else pc, [(-0.1, hw * 0.9, hd * 0.9), (-0.03, hw, hd), (0.1, hw * 0.98, hd * 0.98)])
             if not skirt and out not in ("cuisinier",):
                 b.obox("cuir", 0, 0.04, 0, B["hips"] + 0.01, 0.05, B["depth"] - 0.01, 0, (0.1, 0.08, 0.07))   # ceinture
                 b.obox("jante", 0, 0.045, B["depth"] / 2 - 0.004, 0.045, 0.035, 0.01, 0, (0.8, 0.78, 0.7))  # boucle
@@ -141,17 +163,23 @@ class CharacterModel:
         self.legs = []
         for side in (-1, 1):
             hip = _Limb(self.hips, (side * B["hip_x"], -0.08, 0))
-            _mesh(hip.pivot, lambda b: b.obox(leg_tex, 0, -0.44, 0, B["thigh"], 0.44, B["thigh"] + 0.01, 0, leg_col), em)
+            th = B["thigh"] / 2
+            _mesh(hip.pivot, lambda b: _tube(b, leg_tex, leg_col, [(-0.45, th * 0.78, th * 0.8), (-0.3, th * 0.88, th * 0.92),
+                                                                 (-0.1, th * 1.02, th * 1.06), (0.03, th, th * 1.02)]), em)
             knee = _Limb(hip.pivot, (0, -0.44, 0))
 
             def shin(b):
-                b.obox(leg_tex, 0, -0.4, 0, B["shin"], 0.4, B["shin"] + 0.01, 0, leg_col)
+                sh_ = B["shin"] / 2
+                _tube(b, leg_tex, leg_col, [(-0.42, sh_ * 0.72, sh_ * 0.74), (-0.3, sh_ * 0.8, sh_ * 0.86),
+                                            (-0.14, sh_ * 0.98, sh_ * 1.08), (0.03, sh_ * 0.92, sh_ * 0.96)])
                 if not skirt:
                     b.obox(leg_tex, 0, -0.42, 0.0, B["shin"] + 0.005, 0.04, B["shin"] + 0.015, 0, _dark(pc, 0.8))   # revers
                 if out == "survetement":
                     b.obox("etoffe", side * B["shin"] / 2, -0.2, 0, 0.012, 0.42, 0.06, 0, (0.95, 0.95, 0.95))
-                b.obox("cuir", 0, -0.48, 0.03, B["shin"] + (0.0 if fem else 0.01), 0.08, B["foot"], 0, shoe)
-                b.obox("cuir", 0, -0.5, 0.03, B["shin"] + 0.01, 0.025, B["foot"] + 0.01, 0, sole)
+                fw, fl = (B["shin"] + (0.0 if fem else 0.01)) / 2, B["foot"] / 2
+                _tube(b, "cuir", shoe, [(-0.49, fw, fl), (-0.45, fw * 1.02, fl), (-0.42, fw * 0.92, fl * 0.82),
+                                        (-0.39, fw * 0.75, fl * 0.5)], n=2.2, oz=0.03)
+                _tube(b, "cuir", sole, [(-0.505, fw * 1.04, fl * 1.03), (-0.488, fw * 1.04, fl * 1.03)], n=2.2, oz=0.03)
                 if fem and skirt:
                     b.obox("cuir", 0, -0.53, -0.07, 0.03, 0.06, 0.03, 0, shoe)     # petit talon
             _mesh(knee.pivot, shin, em)
@@ -162,12 +190,15 @@ class CharacterModel:
 
         def torso(b):
             d = B["depth"]
-            b.obox(top_tex, 0, 0.0, 0, B["waist"], 0.26, d - 0.02, 0, jc)                    # taille
-            b.obox(top_tex, 0, 0.22, 0, B["chest"], 0.28, d, 0, jc)                          # poitrine
-            b.obox(top_tex, 0, 0.48, 0, B["shoulder"], 0.08, d + 0.02, 0, jc)                # épaules
+            w2, c2, s2 = B["waist"] / 2, B["chest"] / 2, B["shoulder"] / 2
+            _tube(b, top_tex, jc, [(0.0, w2, (d - 0.02) / 2), (0.14, w2 * 1.01, (d - 0.01) / 2), (0.3, c2, d / 2),
+                                   (0.44, s2 * 0.96, (d + 0.01) / 2), (0.52, s2, (d + 0.02) / 2), (0.57, s2 * 0.8, d * 0.42),
+                                   (0.6, 0.075, 0.06)], n=2.6, seg=18)        # taille, poitrine, épaules arrondies
             if fem:
                 for x in (-0.068, 0.068):
-                    b.sphere(top_tex, x, 0.35, d / 2 - 0.042, 0.058, jc, lat=6, lon=10, sy=0.9, sx=1.05)
+                    rings = [_ring(x, 0.0, 0.34 + dy, 0.05 * f, 0.03 * f, 0.0, 2.0, 12, 0.0, d / 2 - 0.02)
+                             for dy, f in ((-0.05, 0.3), (-0.035, 0.85), (0.0, 1.0), (0.035, 0.8), (0.05, 0.3))]
+                    b.loft(top_tex, rings, jc)
             if self.belly:
                 b.obox(top_tex, 0, 0.03, 0.025, B["waist"] + 0.05, 0.3, B["depth"] + 0.06, 0, jc)     # ventre
                 b.obox(top_tex, 0, 0.08, 0.04, B["waist"] + 0.02, 0.2, B["depth"] + 0.1, 0, jc)
@@ -230,9 +261,11 @@ class CharacterModel:
             short = out in ("polo", "robe")
 
             def upper(b):
-                b.obox(top_tex, 0, -0.3 if not short else -0.14, 0, B["arm"], 0.3 if not short else 0.14, B["arm"] + 0.01, 0, sleeve_col)
+                a2 = B["arm"] / 2
+                y_lo = -0.31 if not short else -0.15
+                _tube(b, top_tex, sleeve_col, [(y_lo, a2 * 0.86, a2 * 0.9), ((y_lo) / 2, a2 * 0.95, a2), (0.03, a2 * 1.05, a2 * 1.08)])
                 if short:
-                    b.obox("peau", 0, -0.3, 0, B["arm"] - 0.02, 0.16, B["arm"] - 0.01, 0, sk)
+                    _tube(b, "peau", sk, [(-0.31, B["arm"] / 2 - 0.016, B["arm"] / 2 - 0.012), (-0.14, B["arm"] / 2 - 0.01, B["arm"] / 2 - 0.006)])
                 if out == "survetement":
                     b.obox("etoffe", side * B["arm"] / 2, -0.3, 0, 0.01, 0.3, 0.05, 0, (0.95, 0.95, 0.95))
             _mesh(sh.pivot, upper, em)
@@ -240,12 +273,16 @@ class CharacterModel:
 
             def fore(b):
                 if out in ("polo", "robe"):
-                    b.obox("peau", 0, -0.26, 0, B["fore"] - 0.02, 0.26, B["fore"] - 0.01, 0, sk)
+                    f2 = B["fore"] / 2
+                    _tube(b, "peau", sk, [(-0.27, f2 * 0.62, f2 * 0.66), (-0.12, f2 * 0.8, f2 * 0.86), (0.02, f2 * 0.82, f2 * 0.86)])
                 else:
-                    b.obox(top_tex, 0, -0.26, 0, B["fore"], 0.26, B["fore"] + 0.01, 0, sleeve_col)
+                    f2 = B["fore"] / 2
+                    _tube(b, top_tex, sleeve_col, [(-0.26, f2 * 0.85, f2 * 0.9), (-0.12, f2 * 0.95, f2), (0.02, f2 * 1.02, f2 * 1.06)])
                     b.obox(top_tex, 0, -0.27, 0, B["fore"] + 0.005, 0.04, B["fore"] + 0.015, 0, dark_j)    # poignet
-                b.obox("peau", 0, -0.36, 0.0, B["hand"], 0.1, B["hand"] + 0.01, 0, sk)                     # main
-                b.obox("peau", 0, -0.42, 0.012, B["hand"] - 0.012, 0.05, B["hand"] - 0.01, 0, _dark(sk, 0.96))   # doigts
+                h2 = B["hand"] / 2
+                _tube(b, "peau", sk, [(-0.43, h2 * 0.5, h2 * 0.7), (-0.4, h2 * 0.78, h2 * 0.98), (-0.33, h2 * 0.8, h2 * 1.0),
+                                      (-0.27, h2 * 0.55, h2 * 0.66)], n=2.2, seg=10, oz=0.006)        # main (paume + doigts joints)
+                b.obox("peau", side * h2 * 0.75, -0.38, 0.03, 0.02, 0.05, 0.02, 0, _dark(sk, 0.95))       # pouce
             _mesh(el.pivot, fore, em)
             self.arms.append((sh, el))
 
@@ -274,14 +311,14 @@ class CharacterModel:
         r = B["head"]
         st = self.hair_style
         b.cyl("peau", 0, -0.06, 0, 0.05 if fem else 0.056, 0.1, 6, sk)
-        b.sphere("peau", 0, 0.12, 0.0, r, sk, lat=6, lon=10, sy=1.16 if fem else 1.18, sx=0.92 if fem else 0.96)
-        if not fem:
-            b.obox("peau", 0, 0.03, 0.05, 0.13, 0.05, 0.08, 0, _dark(sk, 0.97))                # mâchoire
+        _ellipsoid(b, "peau", sk, 0.12, r, sx=0.92 if fem else 0.96, sy=1.16 if fem else 1.18, sz=1.0, lat=12, seg=18)
+        _ellipsoid(b, "peau", _dark(sk, 0.98), 0.05, r * (0.62 if fem else 0.7), sx=1.05, sy=0.6, cz=0.035, lat=8, seg=14)   # menton
         # cheveux
         if st not in ("chauve",):
             thick = 0.006 if st == "rase" else 0.0
             cap_r = r + 0.003 if st == "rase" else r + 0.004
-            b.sphere("etoffe", 0, 0.178 - thick, -0.016, cap_r, hc, lat=5, lon=10, sy=0.86 if st != "boucle" else 1.05, sx=1.0)
+            _ellipsoid(b, "etoffe", hc, 0.178 - thick, cap_r, sx=1.0, sy=0.86 if st != "boucle" else 1.05, sz=0.93, cz=-0.016,
+                       lat=12, seg=18)
             if st == "boucle":
                 for x, y, z in ((-0.08, 0.2, 0.0), (0.08, 0.2, 0.0), (0, 0.24, -0.04), (-0.06, 0.15, -0.08), (0.06, 0.15, -0.08)):
                     b.sphere("etoffe", x, y, z, 0.05, hc, lat=4, lon=6)
@@ -289,7 +326,7 @@ class CharacterModel:
             b.obox("etoffe", 0, -0.12, -0.075, 0.23, 0.32, 0.07, 0, hc)                        # nappe dans le dos
             for x in (-0.1, 0.1):
                 b.obox("etoffe", x, -0.06, -0.01, 0.04, 0.24, 0.1, 0, hc)                      # mèches de côté
-            b.obox("etoffe", 0, 0.21, 0.085, 0.18, 0.04, 0.04, 0, hc)                          # frange
+            _ellipsoid(b, "etoffe", hc, 0.215, 0.09, sx=1.0, sy=0.32, sz=0.45, cz=0.06, lat=6, seg=14)    # frange
         elif st == "queue":
             b.sphere("etoffe", 0, 0.16, -0.12, 0.04, hc, lat=4, lon=6)
             b.obox("etoffe", 0, -0.02, -0.14, 0.05, 0.28, 0.05, 0, hc)
@@ -302,9 +339,9 @@ class CharacterModel:
             b.obox("etoffe", x, 0.16, 0.098, 0.04, 0.008 if fem else 0.011, 0.012, 0, _dark(hc, 0.8) if st != "chauve" else _dark(sk, 0.6))
             if fem:
                 b.obox("metal", x, 0.143, 0.1, 0.034, 0.004, 0.008, 0, (0.05, 0.04, 0.04))      # cils
-        b.obox("peau", 0, 0.08, 0.098, 0.026 if fem else 0.03, 0.05, 0.04, 0, _dark(sk, 0.92))   # nez
+        b.sphere("peau", 0, 0.1, 0.1, 0.016 if fem else 0.019, _dark(sk, 0.93), lat=5, lon=8, sy=1.7)          # nez
         for x in (-r + 0.004, r - 0.004):
-            b.obox("peau", x, 0.1, 0.0, 0.02, 0.05, 0.035, 0, _dark(sk, 0.9))                   # oreilles
+            b.sphere("peau", x, 0.11, 0.0, 0.024, _dark(sk, 0.9), lat=5, lon=8, sy=1.3, sx=0.45)          # oreilles
         lips = (0.66, 0.24, 0.28) if fem else (0.55, 0.32, 0.3)
         b.obox("peau", 0, 0.03, 0.093, 0.048 if fem else 0.05, 0.012 if fem else 0.008, 0.012, 0, lips)
         if self.beard == "barbe":
