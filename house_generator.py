@@ -261,6 +261,13 @@ class Door:
                     b.box("bois_meuble", u0, v0, a, u1, v1, bb, col)
                 else:
                     b.box("bois_meuble", a, v0, u0, bb, v1, u1, col)
+        # bâti (huisserie) : habille l'épaisseur du mur dans l'ouverture, plus de plâtre visible autour du battant
+        a, bb, j = self.fixed - 0.101, self.fixed + 0.101, 0.03
+        for (u0, u1, v0, v1) in ((lo, lo + j, y0, y0 + h), (hi - j, hi, y0, y0 + h), (lo, hi, y0 + h - j, y0 + h)):
+            if self.axis == "x":
+                b.box("bois_meuble", u0, v0, a, u1, v1, bb, (0.45, 0.38, 0.3))
+            else:
+                b.box("bois_meuble", a, v0, u0, bb, v1, u1, (0.45, 0.38, 0.3))
 
     def open(self, duration=0.8, silent=False):
         if self.is_open:
