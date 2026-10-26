@@ -216,21 +216,21 @@
     ]
   },
   "porte": {
-    "source": "fine_grained_wood",
-    "url": "https://polyhaven.com/a/fine_grained_wood",
-    "mode": "detail",
+    "source": "rough_pine_door",
+    "url": "https://polyhaven.com/a/rough_pine_door",
+    "mode": "replace",
     "size_m": [
-      0.6000000238418579,
-      0.6000000238418579
+      2.0,
+      2.0
     ]
   },
   "porte_griffes": {
-    "source": "fine_grained_wood",
-    "url": "https://polyhaven.com/a/fine_grained_wood",
-    "mode": "detail",
+    "source": "rough_pine_door",
+    "url": "https://polyhaven.com/a/rough_pine_door",
+    "mode": "replace",
     "size_m": [
-      0.6000000238418579,
-      0.6000000238418579
+      2.0,
+      2.0
     ]
   },
   "email": {

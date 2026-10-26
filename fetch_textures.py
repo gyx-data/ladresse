@@ -42,8 +42,8 @@ SOURCES = {
     "rideau": "velour_velvet",
     "metal": "metal_plate_02",
     # mode « detail » : le dessin procédural est conservé (panneaux de porte, griffures...) et reçoit le grain de la photo
-    "porte": ("fine_grained_wood", "detail"),
-    "porte_griffes": ("fine_grained_wood", "detail"),
+    "porte": "rough_pine_door",
+    "porte_griffes": "rough_pine_door",          # + griffures ajoutées au chargement (texture_generator)
     "email": ("white_plaster_02", "detail"),
     "papier": ("white_plaster_02", "detail"),
 }

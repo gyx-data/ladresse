@@ -1223,6 +1223,21 @@ def _photo_texture(name, procedural):
     return to_img(arr)
 
 
+def _scratch_marks(img, rng):
+    """Griffures profondes (bois clair arraché + ombre) sur la moitié basse d'une texture de porte."""
+    img = img.convert("RGB")
+    d = ImageDraw.Draw(img)
+    w, h = img.size
+    for group in range(3):
+        gx, gy = int(rng.integers(int(w * 0.1), int(w * 0.35))), int(rng.integers(int(h * 0.45), int(h * 0.7)))
+        for k in range(4):
+            x = gx + k * int(w * 0.018) + int(rng.integers(-3, 4))
+            dx, ln = int(rng.integers(-25, 25)), int(rng.integers(int(h * 0.15), int(h * 0.3)))
+            d.line([(x, gy), (x + dx, gy + ln)], fill=(176, 140, 96), width=5)
+            d.line([(x + 3, gy + 2), (x + dx + 3, gy + ln - 4)], fill=(25, 14, 8), width=2)
+    return img
+
+
 class TextureLibrary:
     """Génère (ou charge depuis le cache) toutes les textures."""
 
@@ -1253,6 +1268,8 @@ class TextureLibrary:
                 img = fn(rng)
                 if name in photo_meta():
                     img = _photo_texture(name, img)
+                    if name == "porte_griffes":
+                        img = _scratch_marks(img, rng)
                 mode = "RGBA" if img.mode == "RGBA" else "RGB"
                 img = img.convert(mode)
                 try:

@@ -77,14 +77,22 @@ class EntityPuppet:
 
     # --- constructions ------------------------------------------------
     def _build_humanoid(self):
+        """Le livreur « déformé » : silhouette trop longue dans un uniforme QuickEats délavé et taché,
+        peau grise, orbites vides, casquette. Les proportions dérangeantes restent (bras jusqu'aux genoux)."""
         r = self.root
-        col = BLACK
-        self.parts["torso"] = _block(r, (0.30, 0.72, 0.17), (0, 1.22, 0), col)           # torse étroit
-        self.head = _ball(r, 0.15, (0, 1.82, 0.0), col, sy=1.25)                          # tête un peu grosse, ovale
-        self.parts["arm_l"] = _limb(r, (0.055, 1.0, 0.055), (-0.2, 1.55, 0), col)         # bras jusqu'aux genoux
-        self.parts["arm_r"] = _limb(r, (0.055, 1.0, 0.055), (0.2, 1.55, 0), col)
-        self.parts["leg_l"] = _limb(r, (0.1, 0.88, 0.1), (-0.09, 0.88, 0), col)
-        self.parts["leg_r"] = _limb(r, (0.1, 0.88, 0.1), (0.09, 0.88, 0), col)
+        jacket, pants, skin = (0.42, 0.2, 0.09), (0.12, 0.12, 0.14), (0.52, 0.5, 0.47)
+        self.parts["torso"] = _block(r, (0.30, 0.72, 0.17), (0, 1.22, 0), jacket, "tissu", 0.04, 0.4)
+        _block(self.parts["torso"], (0.31, 0.06, 0.175), (0, 0.18, 0), (0.75, 0.38, 0.1), "tissu", 0.06, 0.3)   # bande réfléchissante
+        self.head = _ball(r, 0.15, (0, 1.82, 0.0), skin, sy=1.25, tex="peau", emit=0.03)          # tête trop grosse, ovale
+        for ex in (-0.055, 0.055):                                                                # orbites vides
+            _ball(self.head, 0.035, (ex, 0.03, 0.125), BLACK, sy=1.3, tex="platre", emit=0.0)
+        _ball(self.head, 0.045, (0, -0.09, 0.12), (0.08, 0.05, 0.05), sy=0.5, tex="platre", emit=0.0)   # bouche ouverte
+        _block(self.head, (0.31, 0.06, 0.33), (0, 0.15, 0.03), (0.55, 0.26, 0.08), "tissu", 0.05, 0.3)   # casquette
+        _block(self.head, (0.2, 0.015, 0.12), (0, 0.13, 0.22), (0.45, 0.2, 0.06), "tissu", 0.05, 0.3)    # visière
+        self.parts["arm_l"] = _limb(r, (0.055, 1.0, 0.055), (-0.2, 1.55, 0), jacket, "tissu")    # bras jusqu'aux genoux
+        self.parts["arm_r"] = _limb(r, (0.055, 1.0, 0.055), (0.2, 1.55, 0), jacket, "tissu")
+        self.parts["leg_l"] = _limb(r, (0.1, 0.88, 0.1), (-0.09, 0.88, 0), pants, "tissu")
+        self.parts["leg_r"] = _limb(r, (0.1, 0.88, 0.1), (0.09, 0.88, 0), pants, "tissu")
         self.parts["bag"] = _block(r, (0.29, 0.46, 0.22), (0, 1.3, -0.2), (1, 1, 1), "sac_quickeats", 0.15, 0.45)
 
     def _build_impostor(self):

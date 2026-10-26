@@ -7,7 +7,7 @@ import tempfile
 GAME_TITLE = "L'ADRESSE"
 GAME_SUBTITLE = "17 rue des Lilas"
 VERSION = "1.1.0"
-CACHE_VERSION = "v4"
+CACHE_VERSION = "v5"
 
 # --- Réseau ---------------------------------------------------------------
 SERVER_HOST = "5.180.34.43"
@@ -41,10 +41,11 @@ SPRINT_SPEED = 4.6
 CROUCH_SPEED = 1.3
 JUMP_SPEED = 3.6
 GRAVITY = 11.0
-STAMINA_DRAIN = 22.0
-STAMINA_REGEN = 14.0
+STAMINA_DRAIN = 10.0           # ~10 s de course
+STAMINA_REGEN = 16.0
 FLASHLIGHT_DRAIN = 0.35        # % par seconde
-PHONE_DRAIN = 0.12             # % par seconde
+PHONE_DRAIN = 0.12             # % par seconde (écran allumé)
+PHONE_DRAIN_IDLE = 0.015       # % par seconde, rangé (veille : ~1 % par minute)
 PHONE_DRAIN_QUICKEATS = 0.35
 PHONE_DRAIN_CALL = 0.5
 GAME_MINUTES_PER_REAL_MINUTE = 5

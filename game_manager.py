@@ -449,6 +449,9 @@ class GameManager:
         self.lighting.lights = self.house.lights
         self.lighting.ambient_boost = 0.0
         # multijoueur : quartier partagé seulement si le serveur démarre la partie dehors (serveur à jour)
+        chat = self.phone.model.conversations.get("chat")
+        if chat is not None:
+            chat["hidden"] = not self.is_multiplayer
         mp_outside = self.is_multiplayer and getattr(self, "mp_outside", False)
         outside = fresh and (mp_outside or (not self.is_multiplayer and settings.get("quartier", True)))
         if fresh:
@@ -680,7 +683,11 @@ class GameManager:
                 self.inv_panel.hide()
                 self.set_mouse(free=False)
             elif self.phone.is_open:
-                self.phone.close()
+                msgs = self.phone.apps.get("messages")
+                if self.phone.current == "messages" and msgs is not None and msgs.composing:
+                    msgs.stop_compose()
+                else:
+                    self.phone.close()
             else:
                 self.toggle_pause()
             return
@@ -693,6 +700,9 @@ class GameManager:
             return
         if self.phone.is_open:
             if key == settings.key("telephone"):
+                if self.phone.current == "messages" and self.phone.apps["messages"].composing:
+                    self.phone.apps["messages"].stop_compose()
+                    return
                 if not (self.phone.current == "messages" and self.phone.apps["messages"].composing) and \
                         not (self.phone.current == "quickeats" and self.phone.apps["quickeats"].page == "address") and \
                         not (self.phone.current == "appels" and self.phone.apps["appels"].page == "keypad"):

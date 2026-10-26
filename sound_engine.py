@@ -484,25 +484,29 @@ def s_loud_stair(rng):
     return normalize(mix(x, sweep, gains=(0.7, 0.8)), 0.95)
 
 
+def _breath(rng, d_in, d_out, gap, peak, rough=0.0):
+    """Respiration naturelle : inspiration (souffle aigu, montant) puis expiration (« hhh » plus grave, qui retombe).
+    Bruit filtré et enveloppes douces uniquement : aucun son tonal."""
+    n_in, n_gap, n_out = int(SR * d_in), int(SR * gap), int(SR * d_out)
+    t_in = np.arange(n_in) / n_in
+    inh = bandpass(rng.standard_normal(n_in), 1100, 4200) * (np.sin(np.pi * t_in * 0.5) ** 1.5) * (1 - t_in ** 6) * 0.55
+    t_out = np.arange(n_out) / n_out
+    env_out = np.minimum(1.0, t_out * 12.0) * (1 - t_out) ** 1.8
+    exh = lowpass(bandpass(rng.standard_normal(n_out), 350, 2400), 1700) * env_out
+    if rough:
+        exh *= 1.0 + rough * (rng.standard_normal(n_out).cumsum() % 2.0 - 1.0) * 0.05
+    return normalize(np.concatenate([inh, np.zeros(n_gap), exh]), peak)
+
+
 @snd("respiration_calme")
 def s_breath_calm(rng):
-    d = 2.6
-    n = int(SR * d)
-    t = taxis(d)
-    env = np.clip(np.sin(np.pi * t / d), 0, 1) ** 2
-    x = bandpass(rng.standard_normal(n), 300, 1800) * env
-    return normalize(x, 0.35)
+    return _breath(rng, 1.0, 1.4, 0.15, 0.18)
 
 
 @snd("respiration_lourde")
 def s_breath_heavy(rng):
-    d = 1.1
-    n = int(SR * d)
-    t = taxis(d)
-    env = np.clip(np.sin(np.pi * t / d), 0, 1) ** 1.2
-    x = bandpass(rng.standard_normal(n), 250, 2600) * env
-    x += 0.2 * np.sin(2 * np.pi * 180 * t) * env
-    return normalize(x, 0.75)
+    # essoufflement : rapide, bouche ouverte, mais doux (joué en boucle pendant la récupération)
+    return _breath(rng, 0.32, 0.5, 0.05, 0.42, rough=1.0)
 
 
 @snd("heartbeat")
@@ -516,25 +520,40 @@ def s_heartbeat(rng):
     return normalize(buf, 0.95)
 
 
+def _latch(rng, n):
+    """Clic métallique du pêne : deux impacts brefs dans le haut-médium."""
+    x = np.zeros(n)
+    for t0, g in ((0.0, 1.0), (0.035, 0.6)):
+        k = int(SR * 0.025)
+        a = int(SR * t0)
+        x[a:a + k] += g * bandpass(rng.standard_normal(k), 1800, 6000) * decay(k, 0.006)
+    return x
+
+
 @snd("porte_ouvre", spatial=True)
 def s_door_open(rng):
-    d = 1.6
+    """Vieille porte en bois : loquet, puis légère plainte de charnière (frottement saccadé) et souffle d'air."""
+    d = 1.15
     n = int(SR * d)
-    t = taxis(d)
-    f = np.interp(t, [0, d * 0.5, d], [200, 650, 330]) + 30 * np.sin(2 * np.pi * 9 * t)
-    sweep = np.sin(2 * np.pi * np.cumsum(f) / SR)
-    sweep = sweep + 0.5 * np.sin(2 * np.pi * np.cumsum(f * 2.01) / SR)
-    x = sweep * 0.5 + bandpass(rng.standard_normal(n), 500, 3000) * 0.25
-    env = np.clip(np.sin(np.pi * t / d), 0, 1) ** 0.6
-    return normalize(x * env, 0.7)
+    x = _latch(rng, n)
+    # charnière : train d'impulsions irrégulier (stick-slip) filtré par une résonance boisée
+    rate = np.interp(np.arange(n) / n, [0, 0.15, 0.6, 1.0], [0, 38, 55, 20])
+    phase = np.cumsum(rate / SR)
+    imp = (np.diff(np.floor(phase), prepend=0) > 0).astype(float) * (0.6 + 0.4 * rng.random(n))
+    creak = bandpass(imp, 450, 1600) * 6.0
+    env = np.interp(np.arange(n) / n, [0, 0.12, 0.25, 0.8, 1.0], [0, 0, 1, 0.7, 0])
+    air = lowpass(rng.standard_normal(n), 400) * env * 0.12
+    return normalize(reverb(x + creak * env * 0.5 + air, rng, 0.3, 0.2), 0.55)
 
 
 @snd("porte_ferme", spatial=True)
 def s_door_close(rng):
-    n = int(SR * 0.5)
-    x = lowpass(rng.standard_normal(n), 900) * decay(n, 0.06)
-    x += 0.8 * np.sin(2 * np.pi * 85 * np.arange(n) / SR) * decay(n, 0.09)
-    return normalize(x, 0.9)
+    """Battant qui touche le chambranle (coup sourd boisé) puis le loquet qui s'enclenche."""
+    n = int(SR * 0.55)
+    thud = lowpass(rng.standard_normal(n), 700) * decay(n, 0.05)
+    thud += 0.5 * bandpass(rng.standard_normal(n), 120, 300) * decay(n, 0.08)
+    x = thud + 0.5 * np.roll(_latch(rng, n), int(SR * 0.04))
+    return normalize(reverb(x, rng, 0.25, 0.15), 0.8)
 
 
 @snd("porte_claque", spatial=True)

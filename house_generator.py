@@ -209,8 +209,10 @@ class Door:
         angle = 90.0 if (r[0] * n[0] + r[1] * n[1]) > 0 else -90.0
         self.open_angle = angle
         tex = "porte_griffes" if kind in ("condamnee",) else "porte"
-        self.part = HingedPart(parent, (hx, self.y0, hz), (w, DOOR_H, 0.05), tex=tex, open_angle=angle,
+        self.part = HingedPart(parent, (hx, self.y0, hz), (w - 0.01, DOOR_H - 0.01, 0.045), tex=tex, open_angle=angle,
                                side="+x", rot_y=rot0, tile=1.0)
+        self._hardware(w)
+        self._casing(w)
         # position du seuil (pour ouvrir / AI / son)
         if axis == "x":
             self.pos = Vec3(center, self.y0 + 1.0, fixed)
@@ -227,6 +229,38 @@ class Door:
 
     def _add_collider(self):
         self.house.dyn_colliders[self.id] = self.aabb
+
+    def _hardware(self, w):
+        """Poignées (bouton laiton sur rosace) des deux côtés et trois paumelles côté charnière."""
+        b = MeshBuilder("quincaillerie")
+        brass, iron = (0.72, 0.58, 0.3), (0.18, 0.17, 0.16)
+        for zs in (-1, 1):
+            z = zs * 0.0225
+            rose = [(w - 0.09 + 0.032 * math.cos(a), 0.98 + 0.032 * math.sin(a), z + zs * 0.004)
+                    for a in [2 * math.pi * k / 14 for k in range(14)]]
+            b.cap("metal", rose, (0, 0, zs), brass)
+            b.sphere("metal", w - 0.09, 0.98, z + zs * 0.045, 0.026, brass, lat=6, lon=10)
+            b.box("metal", w - 0.096, 0.974, min(z, z + zs * 0.03), w - 0.084, 0.986, max(z, z + zs * 0.03), brass)
+            b.box("metal", w - 0.1, 0.83, z, w - 0.08, 0.9, z + zs * 0.003, iron)           # entrée de serrure
+        for y in (0.2, 1.05, 1.9):
+            b.box("metal", -0.005, y, -0.03, 0.03, y + 0.11, 0.03, iron)
+        for e in b.build(parent=self.part.pivot):
+            pass
+
+    def _casing(self, w):
+        """Chambranle en bois mouluré autour de l'ouverture, sur les deux faces du mur."""
+        b = self.house.b(self.level)
+        y0, h, c, t, col = self.y0, DOOR_H, 0.08, 0.022, (0.5, 0.42, 0.34)
+        lo, hi = self.center - w / 2, self.center + w / 2
+        for side in (-1, 1):
+            f0 = self.fixed + side * 0.1
+            f1 = f0 + side * t
+            a, bb = min(f0, f1), max(f0, f1)
+            for (u0, u1, v0, v1) in ((lo - c, lo, y0, y0 + h + c), (hi, hi + c, y0, y0 + h + c), (lo - c, hi + c, y0 + h, y0 + h + c)):
+                if self.axis == "x":
+                    b.box("bois_meuble", u0, v0, a, u1, v1, bb, col)
+                else:
+                    b.box("bois_meuble", a, v0, u0, bb, v1, u1, col)
 
     def open(self, duration=0.8, silent=False):
         if self.is_open:
@@ -292,6 +326,8 @@ class House:
             self._build_level(lvl)
             yield 0.1 + 0.15 * (lvl + 1 if lvl >= 0 else 0), f"Niveau {lvl}"
         self._build_stairs()
+        for lvl in (0, 1):
+            self._baseboards(lvl)
         yield 0.55, "Escaliers"
         self._build_roof()
         yield 0.62, "Toit"
@@ -591,6 +627,58 @@ class House:
                 continue
             door = Door(self, did, dl, axis, fixed, center, kind, swing, self.level_roots[lvl])
             self.doors[did] = door
+
+    # --- plinthes ------------------------------------------------------
+    def _baseboards(self, lvl):
+        """Plinthes en bois au pied des murs de chaque pièce (seulement là où il y a vraiment un mur, hors portes)."""
+        b = self.b(lvl)
+        y0 = LEVEL_Y[lvl]
+        walls = [c for c in b.colliders if c[4] - c[1] > 0.5 and c[1] <= y0 + 0.05 and min(c[3] - c[0], c[5] - c[2]) <= 0.25]
+        doors = [(d[2], d[3], d[4]) for d in DOORS if d[1] == lvl]
+        arches = [(a[1], a[2], a[3], a[4]) for a in ARCHWAYS if a[0] == lvl]
+        col, hgt, t, step = (0.42, 0.34, 0.27), 0.11, 0.016, 0.25
+
+        def wall_at(x, z):
+            return any(c[0] - 0.01 <= x <= c[3] + 0.01 and c[2] - 0.01 <= z <= c[5] + 0.01 for c in walls)
+
+        def gap(axis, line, u):
+            for (dax, dfix, dc) in doors:
+                if dax == axis and abs(dfix - line) < 0.15 and abs(u - dc) < DOOR_W / 2 + 0.09:
+                    return True
+            for (aax, afix, ac, aw) in arches:
+                if aax == axis and abs(afix - line) < 0.15 and abs(u - ac) < aw / 2 + 0.02:
+                    return True
+            return False
+
+        for r in self.rooms.values():
+            if r.level != lvl:
+                continue
+            for (axis, line, face, a0, a1) in (("x", r.z0, r.z0 + 0.1, r.x0 + 0.1, r.x1 - 0.1), ("x", r.z1, r.z1 - 0.1, r.x0 + 0.1, r.x1 - 0.1),
+                                               ("z", r.x0, r.x0 + 0.1, r.z0 + 0.1, r.z1 - 0.1), ("z", r.x1, r.x1 - 0.1, r.z0 + 0.1, r.z1 - 0.1)):
+                inward = 1 if face > line else -1
+                runs, start = [], None
+                u = a0
+                while u < a1 - 1e-6:
+                    m = min(u + step, a1)
+                    mid = (u + m) / 2
+                    px, pz = (mid, line) if axis == "x" else (line, mid)
+                    ok = wall_at(px, pz) and not gap(axis, line, mid)
+                    if ok and start is None:
+                        start = u
+                    if not ok and start is not None:
+                        runs.append((start, u))
+                        start = None
+                    u = m
+                if start is not None:
+                    runs.append((start, a1))
+                f0, f1 = sorted((face, face + inward * t))
+                for (s0, s1) in runs:
+                    if s1 - s0 < 0.1:
+                        continue
+                    if axis == "x":
+                        b.box("bois_meuble", s0, y0, f0, s1, y0 + hgt, f1, col)
+                    else:
+                        b.box("bois_meuble", f0, y0, s0, f1, y0 + hgt, s1, col)
 
     # --- escaliers -----------------------------------------------------
     def _build_stairs(self):

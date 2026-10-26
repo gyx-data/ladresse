@@ -52,7 +52,8 @@ class PhoneModel:
         return c
 
     def drain(self, dt, quickeats=False, call=False, open_=False):
-        rate = config.PHONE_DRAIN
+        # rangé en veille : décharge très lente (l'écran éteint ne consomme presque rien)
+        rate = config.PHONE_DRAIN if open_ else config.PHONE_DRAIN_IDLE
         if quickeats:
             rate = config.PHONE_DRAIN_QUICKEATS
         if call:
@@ -193,18 +194,28 @@ class MessagesApp(App):
         self.composing = True
         self.render()
 
+    def stop_compose(self):
+        """Quitte la saisie (Échap / touche du téléphone) sans fermer la conversation."""
+        self.composing = False
+        self.render()
+
     def send(self):
         text = self.compose.strip()
         if self.conv == "chat" and self.game.is_multiplayer:
-            if text:
+            if text and self.game.net is not None:
                 self.game.send_chat(text)
                 self.compose = ""
+                self.composing = False
                 sound.play("envoi", 0.8, channel="voice")
                 self.render()
+            elif text:
+                sound.play("erreur", 0.8, channel="voice")
+                self.phone.toast("Connexion au serveur perdue.")
             return
         sound.play("erreur", 0.8, channel="voice")
         self.phone.toast("Échec de l'envoi. Aucun signal.")
         self.compose = ""
+        self.composing = False
         self.render()
 
     def on_key(self, key):
@@ -746,7 +757,7 @@ class PhoneUI:
         # batterie
         qe_open = self.is_open and self.current == "quickeats"
         if not self.calls.active:
-            self.model.drain(dt, quickeats=qe_open)
+            self.model.drain(dt, quickeats=qe_open, open_=self.is_open)
         if self.model.dead and self.is_open:
             self.close()
         # notifications
