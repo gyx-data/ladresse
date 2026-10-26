@@ -291,6 +291,7 @@ GARNIER_PHONE_TEXT = [
     "23 commandes — toutes à 23h47 — toutes 'Livrée'.",
     "Dernière commande : 'En cours de livraison...'",
     "Date : le jour de sa mort.",
+    "Fond d'écran : la fête des voisins de la rue des Lilas. Tout le monde sourit sous les guirlandes.",
 ]
 
 NEWSPAPER_HEADLINES = [
@@ -350,6 +351,18 @@ IMPOSTOR_LINES = [
 # Fins
 # ---------------------------------------------------------------------------
 ENDINGS = {
+    "E": {
+        "title": "Adresse introuvable",
+        "kind": "Bonne fin",
+        "lines": [
+            "Les coups s'arrêtent. Le téléphone vibre une dernière fois.",
+            "Votre livreur : « Adresse introuvable. »",
+            "Sous la porte, la lumière bleue s'éteint. Trois lignes de sel, intactes.",
+            "À l'aube, la rue des Lilas est vide. Le lampadaire clignote, puis se tait.",
+            "QuickEats : « Votre livreur n'a pas trouvé l'adresse. Votre commande a été annulée. »",
+        ],
+        "post": "Quelque part dans Nice, un téléphone s'allume : « Nouvelle adresse ajoutée à vos favoris. »",
+    },
     "A": {
         "title": "Livraison refusée",
         "kind": "Bonne fin",
@@ -445,6 +458,16 @@ QUESTS = {
             ("bank", "Vérifier l'application bancaire"),
             ("call", "Rappeler la banque"),
             ("retry", "Réessayer de commander"),
+        ],
+    },
+    "favoris": {
+        "title": "Rayé des favoris",
+        "objective": "Faire retirer le 17 des favoris du livreur",
+        "steps": [
+            ("telephone", "Récupérer le vieux téléphone de Garnier"),
+            ("code", "Trouver son code (4 chiffres) et répondre au compte QuickEats"),
+            ("favoris", "Supprimer « 17 rue des Lilas » de ses adresses"),
+            ("sel", "Tracer une ligne de sel devant les 3 entrées"),
         ],
     },
     "survivre": {

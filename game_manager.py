@@ -205,6 +205,8 @@ class GameManager:
         self.assistance = AssistanceSystem(self)
         from courier_story import CourierStory
         self.courier = CourierStory(self)
+        from favoris_quest import FavorisQuest
+        self.favoris = FavorisQuest(self)
         self.phone = PhoneUI(self)
         self.entity = EntityAI(self)
         self.jumpscare = JumpscareSystem(self)
@@ -348,6 +350,7 @@ class GameManager:
         self.quests.reset()
         self.assistance.reset()
         self.courier.reset()
+        self.favoris.reset()
         self.timers.clear()
         self.playtime = 0.0
         self.countdown_flicker = False
@@ -430,6 +433,7 @@ class GameManager:
                 self.phone.model.conversations[conv]["msgs"].append(
                     __import__("phone_system").Message(sender, text, t, sender == gd.PLAYER_FIRST))
         self.events.apply_saved_state()
+        self.favoris.redraw()
         self.ui.menu.hide()
         self.mode = "cinematic"
         self.effects.menu_mode = False

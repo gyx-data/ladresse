@@ -28,7 +28,7 @@ GAME_MODULES = [
     "effects", "lighting_system", "shaders", "ui_manager", "ui_widgets", "settings_menu", "multiplayer_client",
     "multiplayer_manager", "interaction_system", "inventory", "jumpscare_system", "save_system", "particle_system",
     "typography", "ui_theme", "ui_cursor", "illustrations", "character_model", "neighborhood", "shop", "fidelite", "achievements",
-    "crash_handler", "tts", "tutorial", "selftest", "autoplay", "models", "products", "car_builder", "fresh_aisle", "courier_story", "bianchi_house", "world_sync",
+    "crash_handler", "tts", "tutorial", "selftest", "autoplay", "models", "products", "car_builder", "fresh_aisle", "courier_story", "bianchi_house", "world_sync", "favoris_quest",
 ]
 
 

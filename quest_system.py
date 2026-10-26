@@ -12,7 +12,7 @@ import game_data as gd
 
 RDC_ROOMS = ["couloir0", "salon", "cuisine", "bureau", "hall0", "sdb0", "buanderie"]
 ALL_ROOMS = RDC_ROOMS + ["couloir1", "palier", "branche", "master", "amis", "placard", "condamnee", "sdb1", "grenier", "sous_sol"]
-MAIN_ORDER = ["explorer", "commander", "comprendre", "survivre", "sous_sol"]
+MAIN_ORDER = ["explorer", "commander", "comprendre", "survivre", "favoris", "sous_sol"]
 
 
 class Quest:
@@ -74,7 +74,7 @@ class QuestSystem:
 
     # quêtes dont les étapes peuvent être accomplies avant que la quête n'apparaisse (planches arrachées tôt,
     # paires d'assistance évaluées...) : l'étape est retenue et l'objectif affiché saute directement à la suivante
-    PRE_RECORD = ("survivre", "sous_sol")
+    PRE_RECORD = ("survivre", "sous_sol", "favoris")
 
     def step(self, qid, key):
         q = self.quests[qid]
@@ -116,6 +116,8 @@ class QuestSystem:
                 left = [r for r in RDC_ROOMS if r not in st.rooms_visited]
                 return f"{q.objective} ({len(RDC_ROOMS) - len(left)}/{len(RDC_ROOMS)})"
             lbl = q.step_label()
+            if qid == "favoris" and lbl is not None and "favoris" in q.done_steps:
+                lbl += f" ({len(self.game.favoris.salt_lines())}/3)"
             if qid == "comprendre" and lbl is None:
                 lbl = gd.OBJ_READ_SUPPORT if (a is not None and a.phase >= 2) else gd.OBJ_WAIT_SUPPORT
             return f"{q.objective}" + (f"\n  > {lbl}" if lbl else "")
@@ -175,6 +177,20 @@ class QuestSystem:
             # « Votre livreur est en chemin » : l'enquête est close, place à la survie
             self.complete("comprendre")
             self.start("survivre")
+            if not g.is_multiplayer:
+                g.timers.after(12.0, self.start, "favoris")
+        elif name == "favoris_phone":
+            self.step("favoris", "telephone")
+        elif name == "favoris_code":
+            self.step("favoris", "telephone")
+            self.step("favoris", "code")
+        elif name == "favoris_deleted":
+            self.step("favoris", "favoris")
+        elif name == "favoris_salt":
+            g.ui.refresh_objective()
+        elif name == "favoris_done":
+            self.step("favoris", "sel")
+            self.complete("favoris")
         elif name == "pair_done":
             pid = kw.get("pair")
             q = self.quests["survivre"]

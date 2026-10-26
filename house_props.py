@@ -206,6 +206,9 @@ def _rdc(house, rng):
     rb.chair(b, 3.8, 9.3, y0, 0, fallen=True)
     b.cyl("email", 3.0, y0 + 0.75, 8.35, 0.025, 0.09, 6, (0.95, 0.95, 0.95))                    # salière
     point(house, "sel", (3.0, 0.85, 8.35), "Ramasser le sel", 0, radius=0.8)
+    # quête « Rayé des favoris » : lignes de sel devant les entrées (activées une fois l'adresse supprimée)
+    for (pid, pos) in (("sel_porte", (7.0, 0.3, 0.6)), ("sel_salon", (1.5, 0.3, 0.6)), ("sel_bureau", (15.35, 0.3, 2.2))):
+        point(house, pid, pos, "Tracer une ligne de sel", 0, radius=0.9, enabled=False)
     # tiroirs
     house.parts["tiroir_cuisine"] = SlidingPart(house.level_roots[0], (0.45, 0.65, 10.2), (0.5, 0.18, 0.5), "bois_meuble", (0.7, 0.65, 0.6), travel=(0.35, 0, 0))
     point(house, "tiroirs", (0.7, 0.8, 10.2), "Ouvrir le tiroir", 0, radius=0.9)

@@ -10,7 +10,10 @@ Inspiré d'une légende urbaine (« ton livreur est arrivé... ») mais raconté
   * le pourboire : à la porte, QuickEats réclame un pourboire (2 €, 5 € et un troisième bouton) ; deux messages
     de l'assistance se contredisent, la lumière dit lequel vient de lui ;
   * on rembobine : une mort pendant la nuit de livraison fait rembobiner la cassette jusqu'au dernier point
-    de sauvegarde et grave une règle dans le carnet « Règles ».
+    de sauvegarde et grave une règle dans le carnet « Règles » ;
+  * devant la porte, il fait le tour : des coups au carreau de la fenêtre qu'on regarde, des coups
+    contre le mur du fond (il n'y a pas de porte derrière), et un SMS de « Maman » qui demande d'ouvrir — avec la
+    lumière bleue sous la porte.
 Les étapes sont indexées sur le temps écoulé depuis « votre livreur est en chemin » et mémorisées dans les drapeaux
 de la partie : un point de sauvegarde rechargé rejoue exactement ce qui restait à venir.
 """
@@ -42,6 +45,8 @@ T_INSIST = (108.0, 150.0)
 T_LEAVE_LAMP = 196.0
 T_VOISINE = 202.0
 T_AT_DOOR = 252.0
+T_MAMAN = T_AT_DOOR + 18.0
+T_BACK = T_AT_DOOR + 34.0
 T_TIP = gd.DELIVERY_TOTAL_SECONDS - 60 + 7.0
 T_TIP_END = gd.DELIVERY_TOTAL_SECONDS - 60 + 27.0
 
@@ -51,6 +56,10 @@ RULES = {
     "code": "Ne lui donne jamais le code. Un portail ouvert est une invitation.",
     "porte": "Quand il frappe, on n'ouvre pas. Jamais.",
 }
+# fenêtres du rez-de-chaussée à volets (house_generator.WINDOWS) : (centre, rotation du livreur qui regarde dedans)
+PEEK_WINDOWS = ((Vec3(1.5, 0.0, -0.75), 0.0), (Vec3(12.0, 0.0, -0.75), 0.0), (Vec3(-0.75, 0.0, 4.5), 90.0),
+                (Vec3(16.75, 0.0, 2.2), 270.0))
+PEEK_MAX = 2
 REWIND_LIMIT = {"Facile": 99, "Normal": 99, "Difficile": 2, "Cauchemar": 0}
 
 TIP_TRUTHS = {
@@ -134,6 +143,8 @@ class CourierStory:
         self.st.set("courier_" + k, v)
 
     def reset(self):
+        self.peek_t = 0.0
+        self.peek_cd = 0.0
         self.glow_t = 0.0
         self.look_t = 0.0
         self.spot_t = 0.0
@@ -265,12 +276,21 @@ class CourierStory:
         e = self.elapsed()
         w = self.where()
         # livreur visible sous le lampadaire (vu depuis la lucarne du grenier)
-        show = w == "lampadaire" and g.assistance.phase < 5
+        lamp = w == "lampadaire" and g.assistance.phase < 5
+        self.peek_t = max(0.0, self.peek_t - dt)
+        if lamp and self.courier is not None and self.peek_t <= 0 and self.courier.root.position != LAMP + Vec3(0.55, 0, -0.35):
+            self.courier.root.position = LAMP + Vec3(0.55, 0, -0.35)
+            self.courier.root.rotation_y = 0.0
+            self.courier.root.scale = 1.6
+        show = lamp or self.peek_t > 0
         if self.courier is not None and self.courier.root.enabled != show:
             self.courier.root.enabled = show
         if show:
             self.courier.animate(dt, 0.0, False, "patrol")
+        if lamp:
             self._lucarne_check(dt)
+        if w == "porte" and e is not None and e < T_TIP and self.active():
+            self._peek_check(dt)
         # lumière : téléphone (lampadaire) ou sous la porte
         self.glow_t = max(0.0, self.glow_t - dt)
         k = 0.0
@@ -319,6 +339,12 @@ class CourierStory:
             self.set("at_door")
             a.status_text = "Votre livreur est devant votre porte."
             self.say("Je suis devant ta porte.")
+        if e >= T_MAMAN and not self.flag("maman"):
+            self.set("maman")
+            self._fake_maman()
+        if e >= T_BACK and not self.flag("back"):
+            self.set("back")
+            self._back_knocks()
         if e >= T_TIP and not self.flag("tip"):
             self.set("tip")
             self._start_tip()
@@ -367,6 +393,51 @@ class CourierStory:
             p.shake(0.2, 0.25)
             g.say("Sous le lampadaire... il est immense. Et il me regarde.", 4.5)
             self.say("Je te vois.")
+
+    # --- il fait le tour de la maison --------------------------------------------
+    def _peek_check(self, dt):
+        """Il tape au carreau de la fenêtre qu'on regarde, derrière les volets cloués (au plus PEEK_MAX fois)."""
+        g = self.game
+        p = g.player
+        self.peek_cd = max(0.0, self.peek_cd - dt)
+        n = int(self.st.flags.get("courier_peeks", 0) or 0)
+        if self.peek_t > 0 or self.peek_cd > 0 or n >= PEEK_MAX or p.level != 0 or self.courier is None:
+            return
+        for pos, rot in PEEK_WINDOWS:
+            to = Vec3(pos[0], 1.6, pos[2]) - p.eye_pos
+            d = to.length()
+            if 1.5 < d < 6.0 and to.normalized().dot(p.forward) > 0.85:
+                self.st.flags["courier_peeks"] = n + 1
+                self.peek_cd = 40.0
+                wpos = Vec3(pos[0], 1.5, pos[2])
+                for k, t in enumerate((0.0, 0.35, 0.7, 1.9)):
+                    g.timers.after(t, sound.play_at, "coups_porte", wpos, 0.35 if k < 3 else 0.6, ref=6.0, pitch=1.9)
+                g.timers.after(1.9, sound.play_at, "craquement_bois", wpos, 0.6, ref=6.0)
+                self.glow(2.5)
+                g.timers.after(1.9, p.add_stress, 18)
+                g.timers.after(1.9, p.shake, 0.15, 0.2)
+                g.timers.after(3.0, g.say, "Il tape au carreau... juste derrière les volets. Il fait le tour de la maison.", 4.5)
+                return
+
+    def _fake_maman(self):
+        """Il écrit dans la conversation de Maman. La lumière bleue passe sous la porte au même moment."""
+        g = self.game
+        ph = g.phone
+        text = "Adrien ? C'est maman. Je suis devant, ouvre-moi, il fait froid."
+        if "maman" not in ph.model.conversations:
+            return
+        ph.model.add_message("maman", "Maman", text)
+        ph.notify(gd.CONTACT_MAMAN, text, "icone_messages", target=("messages", "maman"))
+        sound.play("vibration", 0.7, channel="voice")
+        self.glow(5.0)
+        g.timers.after(9.0, g.say, "Maman habite à Lyon. Elle ne sait même pas où je suis.", 4.0)
+
+    def _back_knocks(self):
+        g = self.game
+        for t in (0.0, 1.6, 3.2):
+            g.timers.after(t, sound.play_at, "coups_porte", Vec3(8.0, 1.2, 12.4), 0.8, ref=10.0)
+        g.timers.after(5.0, g.say, "Ça vient du fond de la maison... Il n'y a pas de porte derrière.", 4.0)
+        g.timers.after(5.0, g.player.add_stress, 12)
 
     # --- la voisine -------------------------------------------------------
     def _neighbour(self):

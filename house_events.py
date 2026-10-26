@@ -455,6 +455,17 @@ class HouseEvents:
         self.game.player.add_stress(12)
         it.enabled = False
         self.house.parts["tel_garnier"].enabled = False
+        self.game.favoris.on_phone_taken()
+
+    # lignes de sel de la quête « Rayé des favoris »
+    def h_sel_porte(self, it):
+        self.game.favoris.pour_salt("porte")
+
+    def h_sel_salon(self, it):
+        self.game.favoris.pour_salt("salon")
+
+    def h_sel_bureau(self, it):
+        self.game.favoris.pour_salt("bureau")
 
     def h_jouet(self, it):
         self.game.say(gd.INTERACT_TEXT["jouet"])

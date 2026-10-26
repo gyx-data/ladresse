@@ -23,6 +23,7 @@ ITEM_DEFS = {
     "eau": ("Bouteille d'eau", "Récupère toute l'endurance.", (0.55, 0.75, 0.95), True),
     "energisant": ("Boisson énergisante", "Endurance quasi illimitée pendant 60 s.", (0.2, 0.6, 0.9), True),
     "journal": ("Nice-Matin", "Le journal du jour.", (0.92, 0.92, 0.9), True),
+    "tel_garnier": ("Téléphone de Garnier", "Écran mort. Sa carte SIM est dans mon téléphone.", (0.15, 0.15, 0.17), False),
     "courses": ("Sac de courses", "Des courses ordinaires. Ça rassure.", (0.9, 0.4, 0.3), False),
 }
 
