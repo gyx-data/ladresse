@@ -414,62 +414,87 @@ def build_fridges(b, be, x0, x1, z_back, z_front):
 # =============================================================================
 # Épicerie des gondoles
 # =============================================================================
+def _item(f, kind, variant, lz):
+    """Un article posé sur le plateau (base en y = 0 du repère), façade vers +z local. Retourne sa largeur."""
+    if kind == "box":
+        tex, size = _epicerie_tex(variant)
+        w = 0.12 if size[0] < size[1] else 0.19
+        h = 0.3 if size[1] >= 220 else 0.18
+        f.box("papier", 0.0, 0.0, lz, w, h, 0.06, (0.9, 0.88, 0.85), front_tex=tex)
+        return w
+    if kind == "bag":
+        tex, _ = _epicerie_tex(5)
+        f.box("papier", 0.0, 0.0, lz, 0.17, 0.25, 0.05, (0.98, 0.8, 0.2), front_tex=tex)
+        f.box("papier", 0.0, 0.25, lz, 0.16, 0.022, 0.02, (0.98, 0.8, 0.2))
+        return 0.17
+    if kind == "can":
+        name, c0, acc = CANS[variant % len(CANS)]
+        tex = _can_tex(name, c0, acc)
+        cx, cz = _local(f.x, f.z, f.rot, 0.0, lz)
+        for s_ in range(2):                                          # deux boîtes empilées
+            rings = [_ring(cx, cz, f.y + s_ * 0.103 + h, 0.037, 0.037, f.rot, 2.0, seg=16) for h in (0.0, 0.1)]
+            f.b.loft(tex, rings, (1, 1, 1), tile=(2 * math.pi * 0.037, 0.1))
+            f.b.cap("metal", rings[1], (0, 1, 0), CHROME)
+        return 0.078
+    if kind == "jar":
+        name, c0, acc = JARS[variant % len(JARS)]
+        tex = _jar_tex(name, c0, acc)
+        fill = tuple(c / 255 * 0.8 for c in c0)
+        f.lathe("vitre", 0.0, lz, [(0.0, 0.034), (0.01, 0.036), (0.1, 0.036), (0.11, 0.03)], (0.85, 0.9, 0.92), seg=14)
+        f.lathe("papier", 0.0, lz, [(0.005, 0.033), (0.095, 0.033)], fill, seg=14)
+        f.cyl("metal", 0.0, 0.11, lz, 0.032, 0.018, (0.85, 0.75, 0.2) if variant % 2 else CHROME, seg=14)
+        cx, cz = _local(f.x, f.z, f.rot, 0.0, lz)
+        band = [_ring(cx, cz, f.y + h, 0.0365, 0.0365, f.rot, 2.0, seg=14) for h in (0.025, 0.075)]
+        f.b.loft(tex, band, (1, 1, 1), tile=(2 * math.pi * 0.0365, 0.05))
+        return 0.076
+    # bouteille
+    name, c0, acc = SODAS[variant % len(SODAS)]
+    tex = _soda_tex(name, c0, acc)
+    glass = tuple(min(1.0, c / 255 + 0.3) for c in c0)
+    _bottle(f, 0.0, lz, 0.3, 0.034, glass, tex, (0.9, 0.1, 0.1) if name == "cola" else (0.2, 0.5, 0.9))
+    return 0.072
+
+
+# rayonnage par hauteur : léger en haut, conserves et bocaux au milieu, bouteilles et gros paquets en bas
+LEVEL_KINDS = {
+    "epicerie": {0: ("bottle", "box", "bag"), 1: ("can", "jar", "box"), 2: ("box", "jar", "can"), 3: ("box", "bag")},
+    "boissons": {0: ("bottle",), 1: ("bottle", "can"), 2: ("bottle",), 3: ("box",)},
+}
+DEPTH_ROWS = {"box": (0.025, -0.045), "bag": (0.03, -0.035), "can": (0.045, -0.04), "jar": (0.045, -0.04), "bottle": (0.048, -0.034)}
+
+
 def shelf_food(b, x, y, z0, z1, side, aisle, level, rng):
-    """Garnit un plateau de gondole (le long de z, de z0 à z1) ; façade vers +x (side=1) ou -x (side=-1)."""
+    """Garnit un plateau de gondole (le long de z, de z0 à z1) ; façade vers +x (side=1) ou -x (side=-1).
+
+    Comme en magasin : chaque produit forme un bloc de 3 à 5 « facings » identiques alignés au bord du plateau,
+    avec une rangée de réserve derrière ; les familles de produits dépendent de la hauteur de l'étagère."""
     rot = 90.0 if side > 0 else -90.0
-    z = z0 + 0.08
-    k = 0
+    kinds = LEVEL_KINDS.get(aisle, LEVEL_KINDS["epicerie"]).get(level, ("box",))
+    z = z0 + 0.04
+    run = 0
     while z < z1 - 0.12:
-        kind = rng.choice(("box", "box", "can", "jar", "bag", "bottle")) if aisle != "boissons" else rng.choice(("bottle", "bottle", "can_soda"))
-        if level == 3 and kind in ("bottle", "jar"):
-            kind = "box"
-        f = _Frame(b, x, y, z, rot)
-        if kind == "box":
-            tex, size = _epicerie_tex(rng.randrange(len(EPICERIE)))
-            wbox = 0.12 if size[0] < size[1] else 0.2
-            hbox = 0.3 if size[1] >= 220 else 0.18
-            for d in (-0.04, 0.03):
-                f.box("papier", 0.0, 0.0, d, wbox, hbox, 0.06, (0.9, 0.88, 0.85), front_tex=tex)
-            z += wbox + 0.03
-        elif kind == "can":
-            name, c0, acc = CANS[rng.randrange(len(CANS))]
-            tex = _can_tex(name, c0, acc)
-            for j in range(2):
-                cx, cz = _local(f.x, f.z, f.rot, 0.0, -0.02)
-                for s in range(2):
-                    yy = s * 0.105
-                    cxj, czj = _local(f.x, f.z, f.rot, -0.04 + j * 0.08, 0.0)
-                    rings = [_ring(cxj, czj, f.y + yy + h, 0.038, 0.038, f.rot, 2.0, seg=16) for h in (0.0, 0.1)]
-                    f.b.loft(tex, rings, (1, 1, 1), tile=(2 * math.pi * 0.038, 0.1))
-                    f.b.cap("metal", rings[1], (0, 1, 0), CHROME)
-            z += 0.18
-        elif kind == "jar":
-            name, c0, acc = JARS[rng.randrange(len(JARS))]
-            tex = _jar_tex(name, c0, acc)
-            fill = tuple(c / 255 * 0.8 for c in c0)
-            for j in range(2):
-                lx = -0.04 + j * 0.08
-                f.lathe("vitre", lx, 0.0, [(0.0, 0.034), (0.01, 0.036), (0.1, 0.036), (0.11, 0.03)], (0.85, 0.9, 0.92), seg=14)
-                f.lathe("papier", lx, 0.0, [(0.005, 0.033), (0.095, 0.033)], fill, seg=14)
-                f.cyl("metal", lx, 0.11, 0.0, 0.032, 0.018, (0.85, 0.75, 0.2) if j % 2 else CHROME, seg=14)
-                cx, cz = _local(f.x, f.z, f.rot, lx, 0.0)
-                band = [_ring(cx, cz, f.y + h, 0.0365, 0.0365, f.rot, 2.0, seg=14) for h in (0.025, 0.075)]
-                f.b.loft(tex, band, (1, 1, 1), tile=(2 * math.pi * 0.0365, 0.05))
-            z += 0.17
-        elif kind == "bag":
-            tex, _ = _epicerie_tex(5)
-            for d in (-0.03, 0.03):
-                f.box("papier", 0.0, 0.0, d, 0.18, 0.26, 0.05, (0.98, 0.8, 0.2), front_tex=tex)
-                f.box("papier", 0.0, 0.26, d, 0.17, 0.025, 0.02, (0.98, 0.8, 0.2))
-            z += 0.21
-        else:
-            name, c0, acc = SODAS[rng.randrange(len(SODAS))]
-            tex = _soda_tex(name, c0, acc)
-            glass = tuple(min(1.0, c / 255 + 0.3) for c in c0)
-            for j in range(2):
-                _bottle(f, -0.04 + j * 0.08, 0.0, 0.3, 0.035, glass, tex, (0.9, 0.1, 0.1) if name == "cola" else (0.2, 0.5, 0.9))
-            z += 0.18
-        k += 1
+        kind = kinds[(run + level) % len(kinds)] if run else rng.choice(kinds)
+        variant = rng.randrange(8)
+        n = rng.randint(3, 5)
+        for _ in range(n):
+            # largeur de l'article (mesurée en le construisant dans un builder jetable)
+            probe = _Frame(_Null(), 0.0, 0.0, 0.0, rot)
+            w = _item(probe, kind, variant, 0.0)
+            if z + w > z1 - 0.04:
+                break
+            cz = z + w / 2
+            for lz in DEPTH_ROWS[kind]:
+                _item(_Frame(b, x, y, cz, rot), kind, variant, lz)
+            z += w + 0.008
+        z += 0.035                                    # petit vide entre deux produits
+        run += 1
+
+
+class _Null:
+    """MeshBuilder factice : sert à connaître la largeur d'un article sans rien dessiner."""
+
+    def __getattr__(self, name):
+        return lambda *a, **k: None
 
 
 # =============================================================================

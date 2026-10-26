@@ -106,7 +106,7 @@ def neighborhood_tests():
     check(nb.basket.count == 0 and not nb.ui.enabled, "panier vidé après paiement")
     # étal de primeur devant la vitrine : une cagette se prend comme un article, et partir sans payer ramène à l'étal
     stall = [it for it in game.interactions.items.values() if it.id.startswith("primeur_")]
-    check(len(stall) == 8 * 3, f"{len(stall)} cagettes achetables (étals dehors + étal du magasin)")
+    check(len(stall) == 8 * 2, f"{len(stall)} cagettes achetables (deux étals devant la vitrine)")
     tp(14.0, 0.0, -18.6, 180.0)
     yield from wait(3)
     stall[0].on_use(stall[0])

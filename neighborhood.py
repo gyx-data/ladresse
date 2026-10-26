@@ -516,9 +516,6 @@ class Neighborhood:
         b.colliders.extend(fb.colliders)                 # collisions du meuble (enregistrées avec celles du quartier)
         for text, hx in headers:
             sign(self.root, text, (hx + 0.6, 2.27, z0 + 1.075), 0.13, 180, (255, 255, 255), px=56)
-        # étal de fruits et légumes (vrais modèles 3D) près de l'entrée, à droite
-        self._primeur_stand(b, 28.2, -24.6, rng, fresh_aisle.PRODUCE[:8])
-        sign(self.root, "FRUITS & LÉGUMES", (28.2, 1.55, -24.06), 0.16, 180, (255, 255, 255), (46, 139, 87, 255), px=56)
         sign(self.root, "FRAIS", (21.0, 2.7, z0 + 0.28), 0.4, 180, (255, 255, 255), (18, 72, 160, 255), px=72)
         # affiches promotionnelles au-dessus du frigo
         for xx, text, bg in ((14.5, "2+1 GRATUIT", (214, 36, 46, 255)),
@@ -954,7 +951,7 @@ class Neighborhood:
                 for side in (-1, 1):
                     for k in range(3):
                         zz = sz0 + 1.2 + k * 2.3
-                        slots[shelf].append((Vec3(ax + side * 0.85, 1.15, zz), Vec3(ax + side * 0.75, 0.9, zz), 90.0 if side > 0 else 270.0))
+                        slots[shelf].append((Vec3(ax + side * 0.85, 1.15, zz), Vec3(ax + side * 0.6, 0.72, zz), 90.0 if side > 0 else 270.0))
         for k in range(8):
             xx = 12.5 + k * 2.4
             slots["frais"].append((Vec3(xx, 1.2, SHOP[1] + 1.7), Vec3(xx, 0.95, SHOP[1] + 1.32), 0.0))
