@@ -55,16 +55,19 @@ def rounded_rect_image(w, h, style="dark", state="normal", radius=None, shadow=T
         return _cache[key]
     w = max(8, int(w))
     h = max(8, int(h))
+    # suréchantillonnage adapté à la taille : x3 pour les boutons (coins nets), x1 pour les grands panneaux plein
+    # écran (un panneau de caisse en x3 = 12 millions de pixels, 3 s de génération à la première ouverture)
+    ss = SS if w * h <= 200_000 else (2 if w * h <= 500_000 else 1)
     pad = 10 if shadow and style not in ("ghost",) else 2
-    W, H = (w + pad * 2) * SS, (h + pad * 2) * SS
+    W, H = (w + pad * 2) * ss, (h + pad * 2) * ss
     top = st["hover_top"] if state in ("hover", "pressed") else st["top"]
     bot = st["hover_bot"] if state in ("hover", "pressed") else st["bot"]
     border = st["hover_border"] if state in ("hover", "pressed") else st["border"]
-    r = int((radius if radius is not None else st["radius"]) * min(w, h) * SS)
-    r = max(2, min(r, min(w, h) * SS // 2))
+    r = int((radius if radius is not None else st["radius"]) * min(w, h) * ss)
+    r = max(2, min(r, min(w, h) * ss // 2))
     mask = Image.new("L", (W, H), 0)
     md = ImageDraw.Draw(mask)
-    box = [pad * SS, pad * SS, W - pad * SS - 1, H - pad * SS - 1]
+    box = [pad * ss, pad * ss, W - pad * ss - 1, H - pad * ss - 1]
     md.rounded_rectangle(box, radius=r, fill=255)
     # dégradé vertical
     g = np.linspace(0, 1, H)[:, None, None]
@@ -82,33 +85,33 @@ def rounded_rect_image(w, h, style="dark", state="normal", radius=None, shadow=T
         for _ in range(max(1, W // 120)):
             yy = int(rng.integers(0, H))
             x0 = int(rng.integers(0, W))
-            grain[yy:yy + SS, x0:x0 + int(rng.integers(W // 10, W // 3))] *= 1.25
+            grain[yy:yy + ss, x0:x0 + int(rng.integers(W // 10, W // 3))] *= 1.25
         arr[..., :3] *= grain[..., None]
     body = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
     out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if shadow and style not in ("ghost",):
         sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sh.putalpha(mask.point(lambda v: int(v * 0.55)))
-        sh = ImageChops.offset(sh, 0, 4 * SS).filter(ImageFilter.GaussianBlur(5 * SS))
+        sh = ImageChops.offset(sh, 0, 4 * ss).filter(ImageFilter.GaussianBlur(5 * ss))
         out = Image.alpha_composite(out, sh)
     body.putalpha(ImageChops.multiply(mask, body.split()[3]))
     out = Image.alpha_composite(out, body)
     d = ImageDraw.Draw(out)
     if border[3] > 0:
-        d.rounded_rectangle(box, radius=r, outline=border, width=max(1, int(1.6 * SS)))
+        d.rounded_rectangle(box, radius=r, outline=border, width=max(1, int(1.6 * ss)))
     # reflet interne en haut
     if glow is None and style in GRIM and style != "panel":
         glow = HOVER_GLOW
     if style in GLOSSY:
         hl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         hd = ImageDraw.Draw(hl)
-        hd.rounded_rectangle([box[0] + 3 * SS, box[1] + 2 * SS, box[2] - 3 * SS, box[1] + (box[3] - box[1]) * 0.45], radius=r, fill=(255, 255, 255, 22))
+        hd.rounded_rectangle([box[0] + 3 * ss, box[1] + 2 * ss, box[2] - 3 * ss, box[1] + (box[3] - box[1]) * 0.45], radius=r, fill=(255, 255, 255, 22))
         hl.putalpha(ImageChops.multiply(hl.split()[3], mask))
         out = Image.alpha_composite(out, hl)
     if glow and state == "hover":
         gl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        ImageDraw.Draw(gl).rounded_rectangle(box, radius=r, outline=glow + (230,), width=3 * SS)
-        out = Image.alpha_composite(out, gl.filter(ImageFilter.GaussianBlur(3 * SS)))
+        ImageDraw.Draw(gl).rounded_rectangle(box, radius=r, outline=glow + (230,), width=3 * ss)
+        out = Image.alpha_composite(out, gl.filter(ImageFilter.GaussianBlur(3 * ss)))
     img = out.resize((w + pad * 2, h + pad * 2), Image.LANCZOS)
     _cache[key] = (img, pad)
     return _cache[key]

@@ -1041,6 +1041,10 @@ class GameManager:
             b.kill_phase = 0
         if already_scared:
             self._after_contact()
+        elif self.jumpscare.active:
+            # un screamer tourne encore : c'est sa fin qui doit relâcher le joueur (et non l'ancien écran de mort)
+            self.jumpscare.on_done = self._after_contact
+            self.jumpscare.fatal = False
         else:
             self.jumpscare.trigger(kind or "generic", on_done=self._after_contact, fatal=False)
         return True

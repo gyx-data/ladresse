@@ -204,6 +204,17 @@ class SelfCheckout:
         kiosk_say("bienvenue" if self.basket.count else "vide")
         self.render()
 
+    def prewarm(self):
+        """Prépare les textures de l'écran (panneau, boutons) pendant le chargement du quartier, pour que la caisse
+        s'ouvre sans à-coup la première fois (≈ 0,8 s de génération sinon)."""
+        try:
+            self.root.enabled = False
+            self._page_scan()
+            self._page_empty()
+        except Exception:
+            pass
+        clear(self.root)
+
     def close(self):
         self.visible = False
         self.root.enabled = False

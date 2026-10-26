@@ -59,6 +59,38 @@ loadPrcFileData("", "depth-bits 24")
 loadPrcFileData("", "garbage-collect-states-rate 0.25")
 
 from ursina import Ursina, window, camera, color, time as utime
+from ursina import text as _ursina_text
+
+# Ursina retrouve la police par un glob récursif dans tout le dossier du jeu à CHAQUE texte créé (≈ 7 ms par libellé :
+# une caisse automatique = 50 textes = 0,4 s de gel à chaque clic). Le chemin trouvé ne change pas : on le garde.
+_FONT_PATHS = {}
+_search_for_file = _ursina_text._search_for_file
+
+
+def _cached_search_for_file(name, folders, file_types=None):
+    key = (name, tuple(str(f) for f in folders), file_types)
+    if key not in _FONT_PATHS:
+        _FONT_PATHS[key] = _search_for_file(name, folders, file_types)
+    return _FONT_PATHS[key]
+
+
+_ursina_text._search_for_file = _cached_search_for_file
+
+
+class _CachedFontPool:
+    """FontPool qui garde ses polices : Ursina rallonge le chemin des modèles à chaque texte et le FontPool de Panda
+    refait alors une recherche de plus en plus longue (≈ 6 ms par libellé)."""
+    _pool = _ursina_text.FontPool
+    _fonts = {}
+
+    @classmethod
+    def load_font(cls, name):
+        if name not in cls._fonts:
+            cls._fonts[name] = cls._pool.load_font(name)
+        return cls._fonts[name]
+
+
+_ursina_text.FontPool = _CachedFontPool
 
 
 def _icon_path():

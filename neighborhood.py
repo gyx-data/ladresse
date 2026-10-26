@@ -298,6 +298,7 @@ class Neighborhood:
         self.basket = Basket()
         self.loyalty = Loyalty()
         self.checkout = SelfCheckout(game, self.basket, self.loyalty)
+        self.checkout.prewarm()
         self.counter = RestaurantCounter(game)
         self.light_t = 0.0
         self.light_state = "vert"
@@ -438,10 +439,12 @@ class Neighborhood:
         H = SHOP_H
         # murs (façade vitrée côté rue, porte automatique au centre)
         b.box("platre", x0, 0, z0, x1, H + 0.8, z0 + 0.25, (0.92, 0.93, 0.95), collide=True)
-        b.box("platre", x0, 0, z0, x0 + 0.25, H + 0.8, z1, (0.92, 0.93, 0.95), collide=True)
-        b.box("platre", x1 - 0.25, 0, z0, x1, H + 0.8, z1, (0.92, 0.93, 0.95), collide=True)
+        # murs latéraux : leur tête forme un pilier qui dépasse de 3 cm devant la vitrine (aucune face coplanaire
+        # avec le soubassement ou les montants : plus de scintillement ni de montant qui traverse le pilier)
+        b.box("platre", x0, 0, z0, x0 + 0.25, H + 0.8, z1 + 0.03, (0.92, 0.93, 0.95), collide=True)
+        b.box("platre", x1 - 0.25, 0, z0, x1, H + 0.8, z1 + 0.03, (0.92, 0.93, 0.95), collide=True)
         d0, d1 = SHOP_DOOR_X - 1.3, SHOP_DOOR_X + 1.3
-        for (a0, a1) in ((x0, d0), (d1, x1)):
+        for (a0, a1) in ((x0 + 0.25, d0), (d1, x1 - 0.25)):
             b.box("beton", a0, 0, z1 - 0.2, a1, 0.5, z1, (0.4, 0.42, 0.46), collide=True)
             b.box("vitre", a0 + 0.05, 0.5, z1 - 0.12, a1 - 0.05, H, z1 - 0.08, (0.6, 0.7, 0.8), collide=True)
             x = a0
