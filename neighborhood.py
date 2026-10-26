@@ -64,7 +64,7 @@ NPC_LOOKS = {
                  jacket=(0.95, 0.95, 0.93), pants=(0.15, 0.15, 0.17)),
     "Sandrine": dict(body="f", outfit="polo", hair_style="queue", hair=(0.5, 0.33, 0.18),
                      jacket=(0.1, 0.27, 0.68), pants=(0.12, 0.13, 0.16)),
-    "Moussa": dict(body="m", outfit="securite", hair_style="rase",
+    "Moussa": dict(body="m", outfit="securite", hair_style="rase", skin=(0.32, 0.2, 0.14), hair=(0.05, 0.04, 0.04),
                    jacket=(0.08, 0.08, 0.09), pants=(0.08, 0.08, 0.09)),
     "Brigadier Rossi": dict(body="m", outfit="uniforme", hair_style="court", beard="moustache",
                             jacket=(0.12, 0.15, 0.32), pants=(0.12, 0.14, 0.28)),
@@ -167,6 +167,17 @@ class NPC:
         self.talk_t = 4.0
         g.state.stats["discussions"] = g.state.stats.get("discussions", 0) + 1
 
+    def apply(self, dt, x, z, yaw, spd):
+        """Multijoueur (joueurs invités) : position venue du créateur du salon, lissée."""
+        k = min(1.0, dt * 10.0)
+        self.root.x += (x - self.root.x) * k
+        self.root.z += (z - self.root.z) * k
+        dy = (yaw - self.root.rotation_y + 180) % 360 - 180
+        self.root.rotation_y += dy * k
+        self.speed_now += (spd - self.speed_now) * min(1.0, dt * 8.0)
+        self.model.animate(dt, self.speed_now, 0.62 if self.pose == "sit" else 0.0, 0.0, self.speed > 2.5, False)
+        self.it.pos = self.pos + Vec3(0, 1.45 if self.pose != "sit" else 1.1, 0)
+
     def update(self, dt, player_pos):
         to_p = Vec3(player_pos[0] - self.pos[0], 0, player_pos[2] - self.pos[2])
         dist_p = to_p.length()
@@ -236,13 +247,14 @@ class TrafficCar:
         ahead_stop = (stop_x - self.x) * self.dir
         if h.light_state != "vert" and 0 < ahead_stop < 14:
             want = min(want, max(0.0, (ahead_stop - 0.5) * 1.2))
-        # joueur sur la voie devant la voiture
-        dxp = (player_pos[0] - self.x) * self.dir
-        if abs(player_pos[2] - self.lane) < 1.7 and 0 < dxp < 9.0:
-            want = min(want, max(0.0, (dxp - 3.2) * 1.4))
-            if dxp < 6.0 and self.honked <= 0:
-                sound.play_at("klaxon", Vec3(self.x, 1.0, self.lane), 0.8, ref=6.0)
-                self.honked = 6.0
+        # joueur sur la voie devant la voiture (en multijoueur : n'importe lequel des joueurs)
+        for pp in getattr(h, "all_players", None) or [player_pos]:
+            dxp = (pp[0] - self.x) * self.dir
+            if abs(pp[2] - self.lane) < 1.7 and 0 < dxp < 9.0:
+                want = min(want, max(0.0, (dxp - 3.2) * 1.4))
+                if dxp < 6.0 and self.honked <= 0:
+                    sound.play_at("klaxon", Vec3(self.x, 1.0, self.lane), 0.8, ref=6.0)
+                    self.honked = 6.0
         # voiture devant (même voie)
         for o in h.traffic:
             if o is not self and o.dir == self.dir:
@@ -1038,11 +1050,24 @@ class Neighborhood:
             in_shop = True
         self.was_in_shop = in_shop
         # PNJ et voitures
-        for n in self.npcs:
-            if (n.pos - pp).length() < 70:
-                n.update(dt, pp)
-        for c in self.traffic:
-            c.update(dt, pp)
+        mp = getattr(g, "mp", None)
+        replica = g.is_multiplayer and mp is not None and not mp.client.is_host
+        if replica:
+            snap = getattr(self, "_snap", None)
+            if snap is not None:
+                for n, v in zip(self.npcs, snap.get("n", ())):
+                    n.apply(dt, *v)
+                for c, v in zip(self.traffic, snap.get("c", ())):
+                    c.x += (v[0] - c.x) * min(1.0, dt * 10.0) if abs(v[0] - c.x) < 20 else (v[0] - c.x)
+                    c.speed = v[1]
+                    c.root.x = c.x
+        else:
+            self.all_players = [pp] + ([a.root.position for a in mp.avatars.values()] if g.is_multiplayer and mp else [])
+            for n in self.npcs:
+                if (n.pos - pp).length() < 70:
+                    n.update(dt, pp)
+            for c in self.traffic:
+                c.update(dt, pp)
         # vue extérieure : tous les étages de la maison visibles depuis la rue
         outside = p.zone in ("dehors", "magasin", "resto")
         city = getattr(self, "amb", {}).get("ville")
@@ -1057,7 +1082,31 @@ class Neighborhood:
         # entrée dans la maison
         if self.outside_phase and p.zone in ("rdc",) and p.pos[2] > 0.6:
             self.outside_phase = False
-            g.on_enter_house()
+            if g.is_multiplayer and getattr(g, "mp", None) is not None:
+                g.mp.client.send_enter_house()
+                g.ui.say("En attente des autres joueurs...", 4.0)
+            else:
+                g.on_enter_house()
+
+    # --- multijoueur : état du quartier partagé --------------------------------------------
+    def snapshot(self, dt):
+        """Créateur du salon : instantané PNJ / voitures / feux, ~8 fois par seconde (sinon None)."""
+        self._snap_t = getattr(self, "_snap_t", 0.0) + dt
+        if self._snap_t < 0.125:
+            return None
+        self._snap_t = 0.0
+        return dict(type="hood",
+                    n=[[round(n.root.x, 2), round(n.root.z, 2), round(n.root.rotation_y, 1), round(n.speed_now, 2)]
+                       for n in self.npcs],
+                    c=[[round(c.x, 2), round(c.speed, 2)] for c in self.traffic],
+                    l=round(self.light_t, 2))
+
+    def apply_snapshot(self, m):
+        """Invités : reçoit l'état du créateur (appliqué en douceur à chaque image dans update)."""
+        if isinstance(m.get("n"), list) and isinstance(m.get("c"), list):
+            self._snap = m
+            if isinstance(m.get("l"), (int, float)):
+                self.light_t = float(m["l"])
 
     def destroy(self):
         self.deactivate()

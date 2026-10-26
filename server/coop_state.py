@@ -94,6 +94,7 @@ class PlayerState:
         self.choices = {}
         self.messages_sent = 0
         self.ready = False
+        self.inside = False           # quartier partagé : déjà entré dans la maison
 
     def info(self):
         return dict(id=self.id, name=self.name, color=list(self.color), alive=self.alive)

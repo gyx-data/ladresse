@@ -311,6 +311,21 @@ def game_tests(port, server):
     owner.send_start()
     so, sp = find("o", "start"), find("p", "start")
     check(so is not None and sp is not None and len(sp["players"]) == 2 and sp["_from"] == 0, "lancement envoyé par le serveur aux deux joueurs")
+    # quartier partagé : la partie commence dehors, la nuit démarre quand les deux joueurs sont entrés
+    check(sp.get("outside") is True and sim.state.phase == "outside", "la partie commence dans le quartier")
+    owner.send_enter_house()
+    pi = find("p", "game_event", pred=lambda m: m.get("event") == "player_inside")
+    check(pi is not None and pi["inside"] == 1 and sim.state.phase == "outside", "un joueur entré : on attend l'autre")
+    peer.send_enter_house()
+    check(find("o", "game_event", pred=lambda m: m.get("event") == "night_start", t=3) is not None
+          and sim.state.phase == "explore", "les deux joueurs entrés : la nuit commence")
+    owner.relay("all", {"type": "hood", "n": [[1.0, 2.0, 0.0, 0.0]], "c": [[5.0, 1.0]], "l": 3.0}, udp=False)
+    check(find("p", "hood") is not None, "état du quartier du créateur reçu par l'invité")
+    peer.relay("all", {"type": "hood", "n": [], "c": [], "l": 0.0}, udp=False)
+    drain(0.3)
+    check(not [m for m in got["o"] if m.get("type") == "hood"], "état du quartier d'un invité ignoré")
+    # l'invité est sur le trottoir (point de départ du quartier) : il fait un pas, sans téléportation
+    sim.state.players[peer.id].pos = [7.2, 0.0, 1.0]            # (il a marché jusque dans la maison)
     for _ in range(5):
         peer.send_move((7.2, 0.0, 1.5), (0, 45))
         time.sleep(0.06)

@@ -520,6 +520,11 @@ class MultiplayerManager:
         if self.in_game and g.mode == "playing" and not self.dead:
             p = g.player
             self.client.send_move(p.pos, (p.pitch, p.yaw))
+            nb = g.neighborhood
+            if nb is not None and nb.active and self.client.is_host:
+                snap = nb.snapshot(dt)                   # créateur du salon : diffuse l'état du quartier (~8 Hz)
+                if snap is not None:
+                    self.client.relay("all", snap, udp=True)
             if p.noises and p.noises[-1]["t"] > getattr(self, "_last_noise_t", -1):
                 n = p.noises[-1]
                 self._last_noise_t = n["t"]
@@ -624,7 +629,7 @@ class MultiplayerManager:
             return
         if t == "start":
             self.players = {p["id"]: p for p in m.get("players", [])}
-            self.start_game()
+            self.start_game(outside=bool(m.get("outside")), spawn=m.get("spawn"))
             return
         if not self.in_game:
             return
@@ -644,6 +649,9 @@ class MultiplayerManager:
             self._on_assistance(m)
         elif t == "game_event":
             self._on_event(m)
+        elif t == "hood":
+            if g.neighborhood is not None and not self.client.is_host:
+                g.neighborhood.apply_snapshot(m)
         elif t == "event":
             if m.get("name") == "knock":
                 g.assistance._knock(0)
@@ -687,7 +695,16 @@ class MultiplayerManager:
         g = self.game
         ev = m.get("event")
         a = g.assistance
-        if ev == "order_cancelled":
+        if ev == "player_inside":
+            nb = g.neighborhood
+            if nb is not None and not nb.outside_phase and m.get("inside", 0) < m.get("total", 0):
+                g.ui.say(f"En attente des autres joueurs : {m.get('inside')} / {m.get('total')} dans la maison.", 4.0)
+        elif ev == "night_start":
+            # tous les joueurs sont entrés : la nuit commence pour tout le monde
+            if g.neighborhood is not None:
+                g.neighborhood.outside_phase = False
+            g.on_enter_house()
+        elif ev == "order_cancelled":
             if not g.state.flag("order_cancelled"):
                 if g.state.meal is None:
                     g.state.meal = "burger"
@@ -734,8 +751,9 @@ class MultiplayerManager:
     # ------------------------------------------------------------------
     # Partie
     # ------------------------------------------------------------------
-    def start_game(self):
+    def start_game(self, outside=False, spawn=None):
         g = self.game
+        g.mp_outside = outside
         self.lobby_open = False
         if self.root is not None:
             self.root.enabled = False
@@ -762,7 +780,10 @@ class MultiplayerManager:
         ids = list(self.players)
         n = max(1, len(ids))
         for idx, pid in enumerate(ids):
-            spot = (7.0 + (idx - (n - 1) / 2) * 0.45, 0.0, 0.9)
+            if outside and spawn and idx < len(spawn):
+                spot = tuple(spawn[idx])                 # trottoir devant le 17 (positions données par le serveur)
+            else:
+                spot = (7.0 + (idx - (n - 1) / 2) * 0.45, 0.0, 0.9)
             if pid == me:
                 g.player.place(spot, 0.0, 0.0)
                 continue

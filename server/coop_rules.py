@@ -4,6 +4,10 @@ Modifier ces valeurs ne demande AUCUNE mise à jour du serveur : il suffit que t
 version du jeu (le relais refuse les joueurs dont la version diffère de celle de l'hôte).
 """
 
+# Quartier partagé : la partie commence dehors (rue des Lilas) ; la nuit démarre quand tous sont entrés
+OUTSIDE_START = True
+OUTSIDE_SPAWN = (11.2, 0.0, -6.9)       # trottoir devant le 17 (identique au solo, game_manager.OUTSIDE_START)
+
 MAX_PLAYERS = 4                # limite par défaut d'un salon (l'hôte peut choisir de 1 à 8)
 ROOM_MAX_CHOICES = (2, 3, 4, 5, 6, 8)
 TICK_RATE = 20

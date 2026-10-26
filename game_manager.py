@@ -448,7 +448,9 @@ class GameManager:
         self.cine.root.enabled = False
         self.lighting.lights = self.house.lights
         self.lighting.ambient_boost = 0.0
-        outside = fresh and not self.is_multiplayer and settings.get("quartier", True)
+        # multijoueur : quartier partagé seulement si le serveur démarre la partie dehors (serveur à jour)
+        mp_outside = self.is_multiplayer and getattr(self, "mp_outside", False)
+        outside = fresh and (mp_outside or (not self.is_multiplayer and settings.get("quartier", True)))
         if fresh:
             self.tutorial.reset()
         if self.neighborhood is not None:

@@ -79,6 +79,7 @@ class RoomGame:
         if s.phase not in ("lobby", "over"):
             self.broadcast(dict(type="player_left", id=pid, name=name))
             self._check_end()
+            self._check_all_inside()          # le dernier joueur resté dehors est parti : la nuit peut commencer
 
     def step(self, dt):
         try:
@@ -117,6 +118,8 @@ class RoomGame:
                 ps.noise_t = s.t
         elif t == "death":
             self._kill(ps, str(msg.get("cause", "entity_contact"))[:32])
+        elif t == "enter_house":
+            self._on_enter_house(ps)
 
     def _on_move(self, ps, msg):
         # les positions sont diffusées directement de joueur à joueur ; l'hôte s'en sert pour l'IA et l'anti-triche
@@ -184,13 +187,38 @@ class RoomGame:
     # ------------------------------------------------------------------
     def _start_game(self):
         s = self.state
-        s.phase = "explore"
+        outside = cfg.OUTSIDE_START
+        s.phase = "outside" if outside else "explore"
         s.t = 0.0
+        ox, oy, oz = cfg.OUTSIDE_SPAWN
         for ps in s.players.values():
             ps.alive = True
-            ps.pos = [7.0 + (ps.slot - 1.5) * 0.4, 0.0, 0.8]
+            ps.inside = False
+            ps.pos = [ox + (ps.slot - 1.5) * 0.8, oy, oz] if outside else [7.0 + (ps.slot - 1.5) * 0.4, 0.0, 0.8]
             ps.last_move = time.time()
-        self.broadcast(dict(type="start", players=[p.info() for p in s.players.values()]))
+        self.broadcast(dict(type="start", players=[p.info() for p in s.players.values()], outside=outside,
+                            spawn=[list(p.pos) for p in s.players.values()]))
+
+    def _on_enter_house(self, ps):
+        """Quartier partagé : un joueur franchit la porte. La nuit commence quand tous les vivants sont dedans."""
+        s = self.state
+        if s.phase != "outside" or ps.inside:
+            return
+        ps.inside = True
+        self._check_all_inside()
+
+    def _check_all_inside(self):
+        s = self.state
+        if s.phase != "outside":
+            return
+        alive = s.alive_players()
+        inside = [p for p in alive if p.inside]
+        self.broadcast(dict(type="game_event", event="player_inside", inside=len(inside), total=len(alive),
+                            ids=[p.id for p in inside]))
+        if alive and len(inside) == len(alive):
+            s.phase = "explore"
+            s.t = 0.0
+            self.broadcast(dict(type="game_event", event="night_start"))
 
     def _ev_cancel(self):
         self.broadcast(dict(type="game_event", event="order_cancelled"))
