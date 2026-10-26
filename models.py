@@ -15,6 +15,7 @@ from shaders import horror_shader
 
 _DIR = config.resource_path("models")
 _templates = {}
+_placed = []          # (entité, nom) des modèles posés (audits de placement)
 
 # Modèles convertis par gltf2bam en z-up main droite ; Ursina travaille en y-up main gauche :
 # z -> y, y -> -z, et x inversé pour changer de main (sinon textes et cadrans apparaissent en miroir).
@@ -84,4 +85,5 @@ def place(name, parent, cx, cz, y0, rot=0.0, size=None, stretch=False, pitch=0.0
     lo, hi = inner.getTightBounds(root)
     # pose : centré en x/z, posé sur le sol (repère Ursina : y vers le haut)
     scaler.position = (-(lo.x + hi.x) / 2, -lo.y, -(lo.z + hi.z) / 2)
+    _placed.append((root, name))
     return root

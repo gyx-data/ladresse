@@ -138,7 +138,7 @@ def _save():
     from world_state import WorldState
     st = WorldState()
     st.add_item("pile", 2)
-    st.flags["purchases"] = [["Test", -1.5, "21/10 21:40"]]
+    st.flags["purchases"] = [["Test", -1.5, "13/10 21:40"]]
     d = st.to_dict()
     s = json.dumps(d, ensure_ascii=False)
     st2 = WorldState()

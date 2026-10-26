@@ -42,7 +42,7 @@ RESTO = (-14.0, -30.0, 0.0, -23.0)
 RESTO_DOOR_X = -7.0
 SHOP_H = 3.6
 
-DAY = "21/10"
+DAY = "13/10"                     # vendredi 13 octobre (date de la partie, cf. intro et téléphone)
 
 # hauteur de voix (Hz) de chaque habitant : < 160 = voix d'homme
 NPC_VOICES = {"Mme Bianchi": 215, "Karim": 118, "Jean-Mi": 105, "Lucie": 225, "Théo": 122, "Nino": 98, "Sandrine": 210,

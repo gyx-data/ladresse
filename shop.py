@@ -143,7 +143,7 @@ def bank_balance(state):
 def bank_debit(state, label_, amount):
     hh = int(state.clock // 60) % 24
     mm = int(state.clock % 60)
-    state.flags.setdefault("purchases", []).append([label_, -round(amount, 2), f"21/10 {hh:02d}:{mm:02d}"])
+    state.flags.setdefault("purchases", []).append([label_, -round(amount, 2), f"13/10 {hh:02d}:{mm:02d}"])
 
 
 class SelfCheckout:
@@ -469,7 +469,7 @@ class SelfCheckout:
         q = self.last_quote
         st = self.game.state
         hh, mm = int(st.clock // 60) % 24, int(st.clock % 60)
-        out = [SHOP_FULL, "Bd du Mont-Boron, 06300 Nice", "Tél. 04 93 00 00 00", "", f"21/10   {hh:02d}:{mm:02d}   Caisse auto 02", "-" * 34]
+        out = [SHOP_FULL, "Bd du Mont-Boron, 06300 Nice", "Tél. 04 93 00 00 00", "", f"13/10   {hh:02d}:{mm:02d}   Caisse auto 02", "-" * 34]
         for art, n in self.last_lines:
             out.append(f"{art.short:<20}{n:>2} x {art.price:5.2f}".replace(".", ","))
             if art.card_price is not None and self.last_card:

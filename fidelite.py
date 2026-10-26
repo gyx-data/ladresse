@@ -31,7 +31,7 @@ def _default_data():
         "next_number": FIRST_NUMBER + 1,
         "active": str(FIRST_NUMBER),
         "cards": {
-            str(FIRST_NUMBER): {"holder": "ADRIEN M.", "points": 0, "created": "21/10", "visits": 0, "spent": 0.0, "history": []},
+            str(FIRST_NUMBER): {"holder": "ADRIEN M.", "points": 0, "created": "13/10", "visits": 0, "spent": 0.0, "history": []},
             GARNIER_CARD: {"holder": "M. R. GARNIER", "points": 1407, "created": "03/02/2009", "visits": 211, "spent": 1407.6,
                            "history": [["14/07", "GROS SEL 1KG x14 / PILES AA x8 / BOUGIES x40", 63.4],
                                        ["13/07", "GROS SEL 1KG x6", 12.9], ["12/07", "CADENAS / CHAINE 2M", 27.8]],
@@ -132,7 +132,7 @@ class Loyalty:
         pts = int(total) if card is not None and not card.get("locked") else 0
         return dict(subtotal=round(sub, 2), discount=round(disc, 2), voucher=voucher, total=total, points=pts)
 
-    def commit(self, lines, number, quote, date="21/10"):
+    def commit(self, lines, number, quote, date="13/10"):
         card = self.card(number) if number else None
         if card is None or card.get("locked"):
             return None
