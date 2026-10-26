@@ -489,6 +489,8 @@ DOC_TITLES = {
     "note_frigo": "Note du réfrigérateur",
     "note_sdb": "Mot derrière le miroir",
     "regles": "Règles (à ne pas oublier)",
+    "carnet_bianchi": "Carnet de Mme Bianchi",
+    "telephone_bianchi": "Téléphone de Mme Bianchi",
 }
 
 SECONDARY_QUESTS = [

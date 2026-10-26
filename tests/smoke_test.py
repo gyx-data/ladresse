@@ -270,8 +270,10 @@ def scenario():
     game.player.revive()
     game.mode = "playing"
     game.kill_player("entity_contact", kind="rampant")
-    for _ in range(40):
+    for _ in range(300):                      # la frayeur dure ~1 s : on attend sa fin plutôt qu'un nombre d'images fixe
         yield
+        if not game.player.frozen and game.mode == "playing":
+            break
     check(not game.player.dead and game.mode == "playing" and not game.player.frozen and 40 < game.player.health < 60,
           f"Normal : le premier contact blesse sans tuer (vie {game.player.health:.0f})")
     game.kill_player("entity_contact", kind="rampant")

@@ -25,6 +25,7 @@ from interaction_system import Interactable
 from lighting_system import LightSource
 import products
 import fresh_aisle
+import bianchi_house
 from room_builder import MeshBuilder
 from shop import (CATALOG, SHOP_NAME, RESTO_NAME, Basket, SelfCheckout, RestaurantCounter, eur, primeur_article)
 from fidelite import Loyalty
@@ -411,6 +412,7 @@ class Neighborhood:
         h._index_colliders()
         for r in rect_minus((X_MIN - 2, Z_MIN - 2, X_MAX + 2, Z_MAX + 2), CAVE_STAIRWELL):
             h.surfaces.append(Surface(*r, 0.0, level=0))
+        h.surfaces.extend(bianchi_house.surfaces(Surface))
         for l in self.lights:
             h.lights.append(l)
         self._spawn_npcs()
@@ -671,13 +673,14 @@ class Neighborhood:
                 b.box("metal", cx + lx - 0.015, 0, cz + lz - 0.015, cx + lx + 0.015, 0.42, cz + lz + 0.015, (0.2, 0.2, 0.2))
         b.colliders.append((tx - 0.45, 0, tz - 0.45, tx + 0.45, 0.8, tz + 0.45))
 
-    def _villa(self, b, be, x0, z0, w, d, h, tex, rng, street_side):
+    def _villa(self, b, be, x0, z0, w, d, h, tex, rng, street_side, explorable=False):
         """Villa niçoise : enduit, soubassement en pierre, corniche, toit de tuiles, cheminée, fenêtres en relief
         (encadrements, appuis, persiennes ouvertes), balcon en fer forgé à l'étage, porte avec marche et applique."""
         x1, z1 = x0 + w, z0 + d
         wall = (0.9, 0.88, 0.85)
         # la face côté rue est construite plus bas, percée derrière fenêtres / volets / porte (anti z-fighting)
-        b.box(tex, x0, 0, z0, x1, h, z1, wall, collide=True, skip=("-z",) if street_side < 0 else ("+z",))
+        # villa explorable : coque sans collision (les murs intérieurs portent les collisions), porte ouverte
+        b.box(tex, x0, 0, z0, x1, h, z1, wall, collide=not explorable, skip=("-z",) if street_side < 0 else ("+z",))
         zm = (z0 + z1) / 2
         rc = (0.85, 0.78, 0.74)
         # toit à deux pans débordant + génoises (corniche) + cheminée
@@ -761,8 +764,15 @@ class Neighborhood:
         # porte d'entrée : encadrement, marche, applique. La porte est dans le plan du mur (percé derrière) et ne
         # commence qu'au-dessus du soubassement en pierre, qui la masquait (faces à 2 cm l'une de l'autre).
         yd = 0.6
-        b.quad("porte", (door_x - 0.5, yd, fz_wall), (door_x + 0.5, yd, fz_wall), (door_x + 0.5, 2.25, fz_wall),
-               (door_x - 0.5, 2.25, fz_wall), nrm, (0.75, 0.6, 0.5), tile=(1.0, 2.1), uv_off=(0.0, (yd - 0.15) / 2.1))
+        if not explorable:
+            b.quad("porte", (door_x - 0.5, yd, fz_wall), (door_x + 0.5, yd, fz_wall), (door_x + 0.5, 2.25, fz_wall),
+                   (door_x - 0.5, 2.25, fz_wall), nrm, (0.75, 0.6, 0.5), tile=(1.0, 2.1), uv_off=(0.0, (yd - 0.15) / 2.1))
+        else:
+            # porte entrouverte vers l'intérieur (battant pivoté de 70° autour de son gond gauche)
+            ang = math.radians(70.0)
+            hx, hz = door_x - 0.5, fz_wall - out * 0.03
+            cx_, cz_ = hx + 0.5 * math.cos(ang), hz - out * 0.5 * math.sin(ang)
+            b.obox("porte", cx_, yd, cz_, 1.0, 1.65, 0.05, -70.0 if out < 0 else 70.0, (0.75, 0.6, 0.5))
         holes.append((door_x - 0.5, yd, door_x + 0.5, 2.25))
         a, c = zz(back, 0.1)
         for (u0, u1, v0, v1) in ((door_x - 0.62, door_x - 0.5, 0.15, 2.25), (door_x + 0.5, door_x + 0.62, 0.15, 2.25),
@@ -800,6 +810,16 @@ class Neighborhood:
                       (58, 12, 9, 6, "crepi"), (74, 12, 10, 7, "crepi_rose"), (92, 12, 9, 6, "crepi")]
         for (x, w, d, h, tex) in lots_north:
             z0 = ROAD_Z1 + 5.0
+            if x == bianchi_house.X0:
+                # chez Mme Bianchi (11 rue des Lilas) : explorable, portillon ouvert dans la clôture
+                self._villa(b, be, x, z0, w, d, h, tex, rng, -1, explorable=True)
+                bianchi_house.build(self, b, be, rng)
+                dx = bianchi_house.DOOR_X
+                self._fence(b, x - 1, dx - 0.7, ROAD_Z1 + 1.45, rng)
+                self._fence(b, dx + 0.7, x + w + 1, ROAD_Z1 + 1.45, rng)
+                for px_ in (dx - 0.8, dx + 0.8):
+                    b.box("crepi", px_ - 0.12, 0, ROAD_Z1 + 1.33, px_ + 0.12, 1.5, ROAD_Z1 + 1.57, (0.85, 0.8, 0.74), collide=True)
+                continue
             self._villa(b, be, x, z0, w, d, h, tex, rng, -1)
             self._fence(b, x - 1, x + w + 1, ROAD_Z1 + 1.45, rng)
         for k in range(10):
@@ -969,6 +989,7 @@ class Neighborhood:
         ia.add(Interactable("comptoir_nino", self.counter_pos, "Commander au comptoir — Chez Nino", lambda it: self.counter.open(),
                             0, radius=0.6, reach=2.4))
         # boîte aux lettres de la maison : petit détail d'ambiance
+        bianchi_house.interactables(self, ia, Interactable)
         ia.add(Interactable("boite_lettres", (8.4, 1.1, -5.9), "Regarder la boîte aux lettres",
                             lambda it: g.say("« R. GARNIER ». Débordante de prospectus... et d'avis de passage QuickEats."), 0,
                             radius=0.3, reach=2.0))
@@ -1004,7 +1025,8 @@ class Neighborhood:
     def _register_zones(self):
         x0, z0, x1, z1 = SHOP
         rx0, rz0, rx1, rz1 = RESTO
-        self.house.extra_zones = [(x0, z0, x1, z1, "magasin"), (rx0, rz0, rx1, rz1, "resto")]
+        self.house.extra_zones = [(x0, z0, x1, z1, "magasin"), (rx0, rz0, rx1, rz1, "resto"),
+                                  (bianchi_house.X0, bianchi_house.Z0, bianchi_house.X1, bianchi_house.Z1, "villa")]
 
     # ------------------------------------------------------------------
     # Achats
@@ -1196,7 +1218,7 @@ class Neighborhood:
             for c in self.traffic:
                 c.update(dt, pp)
         # vue extérieure : tous les étages de la maison visibles depuis la rue
-        outside = p.zone in ("dehors", "magasin", "resto")
+        outside = p.zone in ("dehors", "magasin", "resto", "villa")
         city = getattr(self, "amb", {}).get("ville")
         if city is not None:
             target = 1.0 if p.zone == "dehors" else 0.35 if outside else 0.12

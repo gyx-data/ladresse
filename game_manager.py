@@ -992,6 +992,7 @@ class GameManager:
             "plan": [gd.PLAN_TEXT], "mur": [gd.WALL_MESSAGE_PHOTO], "tel_garnier": ["\n\n".join(gd.GARNIER_PHONE_TEXT)],
             "recus": [gd.RECEIPTS_TEXT], "journaux": ["\n\n".join(gd.NEWSPAPER_HEADLINES)], "note_frigo": [gd.NOTE_FRIGO],
             "note_sdb": [gd.NOTE_SDB], "regles": self.courier.rule_pages(),
+            "carnet_bianchi": list(__import__("bianchi_house").NOTEBOOK), "telephone_bianchi": list(__import__("bianchi_house").PHONE),
         }.get(doc, ["(illisible)"])
         self.inv_panel.hide()
         self.ui.docs.open(gd.DOC_TITLES.get(doc, "Document"), pages)
