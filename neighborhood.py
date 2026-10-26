@@ -24,6 +24,7 @@ from house_generator import CAVE_STAIRWELL, Surface, rect_minus
 from interaction_system import Interactable
 from lighting_system import LightSource
 import products
+import fresh_aisle
 from room_builder import MeshBuilder
 from shop import (CATALOG, SHOP_NAME, RESTO_NAME, Basket, SelfCheckout, RestaurantCounter, eur)
 from fidelite import Loyalty
@@ -450,6 +451,15 @@ class Neighborhood:
                 yy = 0.25 + lvl * 0.42
                 for side in (-1, 1):
                     b.box("metal", ax + side * 0.45, yy, sz0, ax + side * 0.62, yy + 0.03, sz1, (0.75, 0.76, 0.8))
+                    if i > 0:
+                        # présentoirs des articles achetables (niveau 1) : on laisse la place libre devant eux
+                        stands = [sz0 + 1.2 + k * 2.3 for k in range(3)] if lvl == 1 else []
+                        z = sz0
+                        for zs in stands + [sz1]:
+                            fresh_aisle.shelf_food(b, ax + side * 0.535, yy + 0.03, z, zs - (0.3 if zs != sz1 else 0.0), side,
+                                                   "boissons" if i == 2 else "epicerie", lvl, rng)
+                            z = zs + 0.3
+                        continue
                     z = sz0 + 0.1
                     while z < sz1 - 0.2:
                         d = rng.uniform(0.17, 0.3)
@@ -473,16 +483,18 @@ class Neighborhood:
         b.box("metal", 18.8, 2.82, -22.3, 23.2, 3.2, -22.18, (0.06, 0.12, 0.24))
         sign(self.root, "← FRAIS   ÉPICERIE →", (21.0, 3.01, -22.16), 0.26, 180,
              (255, 255, 255), (18, 72, 160, 255), px=76)
-        # mur frigo au fond
-        b.box("metal", x0 + 1.0, 0, z0 + 0.25, x1 - 1.0, 2.2, z0 + 1.0, (0.88, 0.9, 0.94), collide=True)
-        b.box("vitre", x0 + 1.0, 0.2, z0 + 1.0, x1 - 1.0, 2.1, z0 + 1.05, (0.7, 0.85, 0.95))
-        be.box("neon", x0 + 1.0, 2.1, z0 + 0.95, x1 - 1.0, 2.15, z0 + 1.0, (0.7, 0.9, 1.0))
-        x = x0 + 1.2
-        while x < x1 - 1.2:
-            for lvl in range(4):
-                b.box("papier", x, 0.3 + lvl * 0.45, z0 + 0.4, x + 0.3, 0.55 + lvl * 0.45, z0 + 0.9,
-                      rng.choice([(0.9, 0.9, 0.95), (0.3, 0.55, 0.85), (0.95, 0.85, 0.3), (0.85, 0.3, 0.3)]))
-            x += 0.38
+        # mur réfrigéré : modules à portes vitrées garnis de produits frais modelés (fresh_aisle.py)
+        fb = MeshBuilder("rayon_frais")
+        fbe = MeshBuilder("rayon_frais_led")
+        headers = fresh_aisle.build_fridges(fb, fbe, x0 + 1.0, x1 - 1.0, z0 + 0.25, z0 + 1.0)
+        fb.build(parent=self.root, emit=0.18)
+        fbe.build(parent=self.root, emit=1.0)
+        b.colliders.extend(fb.colliders)                 # collisions du meuble (enregistrées avec celles du quartier)
+        for text, hx in headers:
+            sign(self.root, text, (hx + 0.6, 2.27, z0 + 1.075), 0.13, 180, (255, 255, 255), px=56)
+        # étal de fruits et légumes (vrais modèles 3D) près de l'entrée, à droite
+        fresh_aisle.produce_stand(b, 28.2, -24.6, rng, fresh_aisle.PRODUCE)
+        sign(self.root, "FRUITS & LÉGUMES", (28.2, 1.55, -24.06), 0.16, 180, (255, 255, 255), (46, 139, 87, 255), px=56)
         sign(self.root, "FRAIS", (21.0, 2.7, z0 + 0.28), 0.4, 180, (255, 255, 255), (18, 72, 160, 255), px=72)
         # affiches promotionnelles au-dessus du frigo
         for xx, text, bg in ((14.5, "2+1 GRATUIT", (214, 36, 46, 255)),
@@ -551,11 +563,9 @@ class Neighborhood:
             b.box("bois_meuble", bx0, 0.68, bz1 - 0.08, bx1, 0.78, bz1, wood)
             b.box("bois_meuble", bx0, 0.68, bz0 + 0.08, bx0 + 0.08, 0.78, bz1 - 0.08, wood)
             b.box("bois_meuble", bx1 - 0.08, 0.68, bz0 + 0.08, bx1, 0.78, bz1 - 0.08, wood)
-            for fruit_i in range(6):
-                fx = bx0 + 0.2 + (fruit_i % 3) * 0.48
-                fz = bz0 + 0.2 + (fruit_i // 3) * 0.35
-                fc = produce_colors[(bin_i * 2 + fruit_i) % len(produce_colors)]
-                b.box("papier", fx, 0.42, fz, fx + 0.36, 0.63, fz + 0.26, fc)
+            for k in range(3):
+                item = fresh_aisle.PRODUCE[(bin_i * 3 + k) % len(fresh_aisle.PRODUCE)]
+                fresh_aisle.produce_crate(b, bx0 + 0.3 + k * 0.6, 0.42, (bz0 + bz1) / 2, item, rng, w=0.55, d=0.62, real=3)
         # distributeur de sacs
         b.box("metal", 23.35, 0, z1 + 0.32, 23.82, 0.88, z1 + 0.62, (0.48, 0.5, 0.54), collide=True)
         b.box("ecran_noir", 23.43, 0.56, z1 + 0.63, 23.74, 0.74, z1 + 0.65, (0.8, 0.84, 0.88))
@@ -826,7 +836,7 @@ class Neighborhood:
                         slots[shelf].append((Vec3(ax + side * 0.85, 1.15, zz), Vec3(ax + side * 0.75, 0.9, zz), 90.0 if side > 0 else 270.0))
         for k in range(8):
             xx = 12.5 + k * 2.4
-            slots["frais"].append((Vec3(xx, 1.2, SHOP[1] + 1.6), Vec3(xx, 0.95, SHOP[1] + 1.18), 0.0))
+            slots["frais"].append((Vec3(xx, 1.2, SHOP[1] + 1.7), Vec3(xx, 0.95, SHOP[1] + 1.32), 0.0))
         used = {k: 0 for k in slots}
         self.product_points = []
         for art in CATALOG:
