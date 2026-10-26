@@ -370,7 +370,10 @@ class GameManager:
         self._build_menu_extras()
         self.house.on_door_sound = self._door_sound
 
-    def new_game(self):
+    def new_game(self, difficulty=None):
+        if difficulty in config.DIFFICULTY:
+            settings["difficulte"] = difficulty
+            settings.save()
         self._stop_menu()
         self.reset_game_objects()
         self._fresh_world()
@@ -402,11 +405,15 @@ class GameManager:
         self._stop_menu()
         self.reset_game_objects()
         self._fresh_world()
+        if data.get("difficulte") in config.DIFFICULTY:
+            settings["difficulte"] = data["difficulte"]          # la partie garde la difficulté choisie au départ
         self.state.from_dict(data["state"])
         self.quests.from_dict(data.get("quests", {}))
         self.playtime = data.get("playtime", 0.0)
         self.assistance.restore(data.get("assistance", {}))
         self.player.revive()
+        # blessure gardée d'une session à l'autre (après une mort, « Réessayer » repart soigné : voir retry)
+        self.player.health = max(35.0, min(100.0, float(self.state.player_health or 100.0)))
         self.player.flashlight.battery = self.state.player_battery_light
         self.phone.model.battery = self.state.player_battery_phone
         self.phone.model.dead = self.phone.model.battery <= 0
@@ -589,6 +596,7 @@ class GameManager:
             self.resume()
         else:
             self.paused = True
+            self._frozen_before_pause = self.player.frozen
             self.ui.pause.show()
             self.set_mouse(free=True)
             self.player.frozen = True
@@ -596,7 +604,9 @@ class GameManager:
     def resume(self):
         self.paused = False
         self.ui.pause.hide()
-        self.player.frozen = False
+        # ne libère pas un joueur que le jeu tenait immobile (screamer, sac de l'Imposteur, mort)
+        self.player.frozen = getattr(self, "_frozen_before_pause", False) and not self.player.dead and (
+            self.jumpscare.active or getattr(self.jumpscare, "_bag_active", False))
         if not self.phone.is_open:
             self.set_mouse(free=False)
 
@@ -646,6 +656,7 @@ class GameManager:
             return
         if self.saves.exists():
             self.continue_game()
+            self.player.health = 100.0
         else:
             self.new_game()
 
@@ -993,12 +1004,57 @@ class GameManager:
     def kill_player(self, cause="entity_contact", kind=None, already_scared=False):
         if self.player.dead:
             return
+        if cause == "entity_contact" and self._survive_contact(kind, already_scared):
+            return
         self._death_kind = (kind, already_scared, cause)
         self.player.kill(cause)
+
+    def _survive_contact(self, kind, already_scared):
+        """Difficulté : un contact blesse au lieu de tuer tant qu'il reste de la vie (Facile : 3 contacts, Normal : 2)."""
+        hits = config.diff("hits")
+        p = self.player
+        if hits <= 1 or self.is_multiplayer or self.state.flag("ending_started"):
+            return False
+        dmg = 100.0 / hits + 1.0
+        if p.health - dmg <= 0.5:
+            return False
+        p.damage(dmg)
+        self.entity.killing = True                 # pas de second contact pendant la frayeur
+        b = self.entity.behavior
+        if b is not None and hasattr(b, "kill_phase"):
+            b.kill_phase = 0
+        if already_scared:
+            self._after_contact()
+        else:
+            self.jumpscare.trigger(kind or "generic", on_done=self._after_contact, fatal=False)
+        return True
+
+    def _after_contact(self):
+        """Le livreur lâche prise et recule dans l'ombre : il reprend la traque quelques secondes plus tard."""
+        p, ai = self.player, self.entity
+        p.frozen = False
+        self.ui.hud.show()
+        ai.killing = False
+        b = ai.behavior
+        if b is not None and ai.active:
+            if getattr(b, "ceil", False):
+                b.ceil = False
+                b.ceil_cool = 10.0
+            far = ai._cell_near(p.pos, 8.0, 13.0, p.level)
+            if far is not None:
+                ai.pos = far
+                ai._snap_y()
+            ai.path = []
+            ai.stall(3.0)
+            ai.last_seen_pos = Vec3(*p.pos)
+            ai.set_state("search")
+        self.say("Il m'a lâché... Faut que je bouge.", 3.5, voice=False)
 
     def _on_death(self, cause):
         kind, scared, cause = self._death_kind or (None, False, cause)
         self.state.stats["deaths"] += 1
+        if config.diff("permadeath") and not self.is_multiplayer:
+            self.saves.delete()                     # Cauchemar : une seule vie
         sound.set_heart(0)
         sound.set_breath(None)
         self.phone.close()
@@ -1016,6 +1072,7 @@ class GameManager:
     def _mp_spectate(self):
         """Multijoueur : le joueur mort devient spectateur."""
         self.effects.set_fade(0.0)
+        self.ui.hud.show()
         self.player.frozen = False
         if self.mp is not None:
             self.mp.dead = True
@@ -1183,6 +1240,9 @@ class GameManager:
         else:
             self.phone_light.enabled = False
         p.update(dt)
+        regen = config.diff("regen")
+        if regen > 0 and p.health < 100.0 and not p.dead and self.entity.state != "chase":
+            p.health = min(100.0, p.health + regen * dt)
         eye = p.eye_pos
         zone_mult = self.lighting.zone_mult
         p.flashlight.mult = zone_mult

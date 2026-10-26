@@ -276,7 +276,9 @@ class LivreurModel:
             lag = math.sin(self.phase - 0.9) * (1 if i == 0 else -1)
             sway = math.sin(t * 0.9 + i * 1.7) * 3.0
             if chase and mv > 0.2:
-                target_sh = lean - 100 + math.sin(self.phase + i * math.pi) * 14     # bras tendus vers l'avant
+                # bras tendus vers le joueur, presque à l'horizontale : le torse penché (+lean) entraîne déjà les épaules
+                # vers l'arrière, d'où le -lean
+                target_sh = -lean - 80 + math.sin(self.phase + i * math.pi) * 10
                 target_el = -10 + math.sin(t * 9 + i) * 4
                 curl = 10 + math.sin(t * 12 + i * 2) * 12                      # doigts qui s'agitent
             else:

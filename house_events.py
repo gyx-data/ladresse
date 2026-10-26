@@ -186,6 +186,12 @@ class HouseEvents:
             if not door.is_open:
                 if g.assistance.front_door_opened():
                     return
+        if door.is_open:
+            # on ne referme pas la porte sur soi-même (le battant passerait à travers le joueur)
+            x0, _, z0, x1, _, z1 = door.aabb
+            px, pz = g.player.pos[0], g.player.pos[2]
+            if (max(x0, min(px, x1)) - px) ** 2 + (max(z0, min(pz, z1)) - pz) ** 2 < 0.34 ** 2 and abs(g.player.pos[1] - door.y0) < 1.0:
+                return
         door.toggle()
         g.player.emit_noise(5.0, door.pos, "porte")
 

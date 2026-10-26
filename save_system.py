@@ -33,6 +33,7 @@ class SaveSystem:
                 entity=game.entity.serialize() if game.entity and game.entity.kind else None,
                 doors={did: d.is_open for did, d in game.house.doors.items()},
                 playtime=game.playtime,
+                difficulte=config.settings["difficulte"],
             )
             tmp = self.path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:

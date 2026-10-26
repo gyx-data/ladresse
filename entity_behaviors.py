@@ -10,6 +10,7 @@ import random
 
 from ursina import Entity, Vec3
 
+import config
 import game_data as gd
 from config import LEVEL_Y
 from entity_ai import EntityPuppet
@@ -150,7 +151,7 @@ class Silencieux(Behavior):
                 dx, dz = pl.pos[0] - ai.pos[0], pl.pos[2] - ai.pos[2]
                 dist = math.hypot(dx, dz)
                 if dist > 1.3:
-                    step = 0.55 * dt * ai.speed_mult
+                    step = 0.55 * dt * ai.speed_mult * config.diff("entity")
                     nx, nz = ai.pos[0] + dx / dist * step, ai.pos[2] + dz / dist * step
                     if not ai.house.blocked(nx, nz, ai.pos[1], 0.25, 1.6):
                         ai.pos = Vec3(nx, ai.pos[1], nz)
@@ -171,7 +172,7 @@ class Silencieux(Behavior):
         # téléportation vers le joueur dès qu'il détourne le regard
         self.tp_timer -= dt
         if self.tp_timer <= 0 and self.unseen > 0.8 and d > 2.8:
-            self.tp_timer = random.uniform(4.0, 7.0) / max(0.6, ai.speed_mult)
+            self.tp_timer = random.uniform(4.0, 7.0) / max(0.6, ai.speed_mult * config.diff("entity"))
             self._teleport_closer(ai)
         return True
 
@@ -302,7 +303,7 @@ class Rampant(Behavior):
         r = self.ceil_room
         dx, dz = pl.pos[0] - ai.pos[0], pl.pos[2] - ai.pos[2]
         dist = math.hypot(dx, dz)
-        speed = 4.4 * ai.speed_mult
+        speed = 4.4 * ai.speed_mult * config.diff("entity")
         step = speed * dt
         if dist > 1.2:
             nx = min(r.x1 - 0.3, max(r.x0 + 0.3, ai.pos[0] + dx / dist * step))
@@ -432,7 +433,7 @@ class Multiple(Behavior):
             g["t"] += dt
             to = g["pos"] - pl.pos
             dist = math.hypot(to[0], to[2])
-            speed = 1.7 if ai.state != "chase" else ai.behavior.speeds["chase"] * ai.speed_mult * 0.95
+            speed = 1.7 if ai.state != "chase" else ai.behavior.speeds["chase"] * ai.speed_mult * config.diff("entity") * 0.95
             if dist > 0.5:
                 g["pos"] = Vec3(g["pos"][0] - to[0] / dist * speed * dt, g["pos"][1], g["pos"][2] - to[2] / dist * speed * dt)
                 g["yaw"] = math.degrees(math.atan2(-to[0], -to[2]))

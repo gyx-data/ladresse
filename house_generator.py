@@ -132,7 +132,8 @@ DOORS = [
     ("sdb1", 1, "x", 6.5, 14.0, "normal", 1),
 ]
 
-ARCHWAYS = [(0, "x", 6.0, 3.0, 1.5)]      # salon <-> cuisine (passage sans porte)
+ARCHWAYS = []      # (niveau, axe, fixe, centre, largeur) : passages sans porte. L'ancienne arche salon/cuisine, masquée
+                   # par le dos du canapé, faisait un trou noir dans le mur : les deux pièces passent par le couloir.
 
 
 class Surface:
@@ -221,13 +222,19 @@ class Door:
             self.pos = Vec3(fixed, self.y0 + 1.0, center)
             self.aabb = (fixed - 0.12, self.y0, center - w / 2, fixed + 0.12, self.y0 + DOOR_H, center + w / 2)
         self.normal = n
+        # battant ouvert : plaqué perpendiculairement au mur, de la charnière vers n (bloque le joueur, pas l'IA)
+        ex, ez = hx + n[0] * w, hz + n[1] * w
+        self.open_aabb = (min(hx, ex) - 0.05, self.y0, min(hz, ez) - 0.05, max(hx, ex) + 0.05, self.y0 + DOOR_H,
+                          max(hz, ez) + 0.05)
         self.ai_passable = kind not in ("condamnee", "cave", "front", "front_locked")
         house.dyn_colliders[did] = self.aabb
 
     def _remove_collider(self):
         self.house.dyn_colliders.pop(self.id, None)
+        self.house.dyn_colliders[self.id + "#battant"] = self.open_aabb
 
     def _add_collider(self):
+        self.house.dyn_colliders.pop(self.id + "#battant", None)
         self.house.dyn_colliders[self.id] = self.aabb
 
     def _hardware(self, w):
@@ -282,6 +289,7 @@ class Door:
         if not self.is_open:
             return
         self.is_open = False
+        self.house.dyn_colliders.pop(self.id + "#battant", None)
         self.part.set_open(False, duration)
         from ursina import invoke as _invoke
         _invoke(self._finish_close, delay=duration)
@@ -914,11 +922,11 @@ class House:
         for c in self.dyn_colliders.values():
             yield c
 
-    def blocked(self, x, z, y, radius, height, step=0.35):
-        """Vrai si un cylindre (x,z,rayon, y..y+height) touche un collider."""
+    def blocked(self, x, z, y, radius, height, step=0.35, ignore=()):
+        """Vrai si un cylindre (x,z,rayon, y..y+height) touche un collider (sauf ceux de `ignore`)."""
         top = y + height
         for c in self._near(x, z, radius + 0.2):
-            if c[4] <= y + step or c[1] >= top:
+            if c[4] <= y + step or c[1] >= top or c in ignore:
                 continue
             cx = max(c[0], min(x, c[3]))
             cz = max(c[2], min(z, c[5]))
@@ -927,12 +935,21 @@ class House:
         return False
 
     def move(self, x, z, dx, dz, y, radius=config.PLAYER_RADIUS, height=config.PLAYER_HEIGHT):
-        """Déplacement avec glissement le long des murs."""
+        """Déplacement avec glissement le long des murs.
+
+        Un collider dynamique qui touche déjà le joueur (battant de porte ouvert sur lui, voiture) est ignoré :
+        il peut toujours s'en dégager au lieu de rester coincé dedans."""
+        ignore = ()
+        if self.dyn_colliders:
+            top, r2 = y + height, radius * radius
+            ignore = [c for c in self.dyn_colliders.values()
+                      if not (c[4] <= y + 0.35 or c[1] >= top)
+                      and (max(c[0], min(x, c[3])) - x) ** 2 + (max(c[2], min(z, c[5])) - z) ** 2 < r2]
         nx = x + dx
-        if not self.blocked(nx, z, y, radius, height):
+        if not self.blocked(nx, z, y, radius, height, ignore=ignore):
             x = nx
         nz = z + dz
-        if not self.blocked(x, nz, y, radius, height):
+        if not self.blocked(x, nz, y, radius, height, ignore=ignore):
             z = nz
         return x, z
 

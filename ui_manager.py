@@ -194,6 +194,9 @@ class MainMenu:
         for it in self.items:
             it.remove()
         self.items = []
+        for e in getattr(self, "page_extras", []):
+            destroy(e)
+        self.page_extras = []
 
     def _build_main(self):
         self.page = "main"
@@ -212,16 +215,55 @@ class MainMenu:
         self.page = "play"
         self._clear_items()
         y = 0.07
-        for text, cb in (("Continuer", self.game.continue_game), ("Nouvelle partie", self.game.new_game)):
+        for text, cb in (("Continuer", self.game.continue_game), ("Nouvelle partie", self._build_difficulty)):
             self.items.append(MenuItem(self.root, text, self.X, y, cb))
             y -= 0.085
         self.items.append(MenuItem(self.root, "‹  Retour", self.X, y - 0.02, self._build_main, size=1.1, small=True))
+
+    def _build_difficulty(self):
+        """Choix de la difficulté avant une nouvelle partie : description de celle survolée sous la liste."""
+        self.page = "difficulty"
+        self._clear_items()
+        X = self.X
+        self.page_extras.append(label(self.root, "CHOISISSEZ VOTRE NUIT", X, 0.115, 0.8, rgb(150, 30, 30), origin=(-0.5, 0),
+                                      z=-0.03, font=T.F_TYPE))
+        y = 0.055
+        cur = config.settings.get("difficulte", "Normal")
+        for d in config.DIFFICULTIES:
+            it = MenuItem(self.root, d, X, y, lambda d=d: self.game.new_game(d), size=1.7, h=0.056)
+            it.diff = d
+            self.items.append(it)
+            y -= 0.068
+        back = MenuItem(self.root, "‹  Retour", X, y - 0.01, self._back_from_difficulty, size=1.1, small=True)
+        self.items.append(back)
+        self.diff_tag = label(self.root, " ", X, y - 0.085, 0.95, rgb(200, 60, 50), origin=(-0.5, 0), z=-0.03, font=T.F_PRINT)
+        self.diff_desc = label(self.root, " ", X, y - 0.115, 0.68, rgb(176, 168, 156), origin=(-0.5, 0.5), z=-0.03,
+                               wrap=48, font=T.F_TYPE)
+        self.page_extras += [self.diff_tag, self.diff_desc]
+        self.diff_shown = None
+        self._show_diff(cur)
+        self.whisper.text = " "
+
+    def _show_diff(self, d):
+        if d == self.diff_shown:
+            return
+        self.diff_shown = d
+        tag, desc = config.DIFFICULTY_TEXT.get(d, ("", ""))
+        self.diff_tag.text = f"{d} — {tag}"
+        self.diff_desc.text = desc
+        self.diff_desc.wordwrap = 58                # Text ne recoupe pas les lignes quand on change .text
+
+    def _back_from_difficulty(self):
+        if self.game.saves.exists():
+            self._build_play()
+        else:
+            self._build_main()
 
     def play(self):
         if self.game.saves.exists():
             self._build_play()
         else:
-            self.game.new_game()
+            self._build_difficulty()
 
     def show_achievements(self):
         self.game.achievements.open_screen()
@@ -239,6 +281,8 @@ class MainMenu:
     def on_key(self, key):
         if key == "escape" and self.root.enabled and self.page == "play":
             self._build_main()
+        elif key == "escape" and self.root.enabled and self.page == "difficulty":
+            self._back_from_difficulty()
 
     def update(self, dt):
         if not self.root.enabled:
@@ -247,11 +291,13 @@ class MainMenu:
         self.idle += dt
         for it in self.items:
             it.animate_step(dt)
+            if self.page == "difficulty" and getattr(it, "diff", None) and it.hovered:
+                self._show_diff(it.diff)
         # grain de pellicule : la texture saute à chaque image
         self.grain.texture_offset = (random.random(), random.random())
         # chuchotements qui apparaissent et s'effacent en bas à gauche
         self.whisper_t -= dt
-        if self.whisper_t <= 0:
+        if self.whisper_t <= 0 and self.page != "difficulty":
             self.whisper_i = (self.whisper_i + 1) % len(MENU_WHISPERS)
             self.whisper.text = MENU_WHISPERS[self.whisper_i]
             self.whisper_t = 9.0
@@ -539,7 +585,12 @@ class GameOverScreen:
         label(self.items, gd.GAMEOVER_RATING, -0.08, 0.05, 0.95, rgb(190, 182, 170), z=0, font=T.F_TYPE)
         for i in range(5):
             star(self.items, 0.12 + i * 0.038, 0.05, 0.032, color.rgb32(255, 200, 40) if i == 0 else rgb(60, 60, 66), z=0)
-        button(self.items, "Réessayer", -0.13, -0.1, 0.24, 0.065, self.game.retry, style="primary", size=0.9)
+        perma = config.diff("permadeath") and not self.game.is_multiplayer
+        button(self.items, "Recommencer" if perma else "Réessayer", -0.13, -0.1, 0.24, 0.065, self.game.retry,
+               style="primary", size=0.9)
+        if perma:
+            label(self.items, "Cauchemar : une seule vie. La sauvegarde a été effacée.", 0, -0.29, 0.7, rgb(190, 40, 36),
+                  z=0, font=T.F_PRINT)
         button(self.items, "Menu principal", 0.13, -0.1, 0.24, 0.065, self.game.to_main_menu, style="dark", size=0.9)
         st = self.game.state.stats
         m, s_ = divmod(int(st.get("play_time", 0)), 60)

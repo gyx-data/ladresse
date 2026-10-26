@@ -60,7 +60,7 @@ class PhoneModel:
             rate = config.PHONE_DRAIN_CALL
         if self.torch_on:
             rate += 0.1
-        self.battery = max(0.0, self.battery - rate * dt)
+        self.battery = max(0.0, self.battery - rate * config.diff("phone") * dt)
         self.state.player_battery_phone = self.battery
         if self.battery <= 0:
             self.dead = True

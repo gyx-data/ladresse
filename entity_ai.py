@@ -163,8 +163,21 @@ class EntityPuppet:
         return out[1:]
 
     def set_pos(self, pos, yaw):
+        """Place la marionnette. Le corps pivote progressivement vers le cap (plus de demi-tours instantanés aux
+        coins du chemin) ; une téléportation (saut de plus d'1,5 m) remet le cap d'un coup."""
+        from ursina import time as _t
+        last = getattr(self, "_last_pos", None)
+        vy = getattr(self, "_vis_yaw", None)
+        if vy is None or last is None or (Vec3(*pos) - last).length() > 1.5:
+            vy = yaw
+        else:
+            diff = (yaw - vy + 180.0) % 360.0 - 180.0
+            step = 420.0 * min(_t.dt, 0.1)
+            vy += max(-step, min(step, diff))
+        self._vis_yaw = vy
+        self._last_pos = Vec3(*pos)
         self.root.position = pos
-        self.root.rotation_y = yaw
+        self.root.rotation_y = vy
 
     def animate(self, dt, speed, moving, state="patrol"):
         if self.model is not None:
@@ -239,7 +252,7 @@ class EntityAI:
         self.last_seen_t = -99.0
         self.search_t = 0.0
         self.ambush_wait = 0.0
-        self.ambush_timer = random.uniform(60, 110)
+        self.ambush_timer = random.uniform(60, 110) * config.diff("ambush")
         self.door_wait = 0.0
         self.door_target = None
         self.sees_player = False
@@ -348,7 +361,7 @@ class EntityAI:
         self.state = state
         self.state_t = 0.0
         if state == "search":
-            self.search_t = 30.0
+            self.search_t = 30.0 * config.diff("search")
         if state == "ambush":
             self.ambush_wait = 0.0
         sound.music.set_state(MUSIC_STATE.get(state, "patrol"))
@@ -536,7 +549,7 @@ class EntityAI:
             return
         self.ambush_timer -= dt
         if self.ambush_timer <= 0 and self.behavior.allow_ambush:
-            self.ambush_timer = random.uniform(70, 130)
+            self.ambush_timer = random.uniform(70, 130) * config.diff("ambush")
             if random.random() < 0.55:
                 self.set_state("ambush")
                 self._pick_ambush()
@@ -706,17 +719,18 @@ class EntityAI:
         dxz = math.hypot(self.pos[0] - p.pos[0], self.pos[2] - p.pos[2])
         same_level = dy < 2.2
         sees = False
+        det = self.detection_mult * config.diff("detect")
         if same_level and not p.dead:
             los = house.wall_count(eye_e, eye_p) == 0
-            if dxz < 2.0 * math.sqrt(self.detection_mult) and (los or dxz < 1.2):
+            if dxz < 2.0 * math.sqrt(det) and (los or dxz < 1.2):
                 sees = True
             elif los:
-                vis = min(1.0, p.visibility() * self.detection_mult)
+                vis = min(1.0, p.visibility() * det)
                 reach = self.sight_range_base + 14.0 * vis
                 if self.state == "chase":
                     reach *= 1.4
                 ang = self._angle_to(p.pos)
-                fov = 180.0 if self.state == "chase" else self.fov_deg
+                fov = 180.0 if self.state == "chase" else min(170.0, self.fov_deg * config.diff("fov"))
                 # lampe torche dirigée vers l'entité : elle nous voit aussi
                 if p.flashlight.on:
                     to_e = (self.pos + Vec3(0, 1.0, 0) - eye_p)
@@ -732,7 +746,7 @@ class EntityAI:
             self.last_seen_pos = Vec3(*p.pos)
             self.last_seen_t = p.time
         # ouïe
-        mult = self.hear_mult * self.detection_mult
+        mult = self.hear_mult * self.detection_mult * config.diff("hear")
         if mult > 0:
             for n in p.noises:
                 key = (round(n["t"], 3), n["kind"])

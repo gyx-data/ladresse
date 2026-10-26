@@ -818,40 +818,116 @@ def tex_phone_wallpaper(rng):
     return img.filter(ImageFilter.GaussianBlur(1.2))
 
 
-@register("portrait", 128)
+@register("paysage", 256)
+def tex_paysage(rng):
+    """Vieille marine à l'huile (baie au couchant, cyprès, village perché), vernis jauni et craquelé."""
+    s = 256
+    yy = np.linspace(0, 1, s)[:, None] * np.ones((1, s))
+    xx = np.ones((s, 1)) * np.linspace(0, 1, s)[None, :]
+    sky_top, sky_low = np.array((92, 112, 138)), np.array((214, 168, 112))
+    t = np.clip(yy / 0.52, 0, 1)[..., None]
+    arr = sky_top * (1 - t) + sky_low * t
+    hills = 0.5 + 0.06 * np.sin(xx * 7.0 + 1.3) + 0.03 * np.sin(xx * 19.0)
+    arr = np.where((yy > hills)[..., None], np.array((70, 84, 74)) * (0.8 + 0.4 * (yy - hills)[..., None]), arr)
+    sea = yy > 0.62
+    glint = (np.exp(-((xx - 0.72) / 0.07) ** 2) * np.clip(1 - (yy - 0.62) * 3, 0, 1))[..., None]   # reflet du soleil
+    arr = np.where(sea[..., None], np.array((44, 72, 96)) + np.array((150, 112, 70)) * glint, arr)
+    shore = (yy > 0.86 + 0.04 * np.sin(xx * 5.0))
+    arr = np.where(shore[..., None], np.array((150, 128, 92)), arr)
+    arr *= (0.86 + 0.24 * fbm(s, rng, base=10, octaves=4, stretch=(2, 1)))[..., None]       # touches de pinceau
+    img = to_img(arr)
+    d = ImageDraw.Draw(img)
+    d.ellipse([176, 98, 194, 116], fill=(240, 200, 130))                                    # soleil bas
+    for (x, h) in ((30, 70), (44, 54), (210, 64)):                                           # cyprès
+        d.polygon([(x, 150 - h), (x - 7, 150), (x + 7, 150)], fill=(34, 46, 34))
+    for k in range(9):                                                                       # village perché
+        x0 = 70 + k * 9 + int(rng.integers(0, 4))
+        hh = int(rng.integers(8, 16))
+        d.rectangle([x0, 124 - hh, x0 + 7, 128], fill=(196, 160 - k * 4, 118))
+        d.polygon([(x0 - 1, 124 - hh), (x0 + 3, 120 - hh), (x0 + 8, 124 - hh)], fill=(150, 74, 52))
+    img = img.filter(ImageFilter.GaussianBlur(0.8))
+    arr = np.array(img).astype(float)
+    crack = fbm(s, rng, base=24, octaves=2)
+    arr *= (1 - 0.25 * (np.abs(crack - 0.5) < 0.012))[..., None]                            # craquelures du vernis
+    arr = arr * np.array((1.0, 0.94, 0.78)) * 0.92                                          # vernis jauni
+    img = to_img(arr)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, s - 1, s - 1], outline=(40, 26, 14), width=6)
+    return img
+
+
+@register("portrait", 256)
 def tex_portrait(rng):
     return _portrait(rng, False)
 
 
-@register("portrait_deforme", 128)
+@register("portrait_deforme", 256)
 def tex_portrait_bad(rng):
     return _portrait(rng, True)
 
 
 def _portrait(rng, bad):
-    s = 128
-    arr = np.zeros((s, s, 3)) + np.array((150, 126, 94))[None, None, :]
-    arr *= (0.8 + 0.3 * fbm(s, rng, base=5, octaves=3))[..., None]
+    """Portrait de famille à l'huile (père, mère, enfant) sur fond sombre, vernis jauni et craquelé.
+
+    bad : même tableau, mais les visages ont fondu : orbites noires, bouches étirées, coulures de peinture."""
+    S = 512                                                    # dessiné en 2x puis réduit (bords lissés)
+    yy = np.linspace(-1, 1, S)[:, None] * np.ones((1, S))
+    xx = np.ones((S, 1)) * np.linspace(-1, 1, S)[None, :]
+    vign = np.clip(1.0 - 0.55 * (xx ** 2 + (yy * 0.9) ** 2), 0, 1)[..., None]
+    arr = np.array((58, 52, 38)) * (0.35 + 0.75 * vign)
+    arr *= (0.85 + 0.3 * fbm(S, rng, base=5, octaves=4))[..., None]
     img = to_img(arr)
     d = ImageDraw.Draw(img)
-    for i, x in enumerate((38, 64, 90)):
-        d.ellipse([x - 12, 34 - (i % 2) * 4, x + 12, 34 + 24], fill=(190, 160, 130))
-        d.rectangle([x - 18, 62, x + 18, 120], fill=(70 + i * 20, 56, 50))
+    skin = (206, 168, 136)
+    # (centre x, haut de tête y, rayon tête, couleur vêtement, cheveux)
+    people = [(160, 120, 46, (38, 40, 52), (46, 34, 26)),          # père
+              (352, 140, 42, (92, 36, 40), (78, 50, 30)),           # mère
+              (256, 236, 34, (60, 74, 96), (120, 86, 44))]          # enfant
+    for (cx, top, r, cloth, hair) in people:
+        # buste et épaules
+        d.rounded_rectangle([cx - r * 1.9, top + r * 2.05, cx + r * 1.9, S + 40], radius=int(r * 0.95), fill=cloth)
+        d.line([cx, top + r * 2.9, cx, S], fill=tuple(int(c * 0.7) for c in cloth), width=3)       # boutonnage
+        d.polygon([(cx - r * 0.45, top + r * 2.0), (cx + r * 0.45, top + r * 2.0), (cx, top + r * 2.9)], fill=(222, 214, 196))
+        d.rectangle([cx - r * 0.38, top + r * 1.6, cx + r * 0.38, top + r * 2.3], fill=tuple(int(c * 0.85) for c in skin))
+        # tête, cheveux, oreilles
+        d.ellipse([cx - r * 1.08, top - r * 0.08, cx + r * 1.08, top + r * 1.55], fill=hair)
+        d.ellipse([cx - r * 1.12, top + r * 0.55, cx - r * 0.82, top + r * 1.05], fill=tuple(int(c * 0.9) for c in skin))
+        d.ellipse([cx + r * 0.82, top + r * 0.55, cx + r * 1.12, top + r * 1.05], fill=tuple(int(c * 0.9) for c in skin))
+        d.ellipse([cx - r * 0.9, top + r * 0.25, cx + r * 0.9, top + r * 1.9], fill=skin)
+        d.chord([cx - r * 0.95, top - r * 0.05, cx + r * 0.95, top + r * 1.0], 180, 360, fill=hair)
+        ey = top + r * 0.95
         if not bad:
-            d.ellipse([x - 6, 42, x - 3, 45], fill=(40, 30, 25))
-            d.ellipse([x + 3, 42, x + 6, 45], fill=(40, 30, 25))
-            d.arc([x - 5, 48, x + 5, 56], 10, 170, fill=(100, 50, 40))
+            for sx in (-1, 1):
+                ex = cx + sx * r * 0.36
+                d.ellipse([ex - r * 0.2, ey - r * 0.1, ex + r * 0.2, ey + r * 0.1], fill=(236, 228, 214))
+                d.ellipse([ex - r * 0.09, ey - r * 0.09, ex + r * 0.09, ey + r * 0.09], fill=(52, 40, 32))
+                d.line([ex - r * 0.25, ey - r * 0.24, ex + r * 0.2, ey - r * 0.28], fill=tuple(int(c * 0.7) for c in hair), width=4)
+            d.line([cx, ey + r * 0.05, cx - r * 0.1, ey + r * 0.45], fill=(170, 128, 104), width=3)
+            d.arc([cx - r * 0.3, ey + r * 0.45, cx + r * 0.3, ey + r * 0.75], 15, 165, fill=(140, 70, 64), width=4)
+        else:
+            for sx in (-1, 1):
+                ex = cx + sx * r * 0.36
+                d.ellipse([ex - r * 0.24, ey - r * 0.2, ex + r * 0.24, ey + r * 0.26], fill=(14, 10, 10))
+                for k in range(3):                                         # larmes de peinture noire
+                    dx = int(rng.integers(-6, 7))
+                    d.line([ex + dx, ey + r * 0.2, ex + dx, ey + r * (0.7 + 1.4 * rng.random())], fill=(20, 14, 14),
+                           width=int(rng.integers(2, 6)))
+            d.ellipse([cx - r * 0.32, ey + r * 0.35, cx + r * 0.32, ey + r * 1.15], fill=(18, 10, 10))
+    img = img.filter(ImageFilter.GaussianBlur(2.2 if not bad else 3.4))     # touche « huile » fondue
+    arr = np.array(img).astype(float)
     if bad:
-        img = img.filter(ImageFilter.GaussianBlur(2.2))
-        d = ImageDraw.Draw(img)
-        for x in (38, 64, 90):
-            d.ellipse([x - 12, 34, x + 12, 58], fill=(20, 16, 16))
-        arr = np.array(img).astype(float)
-        yy = np.arange(s)[:, None]
-        arr[:, :, :] = np.roll(arr, 3, axis=1) * 0.5 + arr * 0.5 * (1 - 0.2 * np.sin(yy / 4.0))
-        img = to_img(arr)
+        rows = (np.sin(np.arange(S) / 9.0) * 6 + np.sin(np.arange(S) / 2.3) * 2).astype(int)
+        for y in range(S):                                                       # visages qui glissent
+            arr[y] = np.roll(arr[y], rows[y], axis=0)
+        arr *= np.array((0.95, 0.86, 0.84))
+    arr *= (0.9 + 0.2 * fbm(S, rng, base=40, octaves=2))[..., None]               # grain de la toile
+    crack = fbm(S, rng, base=28, octaves=2)
+    arr *= (1 - 0.3 * (np.abs(crack - 0.5) < 0.008))[..., None]                   # craquelures
+    arr = arr * np.array((1.0, 0.93, 0.76)) * 0.94                                # vernis jauni
+    img = to_img(arr).resize((256, 256), Image.LANCZOS)
     d = ImageDraw.Draw(img)
-    d.rectangle([0, 0, s - 1, s - 1], outline=(40, 26, 14), width=5)
+    d.rectangle([0, 0, 255, 255], outline=(40, 26, 14), width=5)
+    d.rectangle([5, 5, 250, 250], outline=(118, 92, 46), width=2)                 # filet doré
     return img
 
 
@@ -1189,6 +1265,20 @@ def _smooth_texture(tex):
 _PHOTO_META = None
 
 
+def _fingerprint(name, fn):
+    """Empreinte du code qui produit la texture et de sa photo éventuelle (voir config.code_fingerprint)."""
+    extra, funcs = "", [fn]
+    meta = photo_meta().get(name)
+    if meta is not None:
+        try:
+            st = os.stat(os.path.join(config.resource_path("textures"), name + ".jpg"))
+            extra = f"{st.st_size}:{meta.get('mode')}:{meta.get('source')}"
+        except OSError:
+            pass
+        funcs.append(_photo_texture)
+    return config.code_fingerprint(*funcs, extra=extra)
+
+
 def photo_meta():
     """nom -> métadonnées (dont size_m = taille réelle couverte) des textures photo présentes dans textures/."""
     global _PHOTO_META
@@ -1253,8 +1343,11 @@ class TextureLibrary:
     def iter_generate(self):
         """Générateur : yield (index, total, nom) après chaque texture."""
         total = len(_REGISTRY)
+        current = set()
         for i, (name, (fn, size)) in enumerate(_REGISTRY.items()):
-            path = os.path.join(self.cache, name + ".png")
+            # l'empreinte du code de génération (et de la photo) est dans le nom : une texture modifiée par une mise
+            # à jour est régénérée au lieu de reprendre l'ancienne image du cache
+            path = os.path.join(self.cache, f"{name}_{_fingerprint(name, fn)}.png")
             img = None
             if os.path.exists(path):
                 try:
@@ -1277,7 +1370,14 @@ class TextureLibrary:
                 except OSError:
                     pass
             self.images[name] = img
+            current.add(os.path.basename(path))
             yield i + 1, total, name
+        try:                                                   # anciennes versions de textures : on fait le ménage
+            for f in os.listdir(self.cache):
+                if f.endswith(".png") and f not in current:
+                    os.remove(os.path.join(self.cache, f))
+        except OSError:
+            pass
 
     def generate_all(self):
         for _ in self.iter_generate():

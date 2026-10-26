@@ -1277,9 +1277,21 @@ class SoundEngine:
     # --- génération --------------------------------------------------------
     def iter_generate(self):
         total = len(_SOUNDS)
+        try:
+            existing = set(os.listdir(self.dir))
+        except OSError:
+            existing = set()
         for i, (name, spec) in enumerate(_SOUNDS.items()):
-            path = os.path.join(self.dir, name + ".wav")
-            mpath = os.path.join(self.dir, name + "_m.wav")
+            # empreinte du code de synthèse dans le nom : un son retouché par une mise à jour est régénéré
+            fp = config.code_fingerprint(spec["fn"], extra=f"{spec['loop']}")
+            path = os.path.join(self.dir, f"{name}_{fp}.wav")
+            mpath = os.path.join(self.dir, f"{name}_{fp}_m.wav")
+            for old in (f"{name}.wav", f"{name}_m.wav"):                  # anciens fichiers sans empreinte
+                if old in existing:
+                    try:
+                        os.remove(os.path.join(self.dir, old))
+                    except OSError:
+                        pass
             if not os.path.exists(path) or (spec["spatial"] and not os.path.exists(mpath)):
                 seed = sum(ord(c) * (k + 3) for k, c in enumerate(name)) + 4242
                 rng = np.random.default_rng(seed)

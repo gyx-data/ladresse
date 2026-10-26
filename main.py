@@ -51,6 +51,9 @@ if msaa:
     loadPrcFileData("", f"framebuffer-multisample 1\nmultisamples {msaa}")
 loadPrcFileData("", "notify-level-audio error\nnotify-level-display error\nnotify-level-glgsg error")
 loadPrcFileData("", "sync-video 1" if settings["vsync"] else "sync-video 0")
+# tampon de profondeur 24 bits (le tampon de post-traitement en demandait « au moins 1 », souvent 16 bits) :
+# plus de scintillement entre surfaces proches (tableaux, vitres, décalcomanies) vues de loin
+loadPrcFileData("", "depth-bits 24")
 
 from ursina import Ursina, window, camera, color, time as utime
 

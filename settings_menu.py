@@ -39,7 +39,6 @@ CAMERA = [
 ]
 
 GAMEPLAY = [
-    ("Difficulté", "difficulte", ["Facile", "Normal", "Cauchemar"]),
     ("Explorer le quartier au début", "quartier", None),
     ("Didacticiel (aide à l'écran + voix)", "didacticiel", None),
     ("Pause auto (perte de focus)", "pause_auto", None),
@@ -53,11 +52,6 @@ ACCESS = [
     ("Taille des textes", "taille_texte", ["Petit", "Moyen", "Grand"]),
 ]
 
-DIFF_HELP = {
-    "Facile": "Livreur plus lent, batterie qui dure plus longtemps, moins de stress.",
-    "Normal": "L'expérience prévue.",
-    "Cauchemar": "Livreur plus rapide et plus attentif, batteries fragiles. Bonne chance.",
-}
 
 def fmt(v):
     if v is True:
@@ -258,17 +252,11 @@ class SettingsMenu:
               0, y - 0.01, 0.62, color.gray)
 
     def _gameplay(self):
-        help_lbl = None
-
-        def diff(v):
-            if help_lbl is not None:
-                help_lbl.text = DIFF_HELP.get(v, "")
-        y = 0.24
-        for name, key, opts in GAMEPLAY:
-            self._cycle_row(y, name, key, opts, on_change=diff if key == "difficulte" else None)
-            y -= 0.066
-        help_lbl = label(self.body, DIFF_HELP.get(settings["difficulte"], ""), 0, y - 0.01, 0.62, color.gray)
-        label(self.body, "La difficulté s'applique dès la prochaine apparition du livreur.", 0, y - 0.06, 0.55, rgb(120, 118, 115))
+        y = self._rows(GAMEPLAY)
+        d = settings["difficulte"]
+        label(self.body, f"Difficulté : {d}  ·  {config.DIFFICULTY_TEXT.get(d, ('',))[0]}", 0, y - 0.01, 0.62, color.gray)
+        label(self.body, "Elle se choisit au lancement d'une nouvelle partie et reste la même jusqu'à la fin.", 0, y - 0.06,
+              0.55, rgb(120, 118, 115))
 
     def _access(self):
         y = self._rows(ACCESS)

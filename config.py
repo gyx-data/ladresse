@@ -66,6 +66,38 @@ def app_data_dir():
     return path
 
 
+def code_fingerprint(*funcs, extra=""):
+    """Empreinte courte (10 hex) du bytecode de fonctions et des fonctions de leur module qu'elles appellent.
+
+    Sert à nommer les fichiers du cache (textures, sons) : un générateur modifié par une mise à jour produit un
+    nouveau fichier au lieu de réutiliser l'ancien. Marche aussi dans l'exécutable (pas besoin des sources)."""
+    import hashlib
+    import types
+    h = hashlib.md5(extra.encode())
+    seen = set()
+
+    def code(co, glb, mod):
+        if id(co) in seen:
+            return
+        seen.add(id(co))
+        h.update(co.co_code)
+        h.update(repr(co.co_names).encode())
+        for c in co.co_consts:
+            if isinstance(c, types.CodeType):
+                code(c, glb, mod)
+            elif isinstance(c, frozenset):                    # ordre d'itération variable d'un lancement à l'autre
+                h.update(repr(sorted(map(repr, c))).encode())
+            else:
+                h.update(repr(c).encode())
+        for n in co.co_names:
+            f = glb.get(n)
+            if isinstance(f, types.FunctionType) and f.__module__ == mod:
+                code(f.__code__, glb, mod)
+    for fn in funcs:
+        code(fn.__code__, fn.__globals__, fn.__module__)
+    return h.hexdigest()[:10]
+
+
 def cache_dir(sub=""):
     path = os.path.join(tempfile.gettempdir(), "LADRESSE_cache", CACHE_VERSION, sub)
     os.makedirs(path, exist_ok=True)
@@ -140,7 +172,7 @@ DEFAULT_SETTINGS = {
     "cam_epaule": "Droite",           # Droite / Centre / Gauche
     "cam_lissage": True,              # caméra 3e personne amortie
     "bob_camera": True,               # balancement de la tête en marchant
-    "difficulte": "Normal",           # Facile / Normal / Cauchemar
+    "difficulte": "Normal",           # Facile / Normal / Difficile / Cauchemar (choisie à chaque nouvelle partie)
     "quartier": True,                 # phase d'exploration du quartier avant la maison
     "didacticiel": True,              # didacticiel guidé et doublé
     "voix_reelles": True,             # voix françaises du système (Windows / espeak) si disponibles
@@ -246,11 +278,34 @@ class Settings:
 
 settings = Settings()
 
+DIFFICULTIES = ["Facile", "Normal", "Difficile", "Cauchemar"]
 DIFFICULTY = {
-    # vitesse du livreur, consommation des batteries, gain de stress
-    "Facile": dict(entity=0.82, battery=0.7, stress=0.7),
-    "Normal": dict(entity=1.0, battery=1.0, stress=1.0),
-    "Cauchemar": dict(entity=1.18, battery=1.35, stress=1.3),
+    # entity : vitesse du livreur · detect : vue / flair de près · hear : ouïe · fov : champ de vision ·
+    # search : durée de la traque quand il vous perd · ambush : délai entre deux embuscades (multiplicateurs)
+    # battery / phone : consommation lampe / téléphone · stress : gain de stress · stamina / recovery : sprint
+    # hits : contacts encaissés avant la mort (1 = mort au premier) · regen : vie récupérée par seconde
+    # permadeath : la mort efface la sauvegarde (on recommence depuis le début)
+    "Facile": dict(entity=0.8, detect=0.7, hear=0.65, fov=0.8, search=0.55, ambush=1.5, battery=0.6, phone=0.7,
+                   stress=0.6, stamina=0.75, recovery=1.3, hits=3, regen=0.5, permadeath=False),
+    "Normal": dict(entity=1.0, detect=1.0, hear=1.0, fov=1.0, search=1.0, ambush=1.0, battery=1.0, phone=1.0,
+                   stress=1.0, stamina=1.0, recovery=1.0, hits=2, regen=0.0, permadeath=False),
+    "Difficile": dict(entity=1.12, detect=1.25, hear=1.3, fov=1.2, search=1.4, ambush=0.75, battery=1.3, phone=1.2,
+                      stress=1.25, stamina=1.2, recovery=0.85, hits=1, regen=0.0, permadeath=False),
+    "Cauchemar": dict(entity=1.25, detect=1.5, hear=1.6, fov=1.45, search=2.0, ambush=0.55, battery=1.6, phone=1.4,
+                      stress=1.45, stamina=1.35, recovery=0.75, hits=1, regen=0.0, permadeath=True),
+}
+DIFFICULTY_TEXT = {
+    "Facile": ("Pour découvrir l'histoire.",
+               "Le livreur est lent, voit et entend mal, et abandonne vite. Il faut trois contacts pour mourir, "
+               "la vie remonte doucement. Batteries et souffle durent plus longtemps."),
+    "Normal": ("L'expérience prévue.",
+               "Le livreur vous traque normalement. Un contact vous blesse, le deuxième est fatal."),
+    "Difficile": ("Il ne pardonne pas.",
+                  "Plus rapide, plus attentif, il entend le moindre pas et cherche plus longtemps. "
+                  "Un seul contact suffit. Batteries et souffle s'épuisent plus vite."),
+    "Cauchemar": ("Une seule nuit. Une seule vie.",
+                  "Le livreur voit presque tout, court vite et ne lâche jamais. Un contact est fatal "
+                  "et la mort efface la sauvegarde : on recommence depuis le début."),
 }
 
 

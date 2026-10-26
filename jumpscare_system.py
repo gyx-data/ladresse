@@ -91,17 +91,21 @@ class JumpscareSystem:
         self.items.append(e)
         return e
 
-    def trigger(self, kind="generic", on_done=None):
-        """Lance le jumpscare. kind : silencieux | rampant | multiple | imposteur | porte | generic."""
+    def trigger(self, kind="generic", on_done=None, fatal=True):
+        """Lance le jumpscare. kind : silencieux | rampant | multiple | imposteur | porte | generic.
+
+        fatal=False : contact encaissé (difficulté) : pas de bruit sourd de mort à la fin."""
         if self.active:
             return
         self.active = True
+        self.fatal = fatal
         self.kind = kind
         self.on_done = on_done
         self.t = 0.0
         reduce = settings["reduire_jumpscares"]
         g = self.game
         g.player.frozen = True
+        g.ui.hud.hide()                          # rien ne doit s'afficher par-dessus le visage
         g.effects.flash(1.0, 0.05 if not reduce else 0.2)
         g.effects.chroma_burst(1.5)
         g.effects.distort_burst(0.6)
@@ -180,7 +184,8 @@ class JumpscareSystem:
             self.lunging = False
         self.root.enabled = False
         self.active = False
-        sound.play("sourd_mort", 0.9, channel="sfx")
+        if getattr(self, "fatal", True):
+            sound.play("sourd_mort", 0.9, channel="sfx")
         cb, self.on_done = self.on_done, None
         if cb:
             cb()

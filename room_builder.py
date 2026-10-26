@@ -870,6 +870,15 @@ def _ring(cx, cz, y, hw, hd, rot=0.0, n=2.6, seg=32, ox=0.0, oz=0.0):
     return pts
 
 
+def lathe(b, tex, cx, cz, y0, profile, col=(1, 1, 1), n=2.0, seg=16, rot=0.0):
+    """Surface de révolution lissée (super-ellipses empilées) : profile = [(y, demi-largeur, demi-profondeur[, dx])]."""
+    rings = []
+    for pr in profile:
+        dx = pr[3] if len(pr) > 3 else 0.0
+        rings.append(_ring(cx, cz, y0 + pr[0], pr[1], pr[2], rot, n, seg, ox=dx))
+    b.loft(tex, rings, col)
+
+
 def _local(cx, cz, rot, lx, lz):
     ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
     return cx + lx * ca + lz * sa, cz - lx * sa + lz * ca
@@ -991,17 +1000,36 @@ def coat_rack(b, cx, cz, y0):
     for k in range(4):
         a = k * math.pi / 2
         b.obox("metal", cx + math.cos(a) * 0.08, y0 + 1.6, cz + math.sin(a) * 0.08, 0.14, 0.03, 0.03, -math.degrees(a), (0.6, 0.6, 0.6))
-    # vieux manteau
-    b.obox("tissu", cx, y0 + 0.8, cz, 0.45, 0.8, 0.14, 0.0, (0.35, 0.3, 0.28))
-    b.obox("tissu", cx, y0 + 1.55, cz, 0.32, 0.12, 0.12, 0.0, (0.3, 0.26, 0.24))
+    # vieux pardessus en laine pendu à une patère : épaules affaissées, pans évasés, manches qui pendent
+    wool = (0.3, 0.25, 0.21)
+    hx = cx + 0.1
+    body = [(1.6, 0.05, 0.035), (1.555, 0.13, 0.06), (1.5, 0.2, 0.085), (1.38, 0.21, 0.1), (1.15, 0.19, 0.1),
+            (0.9, 0.21, 0.1), (0.68, 0.24, 0.1), (0.58, 0.25, 0.095)]
+    lathe(b, "etoffe", hx, cz, y0, body, wool, n=2.3, seg=18)
+    b.cap("etoffe", _ring(hx, cz, y0 + 0.58, 0.24, 0.09, 0.0, 2.3, seg=18), (0, -1, 0), (0.08, 0.07, 0.06))
+    for sx in (-1, 1):
+        sleeve = [(1.48, 0.055, 0.06, sx * 0.19), (1.2, 0.05, 0.055, sx * 0.21), (0.92, 0.055, 0.055, sx * 0.215)]
+        lathe(b, "etoffe", hx, cz + 0.015, y0, sleeve, (wool[0] * 0.9, wool[1] * 0.9, wool[2] * 0.9), n=2.0, seg=10)
+    lathe(b, "etoffe", hx, cz + 0.045, y0, [(1.6, 0.07, 0.03), (1.5, 0.12, 0.04), (1.38, 0.05, 0.02)],
+          (0.24, 0.2, 0.17), n=2.0, seg=12)                                     # col relevé
     b.colliders.append((cx - 0.25, y0, cz - 0.25, cx + 0.25, y0 + 1.8, cz + 0.25))
 
 
 def mannequin(b, cx, cz, y0, rot=0.0):
-    b.cyl("tissu", cx, y0, cz, 0.18, 0.04, 8, (0.35, 0.3, 0.3))
-    b.cyl("metal", cx, y0, cz, 0.02, 0.9, 6, (0.5, 0.5, 0.5))
-    b.obox("tissu", cx, y0 + 0.85, cz, 0.36, 0.55, 0.2, rot, (0.78, 0.7, 0.6))
-    b.sphere("tissu", cx, y0 + 1.55, cz, 0.1, (0.78, 0.7, 0.6), sy=1.3)
+    """Mannequin de couture : buste galbé en toile écrue sur pied tripode, tête ovoïde lisse."""
+    lathe(b, "metal", cx, cz, y0, [(0.0, 0.2, 0.2), (0.03, 0.2, 0.2), (0.05, 0.05, 0.05)], (0.25, 0.22, 0.2), n=2.0, seg=16)
+    b.cyl("metal", cx, y0 + 0.04, cz, 0.018, 0.86, 8, (0.55, 0.52, 0.48))
+    linen = (0.78, 0.7, 0.6)
+    torso = [(0.86, 0.04, 0.04), (0.9, 0.15, 0.1), (0.98, 0.17, 0.11), (1.1, 0.13, 0.09), (1.24, 0.16, 0.11),
+             (1.33, 0.175, 0.115), (1.42, 0.18, 0.1), (1.47, 0.12, 0.07), (1.5, 0.045, 0.045), (1.56, 0.04, 0.04)]
+    lathe(b, "etoffe", cx, cz, y0, torso, linen, n=2.2, seg=20, rot=rot)
+    b.cap("etoffe", _ring(cx, cz, y0 + 0.86, 0.04, 0.04, rot, 2.0, seg=20), (0, -1, 0), linen)
+    head = []
+    for k in range(15):                                  # ovoïde : pôles arrondis (rayon en sin^0.55)
+        a = math.pi * k / 14
+        r = max(0.004, math.sin(a) ** 0.55)
+        head.append((1.66 - 0.13 * math.cos(a), 0.095 * r, 0.11 * r))
+    lathe(b, "etoffe", cx, cz, y0, head, (0.82, 0.76, 0.68), n=2.0, seg=16, rot=rot)
     b.colliders.append((cx - 0.25, y0, cz - 0.2, cx + 0.25, y0 + 1.7, cz + 0.2))
 
 
@@ -1066,12 +1094,13 @@ def painting(b, x, y, z, w, h, facing, tex="portrait", thick=0.03):
     """Cadre accroché à un mur. facing = '+x','-x','+z','-z' (direction de la face visible)."""
     if facing == "+z":
         b.box("bois_meuble", x - w / 2 - 0.03, y - h / 2 - 0.03, z, x + w / 2 + 0.03, y + h / 2 + 0.03, z + thick, DARKWOOD)
-        b.quad(tex, (x - w / 2, y - h / 2, z + thick + 0.002), (x + w / 2, y - h / 2, z + thick + 0.002),
-               (x + w / 2, y + h / 2, z + thick + 0.002), (x - w / 2, y + h / 2, z + thick + 0.002), (0, 0, 1), (1, 1, 1), tile=(w, h))
+        # vu depuis +z (regard vers -z), la droite de l'écran est -x : u part de x + w/2 (sinon image en miroir)
+        b.quad(tex, (x + w / 2, y - h / 2, z + thick + 0.002), (x - w / 2, y - h / 2, z + thick + 0.002),
+               (x - w / 2, y + h / 2, z + thick + 0.002), (x + w / 2, y + h / 2, z + thick + 0.002), (0, 0, 1), (1, 1, 1), tile=(w, h))
     elif facing == "-z":
         b.box("bois_meuble", x - w / 2 - 0.03, y - h / 2 - 0.03, z - thick, x + w / 2 + 0.03, y + h / 2 + 0.03, z, DARKWOOD)
-        b.quad(tex, (x + w / 2, y - h / 2, z - thick - 0.002), (x - w / 2, y - h / 2, z - thick - 0.002),
-               (x - w / 2, y + h / 2, z - thick - 0.002), (x + w / 2, y + h / 2, z - thick - 0.002), (0, 0, -1), (1, 1, 1), tile=(w, h))
+        b.quad(tex, (x - w / 2, y - h / 2, z - thick - 0.002), (x + w / 2, y - h / 2, z - thick - 0.002),
+               (x + w / 2, y + h / 2, z - thick - 0.002), (x - w / 2, y + h / 2, z - thick - 0.002), (0, 0, -1), (1, 1, 1), tile=(w, h))
     elif facing == "+x":
         b.box("bois_meuble", x, y - h / 2 - 0.03, z - w / 2 - 0.03, x + thick, y + h / 2 + 0.03, z + w / 2 + 0.03, DARKWOOD)
         b.quad(tex, (x + thick + 0.002, y - h / 2, z - w / 2), (x + thick + 0.002, y - h / 2, z + w / 2),

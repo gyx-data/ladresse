@@ -553,13 +553,13 @@ class Player:
         # stamina
         self.energy_t = max(0.0, getattr(self, "energy_t", 0.0) - dt)
         if self.sprinting and self.moving:
-            drain = config.STAMINA_DRAIN * (0.1 if self.energy_t > 0 else 1.0)
+            drain = config.STAMINA_DRAIN * config.diff("stamina") * (0.1 if self.energy_t > 0 else 1.0)
             self.stamina = max(0.0, self.stamina - drain * dt)
             self.stamina_delay = 1.2
         else:
             self.stamina_delay = max(0.0, self.stamina_delay - dt)
             if self.stamina_delay <= 0:
-                self.stamina = min(100.0, self.stamina + config.STAMINA_REGEN * dt)
+                self.stamina = min(100.0, self.stamina + config.STAMINA_REGEN * config.diff("recovery") * dt)
         # stress : décroît lentement, augmente dans le noir complet
         dark = not self.flashlight.on and self.light_level < 0.15
         if dark and self.dark_stress and self.state.act >= 1 and not self.phone_open:
@@ -571,6 +571,7 @@ class Player:
             self.add_stress(5.0 * dt)
         # batteries
         self.state.player_battery_light = self.flashlight.battery
+        self.state.player_health = self.health
         # respiration / battement de coeur
         heavy = self.stamina < 15 or (self.sprinting and self.stamina < 60) or self.stress > 70
         if heavy:

@@ -148,8 +148,9 @@ def _rdc(house, rng):
     b.obox("metal", 0.9, y0, 1.7, 0.04, 0.04, 0.7, 20, (0.2, 0.2, 0.2))    # tisonnier
     point(house, "tisonnier", (0.9, 0.1, 1.7), "Ramasser", 0, radius=0.9)
     rb.bookshelf  # (déjà utilisé)
-    # cadre photo au mur (mur est, entre l'angle et la porte : le mur nord est l'arche vers la cuisine)
+    # cadre photo au mur (mur est, entre l'angle et la porte)
     rb.painting(b, 5.9, 1.7, 1.2, 0.7, 0.5, "-x", tex="portrait")
+    rb.painting(b, 3.1, 1.75, 5.9, 1.1, 0.72, "-z", tex="paysage")                          # marine au-dessus du canapé
     # reveals : silhouette dans le fauteuil
     hidden_entity(house, 0, "silhouette", (1.75, 0.85, 4.5), (0.8, 1.5), rot_y=-90, name="fauteuil")
 
@@ -263,7 +264,36 @@ def _rdc(house, rng):
     point(house, "sac_propre", (13.0, 1.0, 11.2), "Examiner le sac", 0, radius=0.9)
     rb.crate(b, 12.7, 9.3, y0)
     rb.crate(b, 13.3, 9.2, y0, 0.4, 25)
-    b.obox("metal", 15.2, y0, 9.5, 0.5, 0.9, 0.04, 40, (0.6, 0.6, 0.6))                      # planche à repasser
+    _ironing_board(b, 15.9, 9.55, y0)
+
+
+def _ironing_board(b, wall_x, cz, y0, length=1.22, lean=13.0):
+    """Planche à repasser repliée, adossée au mur est (x = wall_x) : plateau en goutte housse grise, pieds repliés."""
+    a = math.radians(lean)
+    up, out = (math.sin(a), math.cos(a)), (-math.cos(a), math.sin(a))      # (x, y) : le long du plateau / vers la pièce
+    bx = wall_x - 0.035 - length * math.sin(a)                                 # pied du plateau, le haut touche le mur
+
+    def p(u, v, w):
+        return (bx + u * up[0] + w * out[0], y0 + 0.03 + u * up[1] + w * out[1], cz + v)
+
+    def hw(u):                                         # demi-largeur : talon arrondi en bas, nez pointu en haut
+        t = u / length
+        if t < 0.08:
+            return 0.17 * math.sqrt(max(0.0, 1 - ((0.08 - t) / 0.08) ** 2))
+        if t > 0.62:
+            return 0.17 * math.sqrt(max(0.0, 1 - ((t - 0.62) / 0.38) ** 2)) ** 1.25
+        return 0.17
+    us = [length * k / 23 for k in range(24)]
+    outline = [(u, hw(u)) for u in us] + [(u, -hw(u)) for u in reversed(us)]
+    outline = [q for i, q in enumerate(outline) if q != outline[i - 1]]          # sans doublons (pointes, bouclage)
+    for (w0, w1, tex, col) in ((0.0, 0.008, "metal", (0.75, 0.75, 0.77)), (0.008, 0.03, "etoffe", (0.5, 0.56, 0.66))):
+        b.loft(tex, [[p(u, v, w0) for (u, v) in outline], [p(u, v, w1) for (u, v) in outline]], col)
+    b.cap("etoffe", [p(u, v, 0.03) for (u, v) in outline], (out[0], out[1], 0.0), (0.5, 0.56, 0.66))
+    # pieds repliés derrière le plateau (tubes chromés), dépassant un peu sous le talon
+    for v in (-0.12, 0.12):
+        b.loft("metal", [[p(u, v + 0.012 * math.cos(2 * math.pi * k / 8), -0.016 + 0.012 * math.sin(2 * math.pi * k / 8))
+                          for k in range(8)] for u in (-0.03, length * 0.9)], (0.78, 0.78, 0.8))
+    b.colliders.append((bx - 0.08, y0, cz - 0.18, wall_x, y0 + 1.15, cz + 0.18))
 
 
 # ---------------------------------------------------------------------------

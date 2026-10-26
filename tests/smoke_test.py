@@ -234,10 +234,17 @@ def scenario():
         check(len(path) > 2, f"{kind} : chemin trouvé entre deux étages ({len(path)} points)")
         yield
 
-    # --- mort puis réessayer ---
+    # --- difficulté : contact encaissé, mort puis réessayer ---
+    from config import settings as _settings
+    _settings["difficulte"] = "Normal"
     game.entity.despawn()
     game.player.revive()
     game.mode = "playing"
+    game.kill_player("entity_contact", kind="rampant")
+    for _ in range(40):
+        yield
+    check(not game.player.dead and game.mode == "playing" and not game.player.frozen and 40 < game.player.health < 60,
+          f"Normal : le premier contact blesse sans tuer (vie {game.player.health:.0f})")
     game.kill_player("entity_contact", kind="rampant")
     for _ in range(40):
         yield
@@ -247,6 +254,16 @@ def scenario():
     game.retry()
     yield from wait(10)
     check(game.mode == "playing", "« Réessayer » recharge la dernière sauvegarde")
+    check(game.player.health == 100.0, "vie pleine après « Réessayer »")
+    _settings["difficulte"] = "Cauchemar"
+    game.save_checkpoint("test")
+    game.player.revive()
+    game.kill_player("entity_contact", kind="rampant")
+    for _ in range(40):
+        yield
+    check(game.mode == "gameover" and not game.saves.exists(), "Cauchemar : un contact tue et efface la sauvegarde")
+    game.ui.gameover.hide()
+    _settings["difficulte"] = "Normal"
 
     # --- fins ---
     for code in ("A", "B", "C", "D"):
