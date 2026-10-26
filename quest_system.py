@@ -118,6 +118,9 @@ class QuestSystem:
             lbl = q.step_label()
             if qid == "favoris" and lbl is not None and "favoris" in q.done_steps:
                 lbl += f" ({len(self.game.favoris.salt_lines())}/3)"
+            if qid == "sous_sol" and q.step_label() is not None and "planches" not in q.done_steps \
+                    and not st.has("pied_de_biche"):
+                lbl = gd.OBJ_FIND_CROWBAR
             if qid == "comprendre" and lbl is None:
                 lbl = gd.OBJ_READ_SUPPORT if (a is not None and a.phase >= 2) else gd.OBJ_WAIT_SUPPORT
             return f"{q.objective}" + (f"\n  > {lbl}" if lbl else "")

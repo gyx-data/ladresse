@@ -43,6 +43,7 @@ class Player:
         self.vy = 0.0
         self.vel = Vec3(0, 0, 0)
         self.on_ground = True
+        self.land_slow = 0.0           # freinage à la réception d'un saut
         self.health = 100.0
         self.stamina = 100.0
         self.stamina_delay = 0.0
@@ -439,6 +440,9 @@ class Player:
         speed *= self.speed_mult
         if self.stamina <= 0:
             speed *= 0.7
+        if self.land_slow > 0:                     # réception d'un saut : on encaisse (pas de bunny hop)
+            self.land_slow = max(0.0, self.land_slow - dt)
+            speed *= 0.55
         if moving:
             n = math.hypot(want_x, want_z)
             want_x, want_z = want_x / n, want_z / n
@@ -458,9 +462,12 @@ class Player:
         moved = math.hypot(nx - self.pos[0], nz - self.pos[2])
         x, z = nx, nz
         # saut
-        if can and held_keys[settings.key("sauter")] and self.on_ground and not self.crouching:
+        if can and held_keys[settings.key("sauter")] and self.on_ground and not self.crouching \
+                and self.stamina >= 12 and self.land_slow <= 0:
             self.vy = config.JUMP_SPEED
             self.on_ground = False
+            self.stamina = max(0.0, self.stamina - 12.0)   # chaque saut essouffle
+            self.stamina_delay = 1.2
             self.emit_noise(4.0, kind="saut")
         # gravité et sol
         y = self.pos[1]
@@ -486,6 +493,7 @@ class Player:
                 y = ground
                 self.on_ground = True
                 self.vy = 0
+                self.land_slow = 0.35
             if y < -40:
                 y = 0.0
                 x, z = 7.0, 0.8

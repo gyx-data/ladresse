@@ -252,6 +252,15 @@ class HouseEvents:
         if not st.has("pied_de_biche"):
             g.say(gd.INTERACT_TEXT["porte_cadenas"])
             sound.play_at("verrou", self.house.doors["cave"].pos, 0.9)
+            if g.quests.is_active("sous_sol"):
+                g.ui.refresh_objective()           # l'objectif indique où chercher l'outil
+            return
+        if not self.cellar_unlocked():
+            # avant la nuit de livraison, rien à faire en bas : les planches ne cèdent pas (on ne peut plus finir
+            # le jeu en 40 s en allant chercher le pied de biche puis le congélateur)
+            sound.play_at("craquement_bois", self.house.doors["cave"].pos, 0.8)
+            g.say(gd.INTERACT_TEXT["planches_tiennent"], voice=False)
+            g.player.add_stress(3)
             return
         n = st.flags.get("planks", 0)
         part = self.house.parts[f"planche_{n}"]
@@ -272,6 +281,10 @@ class HouseEvents:
             self.house.doors["cave"].locked = False
             g.quests.on_event("planks_removed")
             g.say("Le cadenas tombe tout seul. Il n'était même pas fermé.")
+
+    def cellar_unlocked(self):
+        """La cave s'ouvre quand l'histoire y conduit : livraison effectuée (acte 4) ou quête du sous-sol lancée."""
+        return self.state.act >= 4 or self.game.quests.is_active("sous_sol") or self.game.quests.quests["sous_sol"].complete
 
     def h_journaux(self, it):
         st = self.state
@@ -563,7 +576,7 @@ class HouseEvents:
         st.freezer_opened = True
         g.quests.on_event("freezer_opened")
         lid = self.house.parts["congelateur_lid"]
-        lid.animate("rotation_x", -105, duration=1.2, curve=curve.out_cubic)
+        lid.animate("rotation_x", 100, duration=1.4, curve=curve.out_cubic)        # arête avant vers le haut
         sound.play_at("porte_ouvre", self.house.anchors["congelateur"], 0.9, pitch=0.7)
         self.house.parts["tel_fond"].enabled = True
         g.say(gd.INTERACT_TEXT["congelateur_vide"])
@@ -586,7 +599,28 @@ class HouseEvents:
         door = self.house.doors["cave"]
         invoke(lambda: (door.close(0.2, silent=True), sound.play("porte_claque", 1.0)), delay=0.7)
         g.player.add_stress(35)
-        invoke(g.final_event, delay=2.2)
+        invoke(self._final_apparition, delay=1.2)
+        invoke(g.final_event, delay=4.2)
+
+    def _final_apparition(self):
+        """Il est là, de l'autre côté du congélateur, à la lueur des bougies : il fixe le joueur avant la fin."""
+        from ursina import camera, destroy, time as utime
+        from livreur_model import LivreurModel
+        m = LivreurModel(self.house.level_roots[-1])
+        cz = self.house.anchors["congelateur"]
+        # au coin du congélateur (derrière, il serait caché par le couvercle relevé), tourné vers l'escalier (côté -z)
+        m.root.position = Vec3(cz[0] + 1.25, cz[1] - 0.9, cz[2] + 0.35)
+        m.root.rotation_y = 200
+        driver = Entity()
+
+        def _upd():
+            m.look_target = camera.world_position
+            m.animate(utime.dt, 0.0, False, "alert")
+        driver.update = _upd
+        sound.play_at("livreur_rale", m.root.position + Vec3(0, 1.8, 0), 1.0, ref=3.0)
+        self.game.effects.flash(0.3, 0.4)
+        self.game.player.shake(0.5, 0.6)
+        invoke(lambda: destroy(driver), delay=8.0)
 
     # ------------------------------------------------------------------
     # Reflet du miroir

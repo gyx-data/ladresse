@@ -154,6 +154,7 @@ LINE_RETRY_ORDER = "Personne pour m'expliquer. Bon... je réessaie de commander.
 
 # Objectifs d'attente affichés dans le HUD
 OBJ_WAIT_ORDER = "Attendre votre commande QuickEats"
+OBJ_FIND_CROWBAR = "Trouver de quoi arracher les planches de la cave (des outils traînent au grenier ?)"
 OBJ_WAIT_SUPPORT = "Attendre une réponse de QuickEats"
 OBJ_READ_SUPPORT = "Lire les messages de QuickEats Support"
 DELIVERY_TOTAL_SECONDS = 480.0
@@ -318,6 +319,7 @@ WALL_MESSAGE_PHOTO = "Derrière le papier peint, écrit à la main : « IL EST D
 
 INTERACT_TEXT = {
     "porte_cadenas": "La porte est barricadée. Il faudrait un outil pour retirer les planches.",
+    "planches_tiennent": "Les planches ne bougent pas d'un millimètre... comme si quelque chose les retenait de l'autre côté. Pas maintenant.",
     "porte_condamnee": "La porte ne bouge pas. Elle semble bloquée de l'intérieur.",
     "volets_cloues": "Les volets sont cloués de l'extérieur.",
     "four": "Ça sent le brûlé.",

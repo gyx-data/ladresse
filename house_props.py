@@ -781,13 +781,15 @@ def _sous_sol(house, rng):
     # cercle sombre autour du congélateur
     rb.floor_decal(b, "cercle_sombre", cx, y0, cz, 5.0, 5.0, 0.0, (1, 1, 1))
     rb.freezer(b, cx, cz, y0)
-    house.parts["congelateur_couvercle"] = hinged(house, -1, (cx - 0.9, cz - 0.45), 1.8, 0.06, 0.9, (1, 0), (0, 0), "email", (0.95, 0.95, 0.95), y0=y0 + 0.82)
-    # le couvercle est une boîte plate articulée (axe horizontal) : on le remplace par une pièce simple
-    lid = house.parts["congelateur_couvercle"]
-    lid.pivot.enabled = False
-    lid_root = Entity(parent=house.level_roots[-1], position=(cx - 0.9, y0 + 0.82, cz))
+    # couvercle articulé sur son arête arrière (charnières côté mur) : il se relève vers le haut et l'arrière,
+    # au lieu de tourner autour de son milieu en traversant la cuve
+    lid_root = Entity(parent=house.level_roots[-1], position=(cx, y0 + 0.82, cz + 0.45))
     lid_b = MeshBuilder("lid")
-    lid_b.box("email", 0, 0, -0.45, 1.8, 0.07, 0.45, (0.95, 0.95, 0.95))
+    lid_b.box("email", -0.9, 0.0, -0.9, 0.9, 0.07, 0.0, (0.95, 0.95, 0.95))
+    lid_b.box("etoffe", -0.84, -0.012, -0.86, 0.84, 0.0, -0.04, (0.3, 0.3, 0.32))              # joint caoutchouc
+    lid_b.box("metal", -0.12, 0.02, -0.935, 0.12, 0.05, -0.9, (0.75, 0.75, 0.78))             # poignée
+    for hx in (-0.6, 0.6):
+        rb.rod(lid_b, "metal", (hx - 0.06, 0.02, 0.01), (hx + 0.06, 0.02, 0.01), 0.014, col=(0.6, 0.6, 0.62), caps=True)
     lid_b.build(parent=lid_root)
     house.parts["congelateur_lid"] = lid_root
     A["congelateur"] = Vec3(cx, y0 + 0.9, cz)
