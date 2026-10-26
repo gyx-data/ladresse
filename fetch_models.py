@@ -24,6 +24,7 @@ MODELS = [
     # quartier
     "street_lamp_01", "metal_trash_can", "concrete_road_barrier",
     "outdoor_table_chair_set_01", "CashRegister_01", "WetFloorSign_01", "utility_box_01", "covered_car", "Barrel_01",
+    "Chandelier_01", "pull_chain_light_socket",
     # supérette : fruits et légumes, boulangerie, conserves, cagettes
     "food_apple_01", "lemon", "food_lime_01", "food_avocado_01", "food_kiwi_01", "food_pears_asian_01",
     "food_pomegranate_01", "yellow_onion", "sweet_potato", "food_ginger_01", "bananas", "croissant", "hamburger_buns",

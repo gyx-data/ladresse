@@ -71,6 +71,7 @@ def populate_house(house):
     _etage(house, rng)
     _grenier(house, rng)
     _sous_sol(house, rng)
+    _ceiling_fixtures(house)
     _lights(house)
 
 
@@ -481,6 +482,27 @@ def _sous_sol(house, rng):
     for k in range(3):
         b.box("metal", 3.2, y0 + 2.05, 17.0 + k * 2.5, 10.8, y0 + 2.2, 17.1 + k * 2.5, (0.4, 0.4, 0.42))
     house.anchors["basement_center"] = Vec3(cx, y0 + 1.0, cz)
+
+
+def _ceiling_fixtures(house):
+    """Luminaires au plafond (éteints : l'électricité est coupée) : lustre ancien dans les pièces de vie,
+    ampoule nue sur douille au bout de son fil ailleurs. Le couloir de l'étage garde son néon."""
+    import config as _cfg
+    chandeliers = {"salon", "master", "cuisine"}
+    skip = {"couloir1", "cave_acces", "placard", "grenier"}
+    for r in house.rooms.values():
+        if r.id in skip or r.level not in (-1, 0, 1):
+            continue
+        b = house.b(r.level)
+        cx, cz = r.center
+        ceil = LEVEL_Y[r.level] + (_cfg.BASEMENT_CEIL_H if r.level == -1 else 2.8)
+        if r.id in chandeliers:
+            b.model("Chandelier_01", cx, cz, ceil - 0.8, 0.0, (None, 0.8, None))
+        else:
+            drop = 0.5 if r.level >= 0 else 0.3
+            b.cyl("metal", cx, ceil - drop, cz, 0.006, drop, 6, (0.08, 0.08, 0.08))        # fil électrique
+            b.cyl("metal", cx, ceil - 0.01, cz, 0.045, 0.01, 12, (0.85, 0.84, 0.8))       # rosace
+            b.model("pull_chain_light_socket", cx, cz, ceil - drop - 0.17, 0.0, (None, 0.17, None))
 
 
 def _lights(house):
