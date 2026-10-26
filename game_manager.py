@@ -548,6 +548,8 @@ class GameManager:
     # Utilitaires
     # ------------------------------------------------------------------
     def set_mouse(self, free):
+        if not free and self.paused:
+            free = True                 # une fenêtre qui se ferme pendant la pause ne doit pas capturer la souris
         mouse.locked = not free
         mouse.visible = free
 

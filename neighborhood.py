@@ -47,6 +47,32 @@ DAY = "21/10"
 NPC_VOICES = {"Mme Bianchi": 215, "Karim": 118, "Jean-Mi": 105, "Lucie": 225, "Théo": 122, "Nino": 98, "Sandrine": 210,
               "Moussa": 100, "Brigadier Rossi": 110, "Gardien Martin": 128, "Inès": 230}
 
+# apparence de chaque habitant (corps, âge, tenue, coiffure...) — clé = nom du PNJ
+NPC_LOOKS = {
+    "Mme Bianchi": dict(body="f", age="âgé", outfit="manteau", hair_style="chignon", glasses=True,
+                        jacket=(0.42, 0.12, 0.16), pants=(0.2, 0.18, 0.2), shoes=(0.08, 0.06, 0.05)),
+    "Karim": dict(body="m", outfit="survetement", hair_style="rase", beard="barbe",
+                  jacket=(0.1, 0.12, 0.2), pants=(0.1, 0.12, 0.2), shoes=(0.9, 0.9, 0.9)),
+    "Jean-Mi": dict(body="m", age="adulte", outfit="gilet", hair_style="court", hair=(0.55, 0.53, 0.5), glasses=True,
+                    belly=True, beard="moustache", jacket=(0.36, 0.3, 0.22), pants=(0.25, 0.25, 0.28)),
+    "Lucie": dict(body="f", outfit="robe", hair_style="long", hair=(0.35, 0.18, 0.1),
+                  jacket=(0.62, 0.08, 0.14), shoes=(0.08, 0.05, 0.06)),
+    "Théo": dict(body="m", outfit="chemise", hair_style="court", beard="barbe",
+                 jacket=(0.2, 0.38, 0.32), pants=(0.16, 0.2, 0.32)),
+    "Nino": dict(body="m", age="âgé", outfit="cuisinier", hair_style="court", beard="moustache", belly=True,
+                 jacket=(0.95, 0.95, 0.93), pants=(0.15, 0.15, 0.17)),
+    "Sandrine": dict(body="f", outfit="polo", hair_style="queue", hair=(0.5, 0.33, 0.18),
+                     jacket=(0.1, 0.27, 0.68), pants=(0.12, 0.13, 0.16)),
+    "Moussa": dict(body="m", outfit="securite", hair_style="rase",
+                   jacket=(0.08, 0.08, 0.09), pants=(0.08, 0.08, 0.09)),
+    "Brigadier Rossi": dict(body="m", outfit="uniforme", hair_style="court", beard="moustache",
+                            jacket=(0.12, 0.15, 0.32), pants=(0.12, 0.14, 0.28)),
+    "Gardien Martin": dict(body="m", outfit="uniforme", hair_style="rase",
+                           jacket=(0.12, 0.15, 0.32), pants=(0.12, 0.14, 0.28)),
+    "Inès": dict(body="f", outfit="doudoune", hair_style="long", hair=(0.08, 0.06, 0.05),
+                 jacket=(0.36, 0.22, 0.5), pants=(0.14, 0.16, 0.26), shoes=(0.92, 0.92, 0.92)),
+}
+
 
 def _txt_tex(text, px=96, fg=(255, 255, 255), bg=None, pad=18, bold=True, kind="sans"):
     """Texture d'enseigne (texte rendu avec Pillow)."""
@@ -69,41 +95,18 @@ def sign(parent, text, pos, height, rot_y=0.0, fg=(255, 255, 255), bg=None, px=9
     return e
 
 
-def car_mesh(b, cx, cz, col, along_x=True, police=False, y=0.0):
-    """Citadine stylisée (4,1 m). Retourne les positions des phares (pour les builders émissifs)."""
-    rot = 0 if along_x else 90
-    L, W = 4.1, 1.76
-    body = (0.92, 0.92, 0.94) if police else col
-    b.obox("metal", cx, y + 0.18, cz, L, 0.5, W, rot, body)
-    b.obox("metal", cx, y + 0.68, cz, L - 0.5, 0.1, W - 0.04, rot, body)
-    dx = 0.2
-    ccx, ccz = (cx - dx, cz) if along_x else (cx, cz - dx)
-    b.obox("vitre", ccx, y + 0.78, ccz, 2.2, 0.5, W - 0.14, rot, (0.25, 0.3, 0.36))
-    b.obox("metal", ccx, y + 1.27, ccz, 2.0, 0.05, W - 0.2, rot, body)
-    if police:
-        # bandes bleu / rouge latérales
-        b.obox("metal", cx, y + 0.42, cz, L + 0.01, 0.1, W + 0.01, rot, (0.1, 0.2, 0.65))
-        b.obox("metal", cx, y + 0.36, cz, L + 0.012, 0.03, W + 0.012, rot, (0.8, 0.1, 0.12))
-    # roues (boîtes sombres) + jantes
-    for wx in (-1.3, 1.3):
-        for wz in (-0.82, 0.82):
-            px_, pz_ = (cx + wx, cz + wz) if along_x else (cx + wz, cz + wx)
-            b.obox("beton", px_, y, pz_, 0.64, 0.62, 0.22, rot, (0.08, 0.08, 0.08))
-            b.obox("metal", px_, y + 0.18, pz_, 0.3, 0.26, 0.235, rot, (0.55, 0.56, 0.6))
-    # plaques
-    for s in (-1, 1):
-        px_, pz_ = (cx + s * (L / 2 + 0.005), cz) if along_x else (cx, cz + s * (L / 2 + 0.005))
-        b.obox("platre", px_, y + 0.3, pz_, 0.02 if along_x else 0.52, 0.12, 0.52 if along_x else 0.02, 0, (0.95, 0.95, 0.95))
-    return rot
+def car_mesh(b, cx, cz, col, along_x=True, police=False, y=0.0, kind=None):
+    """Voiture modelée (voir car_builder.py) : citadine, berline ou utilitaire."""
+    import car_builder
+    if kind is None:
+        kind = "berline" if police else car_builder.KINDS[int(abs(col[0] * 97 + col[1] * 53 + col[2] * 29)) % 3]
+    return car_builder.build(b, cx, cz, col, along_x, kind, police, y)
 
 
-def car_lights(be, cx, cz, along_x=True, front_sign=1, y=0.0):
+def car_lights(be, cx, cz, along_x=True, front_sign=1, y=0.0, kind="berline"):
     """Phares avant (blancs) et feux arrière (rouges) dans un builder émissif."""
-    L = 4.1
-    for s, col in ((front_sign, (1.0, 0.95, 0.8)), (-front_sign, (0.9, 0.05, 0.05))):
-        for o in (-0.62, 0.62):
-            px_, pz_ = (cx + s * (L / 2 + 0.01), cz + o) if along_x else (cx + o, cz + s * (L / 2 + 0.01))
-            be.obox("neon", px_, y + 0.46, pz_, 0.04 if along_x else 0.3, 0.12, 0.3 if along_x else 0.04, 0, col)
+    import car_builder
+    car_builder.lights(be, cx, cz, along_x, front_sign, y, kind)
 
 
 # =============================================================================
@@ -111,7 +114,7 @@ def car_lights(be, cx, cz, along_x=True, front_sign=1, y=0.0):
 # =============================================================================
 class NPC:
     def __init__(self, hood, name, pos, lines, jacket, pants=(0.3, 0.32, 0.4), path=None, speed=1.3, pose="idle",
-                 yaw=0.0, f0=140, seed=0, hat=None, talk_cb=None):
+                 yaw=0.0, f0=140, seed=0, hat=None, talk_cb=None, look=None):
         self.hood = hood
         self.name = name
         self.lines = list(lines)
@@ -123,7 +126,11 @@ class NPC:
         self.f0 = f0
         self.talk_cb = talk_cb
         self.root = Entity(parent=hood.npc_root, position=pos, rotation_y=yaw)
-        self.model = CharacterModel(parent=self.root, jacket=jacket, pants=pants, flashlight=False, seed=seed, emit=0.1)
+        look = dict(look or {})
+        jacket = look.pop("jacket", jacket)
+        pants = look.pop("pants", pants)
+        self.model = CharacterModel(parent=self.root, jacket=jacket, pants=pants, flashlight=False, seed=seed, emit=0.1,
+                                    logo=False, **look)
         if hat == "police":
             b = MeshBuilder("kepi")
             b.cyl("etoffe", 0, 0.2, 0, 0.12, 0.08, 10, (0.1, 0.12, 0.25))
@@ -136,7 +143,7 @@ class NPC:
             vb.build(parent=self.model.torso, emit=0.25)
         elif hat == "bonnet":
             b = MeshBuilder("bonnet")
-            b.sphere("etoffe", 0, 0.2, -0.01, 0.12, (0.6, 0.15, 0.15), lat=4, lon=8, sy=0.8)
+            b.sphere("tricot", 0, 0.2, -0.01, 0.12, (0.6, 0.15, 0.15), lat=4, lon=8, sy=0.8)
             b.build(parent=self.model.head, emit=0.1)
         self.yaw = yaw
         self.wait = 0.0
@@ -209,11 +216,13 @@ class TrafficCar:
         self.id = cid
         self.honked = 0.0
         self.root = Entity(parent=hood.dyn_root, position=(start_x, 0, lane_z), rotation_y=0 if direction > 0 else 180)
+        import car_builder
+        kind = car_builder.KINDS[int(cid.rsplit("_", 1)[-1]) % len(car_builder.KINDS)] if cid[-1:].isdigit() else "berline"
         b = MeshBuilder("voiture")
-        car_mesh(b, 0, 0, col, True)
+        car_mesh(b, 0, 0, col, True, kind=kind)
         b.build(parent=self.root, emit=0.05)
         be = MeshBuilder("phares")
-        car_lights(be, 0, 0, True, 1)
+        car_lights(be, 0, 0, True, 1, kind=kind)
         be.build(parent=self.root, emit=1.0)
         self.light = LightSource((start_x, 0.8, lane_z), (1.0, 0.92, 0.75), 1.4, 11.0, kind="static", name=f"phares_{cid}")
         hood.lights.append(self.light)
@@ -355,8 +364,8 @@ class Neighborhood:
         parked = [(-22.0, -8.3), (-38.0, -8.3), (36.0, -8.3), (64.0, -8.3), (-50.0, -15.1), (-27.0, -15.1), (4.0, -15.1),
                   (70.0, -15.1), (90.0, -8.3)]
         for i, (px_, pz_) in enumerate(parked):
-            # voitures de voisins sous bâche (modèle 3D) ; à défaut, citadine en boîtes
-            if not b.model("covered_car", px_, pz_, 0.0, 0.0, (4.1, 1.5, 1.8), free_yaw=True):
+            # quelques voitures sous bâche (modèle 3D), les autres modelées (citadine / berline / utilitaire)
+            if i not in (2, 6) or not b.model("covered_car", px_, pz_, 0.0, 0.0, (4.1, 1.5, 1.8), free_yaw=True):
                 car_mesh(b, px_, pz_, car_cols[i % len(car_cols)], True)
             cols.append((px_ - 2.1, 0, pz_ - 0.9, px_ + 2.1, 1.5, pz_ + 0.9))
         # scooter de livraison abandonné (référence au livreur disparu)
@@ -375,8 +384,9 @@ class Neighborhood:
         self.gyro_lights = [LightSource(self.police_pos + Vec3(-0.6, 1.8, 0), (0.2, 0.35, 1.0), 1.8, 10.0, name="gyro_bleu"),
                             LightSource(self.police_pos + Vec3(0.6, 1.8, 0), (1.0, 0.15, 0.1), 1.4, 9.0, name="gyro_rouge")]
         self.lights.extend(self.gyro_lights)
-        sign(self.root, "POLICE", (self.police_pos[0] + 0.89, 0.62, self.police_pos[2]), 0.22, 90, (20, 40, 140))
-        sign(self.root, "POLICE", (self.police_pos[0] - 0.89, 0.62, self.police_pos[2]), 0.22, -90, (20, 40, 140))
+        # lettrage lisible des deux côtés (le quad est vu de face côté extérieur)
+        sign(self.root, "POLICE", (self.police_pos[0] + 0.9, 0.72, self.police_pos[2]), 0.22, -90, (20, 40, 140))
+        sign(self.root, "POLICE", (self.police_pos[0] - 0.9, 0.72, self.police_pos[2]), 0.22, 90, (20, 40, 140))
         # limites de la zone (murs invisibles)
         for c in ((X_MIN - 1, -1, Z_MIN - 1, X_MIN, 6, Z_MAX + 1), (X_MAX, -1, Z_MIN - 1, X_MAX + 1, 6, Z_MAX + 1),
                   (X_MIN - 1, -1, Z_MIN - 1, X_MAX + 1, 6, Z_MIN), (X_MIN - 1, -1, Z_MAX, X_MAX + 1, 6, Z_MAX + 1)):
@@ -791,7 +801,7 @@ class Neighborhood:
             talk_cb = self._talk_nino if s["name"] == "Nino" else None
             self.npcs.append(NPC(self, s["name"], s["pos"], lines, s["jacket"], s.get("pants", (0.3, 0.32, 0.4)), s.get("path"),
                                  s.get("speed", 1.3), s.get("pose", "idle"), s.get("yaw", 0.0), NPC_VOICES.get(s["name"], 140), s.get("seed", 0),
-                                 s.get("hat"), talk_cb))
+                                 s.get("hat"), talk_cb, NPC_LOOKS.get(s["name"])))
 
     def _talk_nino(self):
         self.counter.open()

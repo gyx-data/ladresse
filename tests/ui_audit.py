@@ -18,6 +18,7 @@ from ursina import application                     # noqa: E402
 from main import app, game                         # noqa: E402
 from config import settings                        # noqa: E402
 import config                                      # noqa: E402
+config.settings["pause_auto"] = False                # la fenêtre de test perd souvent le focus
 from ui_widgets import audit_overflow              # noqa: E402
 
 problems = []

@@ -287,19 +287,36 @@ class PauseMenu:
         label(self.root, "PAUSE", 0, 0.275, 3.0, rgb(*BONE), z=0, font=T.F_HORROR)
         rect(self.root, 0, 0.225, 0.2, 0.003, rgb(*BLOOD), z=0)
         self.items = []
-        y = 0.14
+        y = 0.16
         for text, cb, style in (("Reprendre", game.resume, "primary"), ("Paramètres", game.show_settings, "dark"),
+                                ("Didacticiel", self.toggle_tutorial, "dark"),
                                 ("Menu principal", game.confirm_main_menu, "dark"), ("Quitter le jeu", game.quit_game, "ghost")):
-            self.items.append(button(self.root, text, 0, y, 0.4, 0.06, cb, style=style, size=0.9))
-            y -= 0.078
-        self.info = label(self.root, "", 0, -0.2, 0.65, rgb(200, 192, 180), z=0, wrap=48, font=T.F_TYPE)
-        self.hint = label(self.root, "Sauvegarde automatique à chaque étape importante.", 0, -0.3, 0.55, rgb(130, 128, 125), z=0)
+            self.items.append(button(self.root, text, 0, y, 0.4, 0.056, cb, style=style, size=0.85))
+            y -= 0.068
+        self.tuto_btn = self.items[2]
+        self.info = label(self.root, "", 0, -0.215, 0.62, rgb(200, 192, 180), z=0, wrap=48, font=T.F_TYPE)
+        self.hint = label(self.root, "Sauvegarde automatique à chaque étape importante.", 0, -0.31, 0.55, rgb(130, 128, 125), z=0)
+
+    def _tuto_text(self):
+        return "Didacticiel : " + ("activé" if config.settings.get("didacticiel", True) else "désactivé")
+
+    def toggle_tutorial(self):
+        on = not config.settings.get("didacticiel", True)
+        tut = getattr(self.game, "tutorial", None)
+        if tut is not None:
+            tut.set_enabled(on)
+        else:
+            config.settings["didacticiel"] = on
+            config.settings.save()
+        self.tuto_btn.set_text(self._tuto_text())
 
     def show(self):
         g = self.game
         m, s_ = divmod(int(g.state.stats.get("play_time", 0)), 60)
         obj = g.ui.hud.obj.text.strip() or "—"
         self.info.text = f"Objectif : {obj}\nTemps de jeu : {m} min {s_:02d} s   ·   Vue : {config.settings['vue']}"
+        self.tuto_btn.set_text(self._tuto_text())
+        self.tuto_btn.enabled = not self.game.is_multiplayer
         self.root.enabled = True
 
     def hide(self):

@@ -510,6 +510,95 @@ def tex_cloth_neutral(rng):
     return to_img(arr)
 
 
+@register("jean", 128)
+def tex_denim(rng):
+    """Toile de jean neutre (sergé diagonal), teintée par la couleur du vêtement."""
+    s = 128
+    n = fbm(s, rng, base=10, octaves=3)
+    yy, xx = np.mgrid[:s, :s]
+    twill = 0.5 + 0.5 * np.sin((xx + yy) * 1.6)
+    arr = lerp_color(n * 0.5 + twill * 0.5, (176, 180, 186), (238, 238, 240))
+    fade = fbm(s, rng, base=3, octaves=2)
+    arr *= (0.92 + 0.12 * fade)[..., None]
+    return to_img(arr)
+
+
+@register("tricot", 128)
+def tex_knit(rng):
+    """Maille tricotée (pulls, gilets, bonnets) : rangées de petits V."""
+    s = 128
+    yy, xx = np.mgrid[:s, :s]
+    v = np.abs(((xx % 8) - 4)) * 0.6 + (yy % 6)
+    knit = 0.5 + 0.5 * np.sin(v * 1.05)
+    n = fbm(s, rng, base=8, octaves=2)
+    arr = lerp_color(knit * 0.7 + n * 0.3, (170, 170, 170), (240, 240, 240))
+    return to_img(arr)
+
+
+@register("cuir", 128)
+def tex_leather(rng):
+    """Cuir (chaussures, ceintures, blousons) : grain fin et légère brillance."""
+    s = 128
+    n = fbm(s, rng, base=16, octaves=4, persistence=0.6)
+    cells = fbm(s, rng, base=24, octaves=1)
+    arr = lerp_color(n * 0.6 + cells * 0.4, (150, 150, 150), (230, 230, 230))
+    yy = np.mgrid[:s, :s][0]
+    arr *= (0.95 + 0.1 * np.exp(-((yy - s * 0.3) / (s * 0.12)) ** 2))[..., None]
+    return to_img(arr)
+
+
+@register("doudoune", 128)
+def tex_puffer(rng):
+    """Doudoune matelassée : bandes horizontales gonflées et coutures."""
+    s = 128
+    yy = np.mgrid[:s, :s][0].astype(float)
+    band = (yy % 32) / 32.0
+    puff = np.sin(band * np.pi) ** 0.6
+    arr = lerp_color(puff, (120, 120, 124), (245, 245, 248))
+    seam = (yy % 32) < 2
+    arr[seam] *= 0.55
+    n = fbm(s, rng, base=6, octaves=2)
+    arr *= (0.95 + 0.08 * n)[..., None]
+    return to_img(arr)
+
+
+@register("carrosserie", 256)
+def tex_car_paint(rng):
+    """Peinture de carrosserie : vernis lisse, reflet du ciel en haut, paillettes discrètes."""
+    s = 256
+    yy, xx = np.mgrid[:s, :s].astype(float)
+    sky = 0.86 + 0.14 * np.clip(1.0 - yy / (s * 0.55), 0, 1)
+    streak = 0.06 * np.exp(-((yy - s * 0.32) / (s * 0.04)) ** 2)
+    flakes = (rng.random((s, s)) > 0.985) * 0.06
+    v = np.clip(sky + streak + flakes, 0, 1.1)
+    arr = np.dstack([v * 236, v * 238, v * 242])
+    return to_img(arr)
+
+
+@register("pneu", 128)
+def tex_tire(rng):
+    """Gomme de pneu : sculptures en chevrons sur fond très sombre (couleur de sommet claire)."""
+    s = 128
+    yy, xx = np.mgrid[:s, :s]
+    chev = ((xx + np.abs((yy % 16) - 8)) % 12) < 5
+    arr = np.full((s, s, 3), 34.0)
+    arr[chev] = 22.0
+    n = fbm(s, rng, base=10, octaves=2)
+    arr *= (0.9 + 0.2 * n)[..., None]
+    return to_img(arr)
+
+
+@register("jante", 128)
+def tex_rim(rng):
+    """Alliage brossé (jantes, chromes)."""
+    s = 128
+    n = fbm(s, rng, base=4, octaves=2, stretch=(1, 12))
+    yy = np.mgrid[:s, :s][0]
+    arr = lerp_color(n, (170, 172, 178), (250, 250, 252))
+    arr *= (0.9 + 0.12 * np.sin(yy / s * np.pi * 3))[..., None]
+    return to_img(arr)
+
+
 @register("peau", 64)
 def tex_skin(rng):
     s = 64

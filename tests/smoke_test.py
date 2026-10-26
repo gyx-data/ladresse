@@ -24,6 +24,7 @@ import main as M                                   # crée la fenêtre et le Gam
 from ursina import application, Vec3
 from main import app, game
 import config                                      # noqa: E402
+config.settings["pause_auto"] = False                # la fenêtre de test perd souvent le focus
 
 failures = []
 

@@ -74,6 +74,7 @@ class Tutorial:
         self.success_t = 0.0
         self.base = {}
         self.forced = False
+        self.voice = None
 
     # ------------------------------------------------------------------
     @property
@@ -90,6 +91,22 @@ class Tutorial:
         self.root.enabled = False
         self.cur = None
         self.forced = False
+        self.stop_voice()
+
+    def stop_voice(self):
+        h, self.voice = self.voice, None
+        try:
+            if h is not None:
+                h.stop()
+        except Exception:
+            pass
+
+    def set_enabled(self, on):
+        """Active / coupe le didacticiel tout de suite (paramètres, menu pause)."""
+        settings["didacticiel"] = bool(on)
+        settings.save()
+        if not on:
+            self.hide()
 
     def force(self, sid):
         """Affiche une étape précise (tests d'interface)."""
@@ -161,10 +178,14 @@ class Tutorial:
         self.text = label(r, txt, x - self.W / 2 + 0.025, ty, 0.62, rgb(236, 234, 228), origin=(-0.5, 0), z=0,
                           wrap=56, max_w=self.W - 0.045, max_h=0.072 if step["keys"] else 0.09)
         self.check = label(r, "", x + self.W / 2 - 0.03, y - h / 2 + 0.02, 0.7, rgb(120, 220, 140), z=0)
+        label(r, "Couper : Échap > Didacticiel", x + self.W / 2 - 0.02, y - h / 2 - 0.016, 0.42, rgb(120, 116, 110),
+              origin=(0.5, 0), z=0)
         self.root.enabled = True
         if voice:
             sound.play("tuto_carillon", 0.5, channel="voice")
-            sound.speak(step["voice"], f0=205, speed=1.0, volume=0.85, channel="voice", subtitle=False, speaker="Didacticiel")
+            self.stop_voice()
+            self.voice = sound.speak(step["voice"], f0=205, speed=1.0, volume=0.85, channel="voice", subtitle=False,
+                                     speaker="Didacticiel")
 
     def _completed(self, step):
         g = self.game
@@ -196,6 +217,8 @@ class Tutorial:
             if self.root.enabled and (not self.enabled or g.mode != "playing"):
                 self.root.enabled = False
                 self.cur = None
+            if not self.enabled:
+                self.stop_voice()
             return
         if self.cur is None:
             self.gap -= dt

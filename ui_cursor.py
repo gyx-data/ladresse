@@ -1,52 +1,53 @@
-"""Curseur de souris d'ambiance : pointe blanche effilée qui respire, traînée fantôme,
-anneau rotatif au survol d'un élément cliquable, écrasement au clic.
+"""Curseur de souris : flèche blanche aux bords arrondis, fin liseré gris et ombre douce
+(lisible sur fond noir comme sur le papier clair). Légèrement agrandi au survol d'un élément cliquable,
+écrasé au clic, halo blanc discret au survol.
 
 Remplace le curseur du système dès que la souris est libre (menus, téléphone, documents).
 Dessiné avec Pillow au lancement : aucun fichier externe.
 """
-import math
-import random
-
 from PIL import Image, ImageDraw, ImageFilter
 from ursina import Entity, Button, camera, mouse, time, color, Vec3
 
 import ui_theme as theme
 
 S = 128                 # taille des textures (px)
-SIZE = 0.034            # taille à l'écran (unités d'interface)
-TIP = (14, 10)          # position de la pointe dans la texture (px)
+SIZE = 0.032            # taille à l'écran (unités d'interface)
+TIP = (20, 14)          # position de la pointe dans la texture (px)
+
+# flèche classique (pointe en haut à gauche, queue en bas à droite)
+_ARROW = [(20, 14), (20, 98), (41, 78), (55, 110), (71, 103), (58, 72), (87, 72)]
+
+
+def _rounded_mask(k=8, radius=4.5):
+    """Silhouette aux coins arrondis : polygone flouté puis seuillé (arrondit les angles saillants et rentrants)."""
+    big = Image.new("L", (S * k, S * k), 0)
+    ImageDraw.Draw(big).polygon([(x * k, y * k) for x, y in _ARROW], fill=255)
+    big = big.filter(ImageFilter.GaussianBlur(radius * k)).point(lambda v: 255 if v >= 128 else 0)
+    return big.resize((S, S), Image.LANCZOS)
 
 
 def _pointer_img():
-    # silhouette : flèche longue et fine, encoche asymétrique (griffe)
-    pts = [(14, 10), (14, 104), (38, 80), (56, 118), (70, 111), (52, 75), (88, 73)]
-    k = 4
-    big = Image.new("RGBA", (S * k, S * k), (0, 0, 0, 0))
-    d = ImageDraw.Draw(big)
-    d.polygon([(x * k, y * k) for x, y in pts], fill=(255, 255, 255, 255))
-    img = big.resize((S, S), Image.LANCZOS)
-    # ombre très légère : la pointe reste lisible sur le papier clair
+    mask = _rounded_mask()
+    out = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    # ombre portée douce
     shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    shadow.putalpha(img.split()[3].point(lambda v: int(v * 0.55)))
-    shadow = shadow.transform((S, S), Image.AFFINE, (1, 0, -2, 0, 1, -3)).filter(ImageFilter.GaussianBlur(2.2))
-    return Image.alpha_composite(shadow, img)
+    shadow.putalpha(mask.point(lambda v: int(v * 0.45)))
+    shadow = shadow.transform((S, S), Image.AFFINE, (1, 0, -2, 0, 1, -3)).filter(ImageFilter.GaussianBlur(3))
+    out = Image.alpha_composite(out, shadow)
+    # liseré gris très fin
+    edge = Image.new("RGBA", (S, S), (70, 70, 74, 0))
+    edge.putalpha(mask.filter(ImageFilter.MaxFilter(3)))
+    out = Image.alpha_composite(out, edge)
+    # remplissage blanc pur
+    fill = Image.new("RGBA", (S, S), (255, 255, 255, 0))
+    fill.putalpha(mask)
+    return Image.alpha_composite(out, fill)
 
 
 def _glow_img():
-    base = _pointer_img().split()[3]
     glow = Image.new("RGBA", (S, S), (255, 255, 255, 0))
-    glow.putalpha(base.filter(ImageFilter.GaussianBlur(7)).point(lambda v: min(255, int(v * 1.6))))
+    glow.putalpha(_rounded_mask().filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(8)))
     return glow
-
-
-def _ring_img():
-    k = 4
-    big = Image.new("RGBA", (S * k, S * k), (0, 0, 0, 0))
-    d = ImageDraw.Draw(big)
-    m = 10 * k
-    for a0 in (0, 120, 240):           # trois arcs : cercle « brisé »
-        d.arc([m, m, S * k - m, S * k - m], a0, a0 + 78, fill=(255, 255, 255, 235), width=5 * k)
-    return big.resize((S, S), Image.LANCZOS)
 
 
 class HorrorCursor(Entity):
@@ -54,19 +55,11 @@ class HorrorCursor(Entity):
 
     def __init__(self):
         super().__init__(parent=camera.ui, z=-99)
-        tp = theme._tex(_pointer_img())
-        self.ghosts = []
-        for i in range(4):
-            g = Entity(parent=self, model="quad", texture=tp, scale=SIZE, color=color.rgba(1, 1, 1, 0.0), z=0.02 + i * 0.001)
-            self.ghosts.append([g, Vec3(0, 0, 0)])
-        self.glow = Entity(parent=self, model="quad", texture=theme._tex(_glow_img()), scale=SIZE, z=0.01)
-        self.ring = Entity(parent=self, model="quad", texture=theme._tex(_ring_img()), scale=SIZE * 0.9, z=0.005,
+        self.glow = Entity(parent=self, model="quad", texture=theme._tex(_glow_img()), scale=SIZE, z=0.01,
                            color=color.rgba(1, 1, 1, 0))
-        self.pointer = Entity(parent=self, model="quad", texture=tp, scale=SIZE, z=0)
-        self.t = 0.0
+        self.pointer = Entity(parent=self, model="quad", texture=theme._tex(_pointer_img()), scale=SIZE, z=0)
         self.hover = 0.0
         self.press = 0.0
-        self.flicker = 0.0
         self.active = None
 
     @staticmethod
@@ -84,49 +77,20 @@ class HorrorCursor(Entity):
             self.active = free
             for c in self.children:
                 c.enabled = free
-            if free:                           # la traînée repart de la souris, pas de l'ancienne position
-                start = Vec3(mouse.x, mouse.y, 0) + self._offset(SIZE)
-                for gp in self.ghosts:
-                    gp[1] = Vec3(start)
         if not free:
             return
         if mouse.visible:                      # le curseur système reste caché derrière le nôtre
             mouse.visible = False
         dt = min(time.dt, 0.05)
-        self.t += dt
         target = 1.0 if self._clickable() else 0.0
-        self.hover += (target - self.hover) * min(1.0, dt * 12)
+        self.hover += (target - self.hover) * min(1.0, dt * 14)
         if mouse.left:
             self.press = 1.0
-        self.press = max(0.0, self.press - dt * 5)
-        # rares saccades
-        if self.flicker <= 0 and random.random() < dt * 0.25:
-            self.flicker = 0.12
-        self.flicker = max(0.0, self.flicker - dt)
+        self.press = max(0.0, self.press - dt * 6)
+        sc = SIZE * (1.0 + 0.1 * self.hover) * (1.0 - 0.12 * self.press)
         p = Vec3(mouse.x, mouse.y, 0)
-        k = (1.0 + 0.14 * self.hover) * (1.0 - 0.18 * self.press)
-        sc = SIZE * k
         self.pointer.scale = sc
         self.pointer.position = p + self._offset(sc)
-        self.pointer.rotation_z = -6 * self.hover
-        a = 0.3 if self.flicker > 0.06 else 1.0
-        self.pointer.color = color.rgba(1, 1, 1, a)
-        breath = 0.32 + 0.22 * math.sin(self.t * 2.4) + 0.3 * self.hover
-        self.glow.scale = sc * 1.05
+        self.glow.scale = sc
         self.glow.position = self.pointer.position
-        self.glow.color = color.rgba(1, 1, 1, breath * a)
-        self.ring.position = p
-        self.ring.rotation_z = self.t * 140
-        self.ring.scale = SIZE * (0.75 + 0.15 * self.hover + 0.25 * self.press)
-        self.ring.color = color.rgba(1, 1, 1, 0.85 * self.hover)
-        # traînée fantôme : chaque copie suit la précédente avec retard
-        prev = self.pointer.position
-        for i, gp in enumerate(self.ghosts):
-            g, pos = gp
-            pos += (prev - pos) * min(1.0, dt * (22 - i * 4))
-            gp[1] = pos
-            g.position = pos
-            g.scale = sc * (1 - 0.05 * (i + 1))
-            speed = (prev - pos).length()
-            g.color = color.rgba(1, 1, 1, min(0.28, speed * 6) * (1 - i * 0.22))
-            prev = pos
+        self.glow.color = color.rgba(1, 1, 1, 0.35 * self.hover)

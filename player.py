@@ -105,13 +105,54 @@ class Player:
     def _build_viewmodel(self):
         self.vm = Entity(parent=camera, position=(0, 0, 0))
         self.vm.enabled = False
-        self.hand_flash = Entity(parent=self.vm, position=(0.26, -0.24, 0.5), rotation=(-4, -6, 0))
-        Entity(parent=self.hand_flash, model="cube", color=color.rgb32(30, 30, 34), scale=(0.055, 0.055, 0.2))
-        Entity(parent=self.hand_flash, model="cube", color=color.rgb32(220, 200, 120), scale=(0.07, 0.07, 0.03), z=0.1)
-        Entity(parent=self.hand_flash, model="cube", color=color.rgb32(150, 110, 90), scale=(0.075, 0.065, 0.08), z=-0.06, y=-0.01)
-        Entity(parent=self.hand_flash, model="cube", color=color.rgb32(70, 60, 60), scale=(0.1, 0.09, 0.4), z=-0.34, y=-0.1)
+        self.hand_flash = Entity(parent=self.vm, position=(0.26, -0.24, 0.5), rotation=(-4, -13, 0))
+        self._build_flashlight_model()
         self.hand_phone = Entity(parent=self.vm, position=(0.0, -0.6, 0.5))
         self.flash_hand_y = -0.24
+
+    def _build_flashlight_model(self):
+        """Lampe torche en aluminium anodisé tenue en main (vue 1re personne).
+
+        Corps cylindrique avec grip moleté, bouton caoutchouc, tête évasée, bague chromée et verre qui
+        s'illumine quand la lampe est allumée ; main avec doigts refermés et manche du sweat."""
+        from room_builder import MeshBuilder
+        hf = self.hand_flash
+        tube = Entity(parent=hf, rotation_x=90, z=-0.12)        # les cylindres (axe y) pointent vers l'avant
+        b = MeshBuilder("lampe_fp")
+        body, ring = (0.08, 0.08, 0.1), (0.035, 0.035, 0.045)
+        b.cyl("metal", 0, -0.016, 0, 0.0285, 0.018, 14, (0.13, 0.13, 0.15))           # culot
+        b.cyl("metal", 0, 0.0, 0, 0.026, 0.17, 14, body)                               # corps
+        for i in range(6):                                                              # grip moleté
+            b.cyl("metal", 0, 0.03 + i * 0.017, 0, 0.0278, 0.007, 14, ring, cap=False)
+        b.cyl("metal", 0, 0.168, 0, 0.03, 0.022, 14, (0.11, 0.11, 0.13))               # col
+        b.cyl("metal", 0, 0.188, 0, 0.038, 0.05, 16, (0.1, 0.1, 0.12))                 # tête évasée
+        b.cyl("jante", 0, 0.236, 0, 0.0405, 0.01, 16, (0.92, 0.92, 0.95))              # bague chromée
+        b.obox("cuir", 0, 0.115, -0.03, 0.016, 0.024, 0.01, 0, (0.06, 0.06, 0.06))     # bouton (dessus)
+        b.build(parent=tube, emit=0.22)
+        # verre + halo (allumés quand la lampe est allumée)
+        self.vm_lens = Entity(parent=hf, model="circle", z=0.128, scale=0.07, color=color.rgb32(70, 70, 72),
+                              double_sided=True)
+        from texture_generator import textures
+        self.vm_glow = Entity(parent=hf, model="quad", texture=textures.get("lueur"), z=0.14, scale=0.1,
+                              color=color.rgba32(255, 236, 190, 0), double_sided=True)
+        try:
+            from panda3d.core import TransparencyAttrib
+            self.vm_glow.setTransparency(TransparencyAttrib.M_alpha)
+            self.vm_glow.set_depth_write(False)
+        except Exception:
+            pass
+        # main qui serre le corps + manche
+        jacket = getattr(getattr(self, "model", None), "jacket", (0.42, 0.62, 0.52))
+        skin = getattr(getattr(self, "model", None), "skin", (0.86, 0.68, 0.56))
+        h = MeshBuilder("main_fp")
+        h.obox("peau", 0.004, -0.058, -0.03, 0.062, 0.034, 0.11, 0, skin)                 # paume sous la lampe
+        for i in range(4):                                                               # doigts repliés à gauche
+            h.obox("peau", -0.03, -0.035, 0.012 - i * 0.024, 0.02, 0.05, 0.02, 0, tuple(c * 0.95 for c in skin))
+            h.obox("peau", -0.018, 0.018, 0.012 - i * 0.024, 0.02, 0.016, 0.019, 0, tuple(c * 0.93 for c in skin))
+        h.obox("peau", 0.026, 0.006, -0.02, 0.018, 0.022, 0.06, 0, skin)                 # pouce
+        h.obox("etoffe", 0.0, -0.075, -0.15, 0.1, 0.09, 0.07, 0, tuple(c * 0.7 for c in jacket))   # poignet
+        h.obox("etoffe", 0.0, -0.11, -0.36, 0.11, 0.1, 0.36, 0, jacket)                  # avant-bras
+        h.build(parent=hf, emit=0.22)
 
     def attach_camera(self):
         camera.parent = self.head
@@ -598,6 +639,11 @@ class Player:
         target_y = -0.24 if not self.phone_open else -0.7
         self.flash_hand_y += (target_y - self.flash_hand_y) * min(1.0, dt * 8.0)
         self.hand_flash.position = Vec3(0.26 + sway_x + tremble, self.flash_hand_y + sway_y, 0.5)
+        on = self.flashlight.on
+        if on != getattr(self, "_vm_lit", None):
+            self._vm_lit = on
+            self.vm_lens.color = color.rgb32(255, 244, 205) if on else color.rgb32(70, 70, 72)
+            self.vm_glow.color = color.rgba32(255, 236, 190, 55 if on else 0)
         if self.third_person:
             self.vm.enabled = False
 

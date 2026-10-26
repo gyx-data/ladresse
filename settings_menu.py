@@ -41,7 +41,7 @@ CAMERA = [
 GAMEPLAY = [
     ("Difficulté", "difficulte", ["Facile", "Normal", "Cauchemar"]),
     ("Explorer le quartier au début", "quartier", None),
-    ("Didacticiel guidé (voix)", "didacticiel", None),
+    ("Didacticiel (aide à l'écran + voix)", "didacticiel", None),
     ("Pause auto (perte de focus)", "pause_auto", None),
     ("Afficher les FPS", "afficher_fps", None),
 ]
