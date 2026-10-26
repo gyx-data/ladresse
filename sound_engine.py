@@ -1069,6 +1069,17 @@ def s_reversed_voice(rng):
 # ---------------------------------------------------------------------------
 # Moteur de lecture
 # ---------------------------------------------------------------------------
+def _voice_group(speaker, channel):
+    """Groupe de répliques qui ne doivent pas se superposer (None = libre : livreur, radio, téléphone...)."""
+    if channel != "voice":
+        return None
+    if speaker in (None, "Adrien"):
+        return "adrien"
+    if speaker == "Didacticiel":
+        return "tuto"
+    return "pnj"                      # habitants, Nino, Moussa, caisse automatique...
+
+
 def _hash_text(s):
     return hashlib.md5(s.encode("utf-8")).hexdigest()[:12]
 
@@ -1219,6 +1230,7 @@ class SoundEngine:
         self._loader = None
         self.heart_bpm = 0.0
         self._heart_t = 0.0
+        self._speaking = {}       # groupe de voix -> réplique en cours
         self.breath_mode = None   # None | 'calm' | 'heavy'
         self._breath_t = 0.0
         self.music = AdaptiveMusic(self)
@@ -1512,6 +1524,13 @@ class SoundEngine:
                 pass
         if not self.enabled or not text:
             return None
+        # une seule réplique à la fois par « bouche » : une nouvelle phrase coupe la précédente du même groupe
+        # (parler à plusieurs PNJ à la suite ne superpose plus les voix ; les pensées d'Adrien ne s'empilent plus)
+        group = _voice_group(speaker, channel)
+        if group is not None:
+            prev = self._speaking.get(group)
+            if prev is not None and prev.alive:
+                prev.fade_to(0.0, 12.0, stop=True)
         pitch = 1.0
         res = None
         try:
@@ -1523,8 +1542,12 @@ class SoundEngine:
         else:
             name = self.voice_path(text, f0, speed, whisper, reverse, distort)
         if pos is not None:
-            return self.play_at(name, pos, volume, pitch=pitch, channel=channel, ref=4.0)
-        return self.play(name, volume, pitch=pitch, channel=channel)
+            h = self.play_at(name, pos, volume, pitch=pitch, channel=channel, ref=4.0)
+        else:
+            h = self.play(name, volume, pitch=pitch, channel=channel)
+        if group is not None and h is not None:
+            self._speaking[group] = h
+        return h
 
     # --- mise à jour -------------------------------------------------------
     def set_listener(self, pos, yaw):

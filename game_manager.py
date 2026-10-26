@@ -564,7 +564,7 @@ class GameManager:
         if voice and speaker is None and settings.get("voix_pensees", True):
             spoken = voice_text(text)
             now = self.playtime_real
-            if spoken and now >= self._voice_busy:
+            if spoken:                    # la nouvelle pensée remplace la précédente (au lieu d'être muette)
                 self._voice_busy = now + 0.6 + len(spoken) / 15.0
                 sound.speak(spoken, f0=105, speed=1.0, volume=0.62, channel="voice", subtitle=False, speaker=gd.PLAYER_FIRST)
         self.ui.say(text, d, speaker)

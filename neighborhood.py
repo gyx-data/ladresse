@@ -667,39 +667,91 @@ class Neighborhood:
         b.colliders.append((tx - 0.45, 0, tz - 0.45, tx + 0.45, 0.8, tz + 0.45))
 
     def _villa(self, b, be, x0, z0, w, d, h, tex, rng, street_side):
+        """Villa niçoise : enduit, soubassement en pierre, corniche, toit de tuiles, cheminée, fenêtres en relief
+        (encadrements, appuis, persiennes ouvertes), balcon en fer forgé à l'étage, porte avec marche et applique."""
         x1, z1 = x0 + w, z0 + d
-        b.box(tex, x0, 0, z0, x1, h, z1, (0.9, 0.88, 0.85), collide=True)
+        wall = (0.9, 0.88, 0.85)
+        b.box(tex, x0, 0, z0, x1, h, z1, wall, collide=True)
         zm = (z0 + z1) / 2
         rc = (0.85, 0.78, 0.74)
+        # toit à deux pans débordant + génoises (corniche) + cheminée
         b.quad("tuiles", (x0 - 0.4, h, z0 - 0.4), (x1 + 0.4, h, z0 - 0.4), (x1 + 0.4, h + 1.8, zm), (x0 - 0.4, h + 1.8, zm), (0, 0.8, -0.6), rc)
         b.quad("tuiles", (x0 - 0.4, h + 1.8, zm), (x1 + 0.4, h + 1.8, zm), (x1 + 0.4, h, z1 + 0.4), (x0 - 0.4, h, z1 + 0.4), (0, 0.8, 0.6), rc)
         for xs in (x0, x1):
             nrm = (-1, 0, 0) if xs == x0 else (1, 0, 0)
             b.tri(tex, (xs, h, z0), (xs, h, z1), (xs, h + 1.8, zm), nrm, (0.85, 0.83, 0.8))
-        fz = z0 - 0.02 if street_side < 0 else z1 + 0.02
-        nrm = (0, 0, -1) if street_side < 0 else (0, 0, 1)
+        for k, (dz, hh) in enumerate(((0.0, 0.16), (0.1, 0.12))):
+            b.box("crepi", x0 - 0.12 - dz, h - hh - k * 0.14, z0 - 0.12 - dz, x1 + 0.12 + dz, h - k * 0.14, z1 + 0.12 + dz, (0.96, 0.94, 0.9))
+        cx = x0 + w * rng.uniform(0.2, 0.8)
+        b.box(tex, cx - 0.35, h + 0.6, zm - 0.3, cx + 0.35, h + 2.6, zm + 0.3, (0.82, 0.8, 0.77), collide=False)
+        b.box("beton", cx - 0.42, h + 2.6, zm - 0.37, cx + 0.42, h + 2.72, zm + 0.37, (0.5, 0.48, 0.46))
+        # soubassement en pierre (légèrement en saillie)
+        b.box("beton", x0 - 0.03, 0, z0 - 0.03, x1 + 0.03, 0.6, z1 + 0.03, (0.62, 0.6, 0.57))
+        # descentes d'eau aux angles côté rue
+        fz_wall = z0 if street_side < 0 else z1
+        for xs in (x0 + 0.08, x1 - 0.08):
+            b.cyl("metal", xs, 0.0, fz_wall + street_side * 0.06, 0.04, h, 8, (0.42, 0.4, 0.38))
+        out = -1 if street_side < 0 else 1                 # vers la rue
+        fz = fz_wall + out * 0.005
+        nrm = (0, 0, out)
         floors = 2 if h > 5 else 1
+        door_x = x0 + w * 0.5
+
+        def zz(a, b_):
+            return (min(fz + out * a, fz + out * b_), max(fz + out * a, fz + out * b_))
+
         for fl in range(floors):
             y = 1.0 + fl * 3.0
             xx = x0 + 1.0
             while xx < x1 - 1.4:
-                if fl == 0 and abs(xx + 0.45 - (x0 + w * 0.5)) < 1.0:     # la porte d'entrée est là
+                if fl == 0 and abs(xx + 0.45 - door_x) < 1.0:     # la porte d'entrée est là
                     xx += 2.6
                     continue
                 lit = rng.random() < 0.3
+                # vitre (éclairée ou sombre) légèrement en retrait de l'encadrement
                 if lit:
                     be.quad("neon", (xx, y, fz), (xx + 0.9, y, fz), (xx + 0.9, y + 1.4, fz), (xx, y + 1.4, fz), nrm, (1.0, 0.72, 0.42))
                 else:
-                    b.quad("volet", (xx, y, fz), (xx + 0.9, y, fz), (xx + 0.9, y + 1.4, fz), (xx, y + 1.4, fz), nrm, (0.95, 0.95, 0.95))
-                # persiennes ouvertes de part et d'autre
-                for sx in (xx - 0.46, xx + 0.92):
-                    b.quad("volet", (sx, y, fz + nrm[2] * 0.02), (sx + 0.44, y, fz + nrm[2] * 0.02), (sx + 0.44, y + 1.4, fz + nrm[2] * 0.02),
-                           (sx, y + 1.4, fz + nrm[2] * 0.02), nrm, (0.85, 0.95, 0.9))
-                b.box("beton", xx - 0.05, y - 0.08, min(fz, fz + nrm[2] * 0.15), xx + 0.95, y, max(fz, fz + nrm[2] * 0.15), (0.9, 0.88, 0.85))
+                    b.quad("vitre", (xx, y, fz), (xx + 0.9, y, fz), (xx + 0.9, y + 1.4, fz), (xx, y + 1.4, fz), nrm, (0.3, 0.33, 0.36))
+                a, c = zz(0.0, 0.07)
+                for (u0, u1, v0, v1) in ((xx - 0.08, xx, y - 0.04, y + 1.44), (xx + 0.9, xx + 0.98, y - 0.04, y + 1.44),
+                                         (xx - 0.08, xx + 0.98, y + 1.4, y + 1.52)):
+                    b.box("crepi", u0, v0, a, u1, v1, c, (0.97, 0.96, 0.93))         # encadrement
+                a, c = zz(0.0, 0.14)
+                b.box("beton", xx - 0.12, y - 0.1, a, xx + 1.02, y - 0.02, c, (0.75, 0.73, 0.7))   # appui de fenêtre
+                b.box("metal", xx + 0.43, y, min(fz, fz + out * 0.01), xx + 0.47, y + 1.4,
+                      max(fz, fz + out * 0.01), (0.25, 0.25, 0.25))                                # meneau
+                # persiennes ouvertes de part et d'autre, en relief
+                a, c = zz(0.02, 0.05)
+                for sx in (xx - 0.54, xx + 1.04):
+                    b.box("volet", sx, y - 0.02, a, sx + 0.44, y + 1.42, c, (0.85, 0.95, 0.9))
                 xx += 2.6
-        # porte d'entrée
-        dx = x0 + w * 0.5
-        b.quad("porte", (dx - 0.5, 0, fz), (dx + 0.5, 0, fz), (dx + 0.5, 2.1, fz), (dx - 0.5, 2.1, fz), nrm, (0.6, 0.45, 0.35))
+        # balcon en fer forgé au centre de l'étage
+        if floors == 2:
+            bx0, bx1, by = door_x - 1.1, door_x + 1.1, 3.95
+            a, c = zz(0.0, 0.75)
+            b.box("beton", bx0, by - 0.12, a, bx1, by, c, (0.7, 0.68, 0.65))
+            rz = fz + out * 0.72
+            b.box("metal", bx0, by + 0.9, rz - 0.02, bx1, by + 0.94, rz + 0.02, (0.12, 0.12, 0.13))
+            k = 0
+            while bx0 + k * 0.12 <= bx1:
+                b.box("metal", bx0 + k * 0.12, by, rz - 0.01, bx0 + k * 0.12 + 0.02, by + 0.9, rz + 0.01, (0.12, 0.12, 0.13))
+                k += 1
+            for xs in (bx0, bx1 - 0.02):
+                a2, c2 = zz(0.0, 0.73)
+                b.box("metal", xs, by + 0.9, a2, xs + 0.02, by + 0.94, c2, (0.12, 0.12, 0.13))
+        # porte d'entrée : encadrement, marche, applique
+        b.quad("porte", (door_x - 0.5, 0.15, fz + out * 0.01), (door_x + 0.5, 0.15, fz + out * 0.01),
+               (door_x + 0.5, 2.25, fz + out * 0.01), (door_x - 0.5, 2.25, fz + out * 0.01), nrm, (0.75, 0.6, 0.5), tile=(1.0, 2.1))
+        a, c = zz(0.0, 0.1)
+        for (u0, u1, v0, v1) in ((door_x - 0.62, door_x - 0.5, 0.15, 2.37), (door_x + 0.5, door_x + 0.62, 0.15, 2.37),
+                                 (door_x - 0.62, door_x + 0.62, 2.25, 2.4)):
+            b.box("crepi", u0, v0, a, u1, v1, c, (0.97, 0.96, 0.93))
+        a, c = zz(0.0, 0.45)
+        b.box("beton", door_x - 0.8, 0, a, door_x + 0.8, 0.15, c, (0.6, 0.58, 0.55))
+        lx, ly, lz = door_x + 0.85, 2.15, fz + out * 0.12
+        b.box("metal", lx - 0.05, ly - 0.12, min(fz, lz), lx + 0.05, ly + 0.12, max(fz, lz), (0.15, 0.15, 0.15))
+        be.sphere("neon", lx, ly - 0.05, lz + out * 0.03, 0.06, (1.0, 0.8, 0.5), lat=4, lon=8)
 
     def _build_villas(self, b, be, rng):
         lots_south = [(-66, 14, 10, 7, "crepi"), (-50, 12, 9, 6, "crepi_rose"), (-34, 10, 10, 7, "crepi"),
