@@ -642,8 +642,9 @@ class Neighborhood:
         self.counter_pos = Vec3(x0 + 4.0, 1.2, z0 + 2.3)
 
     def _table(self, b, tx, tz):
-        if b.model("outdoor_table_chair_set_01", tx, tz, 0.0, 0.0, (1.7, 1.0, 1.0)):
-            b.colliders.append((tx - 0.45, 0, tz - 0.45, tx + 0.45, 0.8, tz + 0.45))
+        # ensemble table + 2 chaises à taille réelle (1,72 x 0,74 m, 0,86 m de haut), tourné dans le sens de la façade
+        if b.model("outdoor_table_chair_set_01", tx, tz, 0.0, 90.0):
+            b.colliders.append((tx - 0.86, 0, tz - 0.37, tx + 0.86, 0.86, tz + 0.37))
             return
         b.cyl("metal", tx, 0, tz, 0.05, 0.72, 6, (0.25, 0.25, 0.27))
         b.cyl("marbre", tx, 0.72, tz, 0.42, 0.04, 10, (1, 1, 1))
@@ -845,7 +846,7 @@ class Neighborhood:
             used[art.shelf] = used.get(art.shelf, 0) + 1
             pb = MeshBuilder("produit")
             # présentoir + produits modélisés avec leur emballage (products.py)
-            products.build(pb, art.id, stand[0], stand[1], stand[2], rot)
+            products.build(pb, art.id, stand[0], stand[1], stand[2], rot, floor=(art.shelf == "frais"))
             pb.build(parent=self.root, emit=0.15)
             # étiquette prix sur le rebord avant du présentoir (lisible depuis l'allée)
             fx, fz = math.sin(math.radians(rot)), math.cos(math.radians(rot))

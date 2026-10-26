@@ -426,10 +426,11 @@ class MultiplayerManager:
         settings.save()
 
     def _parse_addr(self, text):
-        text = (text or "").strip() or f"{config.SERVER_HOST}:{config.SERVER_PORT}"
-        host, port = text, config.SERVER_PORT
-        if ":" in text:
-            host, p = text.rsplit(":", 1)
+        text = (text or "").strip() or config.SERVER_NAME
+        real = config.SERVER_ALIASES.get(text.lower(), text)       # nom affiché (« France 1 ») -> adresse réelle
+        host, port = real, config.SERVER_PORT
+        if ":" in real:
+            host, p = real.rsplit(":", 1)
             try:
                 port = int(p)
             except ValueError:
@@ -441,7 +442,8 @@ class MultiplayerManager:
             return
         text, host, port = self._parse_addr(addr_text or settings["mp_adresse"])
         settings["mp_adresse"] = text
-        self._set_status(f"Connexion à {host}:{port}...")
+        shown = text if text.lower() in config.SERVER_ALIASES else f"{host}:{port}"
+        self._set_status(f"Connexion à {shown}...")
         self.client.connect_async(host, port, self._pseudo(), self._on_connect_result)
 
     def _reconnect(self):

@@ -321,14 +321,19 @@ def _bottle(f, lx, lz, height, r, glass_col, label_tex, cap_col, neck=0.32):
     f.cyl("metal", lx, height, lz, r * 0.42, 0.018, cap_col, seg=12)
 
 
-def build(b, art_id, x, y, z, rot):
+def build(b, art_id, x, y, z, rot, floor=False):
     """Présentoir + produits `art_id` (id du catalogue) au point (x, y, z) : y = dessus du plateau."""
     f = _Frame(b, x, y, z, rot)
     # présentoir grillagé fixé au rayon : plateau, rebord avant, deux équerres
     f.box("metal", 0.0, -0.02, 0.0, 0.42, 0.02, 0.26, (0.55, 0.56, 0.6))
     f.box("metal", 0.0, 0.0, 0.125, 0.42, 0.04, 0.01, (0.6, 0.62, 0.66))
-    for sx in (-0.2, 0.2):
-        f.box("metal", sx, -0.16, -0.1, 0.012, 0.14, 0.06, (0.45, 0.46, 0.5))
+    if floor:
+        # présentoir sur pied (devant le mur réfrigéré : rien à quoi l'accrocher)
+        f.box("metal", 0.0, -y + 0.02, 0.0, 0.04, y - 0.04, 0.04, (0.45, 0.46, 0.5))
+        f.box("metal", 0.0, -y, 0.0, 0.34, 0.02, 0.24, (0.4, 0.41, 0.45))
+    else:
+        for sx in (-0.2, 0.2):
+            f.box("metal", sx, -0.16, -0.1, 0.012, 0.14, 0.06, (0.45, 0.46, 0.5))
     fn = _BUILDERS.get(art_id)
     if fn:
         fn(f)

@@ -12,6 +12,9 @@ CACHE_VERSION = "v4"
 # --- Réseau ---------------------------------------------------------------
 SERVER_HOST = "5.180.34.43"
 SERVER_PORT = 27326          # serveur multijoueur : salons + parties
+# Nom affiché aux joueurs à la place de l'adresse IP (qui reste connue du jeu seulement)
+SERVER_NAME = "France 1"
+SERVER_ALIASES = {SERVER_NAME.lower(): f"{SERVER_HOST}:{SERVER_PORT}"}
 TICK_RATE = 20
 MAX_PLAYERS = 4
 
@@ -151,7 +154,7 @@ DEFAULT_SETTINGS = {
     "daltonien": "Normal",
     "taille_texte": "Moyen",
     # Multijoueur
-    "mp_adresse": f"{SERVER_HOST}:{SERVER_PORT}",
+    "mp_adresse": SERVER_NAME,
     "mp_pseudo": "Joueur",
     "mp_max": 4,                      # limite de joueurs proposée à la création d'une partie
 }
@@ -193,7 +196,8 @@ class Settings:
                 elif k in self.data and _compatible(self.data[k], v):
                     self.data[k] = v
             # ancien serveur dédié (avant le relais) : on bascule sur le nouveau port
-            if self.data.get("mp_adresse") in ("5.180.34.43:27303", "5.180.34.43"):
+            # (et l'adresse IP enregistrée auparavant est remplacée par le nom affiché)
+            if self.data.get("mp_adresse") in ("5.180.34.43:27303", "5.180.34.43", f"{SERVER_HOST}:{SERVER_PORT}"):
                 self.data["mp_adresse"] = DEFAULT_SETTINGS["mp_adresse"]
         except (OSError, ValueError, TypeError):
             pass
