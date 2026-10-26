@@ -82,6 +82,8 @@ def main():
         "--add-data", f"{os.path.join(HERE, 'textures')}{os.pathsep}textures",
         # modèles 3D (Poly Haven, CC0) : voir fetch_models.py
         "--add-data", f"{os.path.join(HERE, 'models')}{os.pathsep}models",
+        # voix enregistrées (voices/<id>.mp3 + voices.json)
+        "--add-data", f"{os.path.join(HERE, 'voices')}{os.pathsep}voices",
     ]
     for m in GAME_MODULES:
         cmd += ["--hidden-import", m]

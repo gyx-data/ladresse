@@ -1054,6 +1054,61 @@ def _hash_text(s):
     return hashlib.md5(s.encode("utf-8")).hexdigest()[:12]
 
 
+# ---------------------------------------------------------------------------
+# Voix enregistrées (voices/<id>.mp3, textes dans voices/voices.json) : jouées à la place de la synthèse
+# quand le texte prononcé correspond (ponctuation, casse et accents ignorés). Les effets restent appliqués.
+# ---------------------------------------------------------------------------
+_RECORDED = None
+
+
+def _norm_line(t):
+    import re
+    import unicodedata
+    t = unicodedata.normalize("NFKD", t.lower().replace("’", "'"))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
+def recorded_voice(text):
+    """Chemin de l'enregistrement correspondant à `text`, ou None."""
+    global _RECORDED
+    if _RECORDED is None:
+        _RECORDED = {}
+        folder = config.resource_path("voices")
+        try:
+            import json
+            with open(os.path.join(folder, "voices.json"), encoding="utf-8") as f:
+                for vid, line in json.load(f).items():
+                    path = os.path.join(folder, vid + ".mp3")
+                    if os.path.exists(path):
+                        _RECORDED[_norm_line(line)] = path
+        except (OSError, ValueError):
+            pass
+    return _RECORDED.get(_norm_line(text)) if text else None
+
+
+def read_audio_file(path, sr):
+    """Décode un fichier audio (MP3...) via Panda3D/FFmpeg en float mono -1..1 au taux `sr`, silences coupés."""
+    from panda3d.core import Datagram, Filename, MovieAudio
+    a = MovieAudio.get(Filename.fromOsSpecific(path)).open()
+    if a is None:
+        raise OSError(path)
+    rate, ch = a.audio_rate(), a.audio_channels()
+    dg = Datagram()
+    a.read_samples(int((a.length() + 1.0) * rate), dg)
+    x = np.frombuffer(bytes(dg.get_message()), dtype="<i2").astype(np.float64) / 32768.0
+    if ch > 1:
+        x = x[:len(x) - len(x) % ch].reshape(-1, ch).mean(axis=1)
+    if rate != sr and len(x) > 1:
+        x = np.interp(np.arange(int(len(x) * sr / rate)) * (rate / sr), np.arange(len(x)), x)
+    if len(x):
+        thr = 0.01 * max(1e-6, np.max(np.abs(x)))
+        nz = np.nonzero(np.abs(x) > thr)[0]
+        if len(nz):
+            x = x[max(0, nz[0] - int(0.02 * sr)):min(len(x), nz[-1] + int(0.08 * sr))]
+    return x
+
+
 class SoundHandle:
     """Poignée vers un son en cours (une ou plusieurs AudioSound)."""
 
@@ -1372,6 +1427,8 @@ class SoundEngine:
                 if not tts.available:
                     return
                 for text, f0, speed in items:
+                    if recorded_voice(text) is not None:          # déjà doublée : pas de synthèse à préparer
+                        continue
                     _, _, vg, rate = self._tts_params(f0, speed)
                     tts.request(text, vg, rate)
             except Exception:
@@ -1380,27 +1437,32 @@ class SoundEngine:
         threading.Thread(target=run, daemon=True, name="tts_prewarm").start()
 
     def _tts_voice(self, text, f0, speed, whisper, reverse, distort):
-        """Réplique en voix réelle (si le moteur vocal du système est disponible et le fichier prêt).
-        Retourne (nom du son, vitesse de lecture) ou None."""
+        """Réplique en voix réelle : enregistrement du doubleur (voices/) en priorité, sinon moteur vocal du
+        système. Retourne (nom du son, vitesse de lecture) ou None."""
         try:
             from tts import tts, read_wav_any
         except Exception:
             return None
-        if not tts.available and tts._probe_done.is_set():
-            return None
-        gender, match, voice_gender, rate = self._tts_params(f0, speed)
-        raw = tts.request(text, voice_gender, rate)
-        if raw is None:
-            return None
-        base = 120.0 if match and gender == "Male" else 205.0
-        pitch = max(0.7, min(1.35, f0 / base)) if not (match and abs(f0 / base - 1.0) < 0.12) else 1.0
+        recorded = recorded_voice(text)
+        if recorded is not None:
+            raw, pitch, reader = recorded, 1.0, read_audio_file
+        else:
+            if not tts.available and tts._probe_done.is_set():
+                return None
+            gender, match, voice_gender, rate = self._tts_params(f0, speed)
+            raw = tts.request(text, voice_gender, rate)
+            if raw is None:
+                return None
+            base = 120.0 if match and gender == "Male" else 205.0
+            pitch = max(0.7, min(1.35, f0 / base)) if not (match and abs(f0 / base - 1.0) < 0.12) else 1.0
+            reader = read_wav_any
         key = f"{raw}|{whisper}|{reverse}|{distort}"
         name = "voixtts_" + _hash_text(key)
         if name not in self.paths:
             path = os.path.join(self.dir, name + ".wav")
             if not os.path.exists(path):
                 try:
-                    x = read_wav_any(raw, SR)
+                    x = reader(raw, SR)
                 except (OSError, EOFError, ValueError, wave.Error):
                     return None
                 if len(x) < SR * 0.05:
