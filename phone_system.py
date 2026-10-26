@@ -43,7 +43,8 @@ BLUE = rgb(10, 132, 255)
 ORANGE = rgb(255, 122, 26)
 AMBER = rgb(255, 204, 92)
 
-CONTACT_COLORS = {"duval": (175, 82, 222), "maman": (255, 149, 0), "support": (255, 112, 8), "chat": (52, 120, 246)}
+CONTACT_COLORS = {"duval": (175, 82, 222), "maman": (255, 149, 0), "support": (255, 112, 8), "chat": (52, 120, 246),
+                  "livreur": (40, 44, 56)}
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +243,7 @@ class PhoneModel:
             "maman": dict(name=gd.CONTACT_MAMAN, msgs=[], unread=0),
             "support": dict(name=gd.CONTACT_SUPPORT, msgs=[], unread=0),
             "chat": dict(name="Chat d'équipe", msgs=[], unread=0, hidden=True),
+            "livreur": dict(name="Votre livreur", msgs=[], unread=0, hidden=True),
         }
         for (t, who, text, mine) in [(m[0], m[1], m[2], m[3]) for m in gd.INTRO_SMS]:
             self.conversations["duval"]["msgs"].append(Message(who, text, t, mine))
@@ -251,6 +253,8 @@ class PhoneModel:
             conv, sender, text, t = m[0], m[1], m[2], m[3]
             if conv in self.conversations:
                 self.conversations[conv]["msgs"].append(Message(sender, text, t, sender == gd.PLAYER_FIRST))
+                if conv == "livreur":
+                    self.conversations[conv]["hidden"] = False
         self.call_log = [("Maman", "hier 12:03", False), ("Mme Duval", "hier 17:40", False)]
         self.torch_on = False
 
@@ -577,6 +581,16 @@ class MessagesApp(App):
             else:
                 sound.play("erreur", 0.8, channel="voice")
                 self.phone.toast("Connexion au serveur perdue.")
+            return
+        if self.conv == "livreur":
+            # lui reçoit tout, même sans réseau
+            self.phone.model.add_message("livreur", gd.PLAYER_FIRST, text, mine=True)
+            sound.play("envoi", 0.8, channel="voice")
+            self.compose = ""
+            self.composing = False
+            self.scroll = 0
+            self.render()
+            self.game.courier.on_player_reply(text)
             return
         # aucun réseau : le message reste affiché, marqué « Non distribué »
         self.phone.model.conversations[self.conv]["msgs"].append(Message(gd.PLAYER_FIRST, text, self.game.state.clock_string(),

@@ -203,6 +203,8 @@ class GameManager:
         self.inv_panel = InventoryPanel(self.inventory, self)
         self.quests = QuestSystem(self)
         self.assistance = AssistanceSystem(self)
+        from courier_story import CourierStory
+        self.courier = CourierStory(self)
         self.phone = PhoneUI(self)
         self.entity = EntityAI(self)
         self.jumpscare = JumpscareSystem(self)
@@ -345,6 +347,7 @@ class GameManager:
         self.state.reset()
         self.quests.reset()
         self.assistance.reset()
+        self.courier.reset()
         self.timers.clear()
         self.playtime = 0.0
         self.countdown_flicker = False
@@ -424,7 +427,8 @@ class GameManager:
         # messages
         for conv, sender, text, t in self.state.messages:
             if conv in self.phone.model.conversations:
-                self.phone.model.conversations[conv]["msgs"].append(__import__("phone_system").Message(sender, text, t))
+                self.phone.model.conversations[conv]["msgs"].append(
+                    __import__("phone_system").Message(sender, text, t, sender == gd.PLAYER_FIRST))
         self.events.apply_saved_state()
         self.ui.menu.hide()
         self.mode = "cinematic"
@@ -987,7 +991,7 @@ class GameManager:
             "carnet": list(gd.NOTEBOOK_PAGES), "releve": [gd.BANK_STATEMENT_TEXT], "polaroids": list(gd.POLAROID_PAGES),
             "plan": [gd.PLAN_TEXT], "mur": [gd.WALL_MESSAGE_PHOTO], "tel_garnier": ["\n\n".join(gd.GARNIER_PHONE_TEXT)],
             "recus": [gd.RECEIPTS_TEXT], "journaux": ["\n\n".join(gd.NEWSPAPER_HEADLINES)], "note_frigo": [gd.NOTE_FRIGO],
-            "note_sdb": [gd.NOTE_SDB],
+            "note_sdb": [gd.NOTE_SDB], "regles": self.courier.rule_pages(),
         }.get(doc, ["(illisible)"])
         self.inv_panel.hide()
         self.ui.docs.open(gd.DOC_TITLES.get(doc, "Document"), pages)
@@ -1062,6 +1066,8 @@ class GameManager:
         if cause == "door_open":
             kind = "porte"
         done = self._mp_spectate if self.is_multiplayer else self.show_game_over
+        if not self.is_multiplayer and self.courier.can_rewind(cause):
+            done = lambda: self.courier.rewind(cause)          # la nuit de livraison : on rembobine
         if scared:
             done()
         else:
@@ -1165,6 +1171,8 @@ class GameManager:
     def _update(self, dt):
         dt = min(dt, 0.1)
         self.playtime_real = getattr(self, "playtime_real", 0.0) + dt
+        if getattr(self, "courier", None) is not None:
+            self.courier.update_overlay(dt)          # rembobinage : continue pendant le rechargement
         if self._frame % 4 == 0 and self.mode != "loading":
             try:
                 autofit_all()
@@ -1263,6 +1271,7 @@ class GameManager:
         if self.tutorial is not None:
             self.tutorial.update(dt)
         self.assistance.update(dt)
+        self.courier.update(dt)
         self.entity.update(dt)
         self.phone.update(dt)
         self.interactions.find_target(eye, p.forward)

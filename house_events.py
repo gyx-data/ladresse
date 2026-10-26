@@ -518,6 +518,12 @@ class HouseEvents:
         if self.lucarne_state is not None:
             return
         g = self.game
+        courier = getattr(g, "courier", None)
+        if courier is not None and courier.where() == "lampadaire":
+            courier.look_out()
+            g.say("Il est là, sous le lampadaire. Il ne bouge pas. Il est... beaucoup trop grand.", 4.5, voice=False)
+            g.player.add_stress(10)
+            return
         self.lucarne_state = "look"
         self.lucarne_t = 0.0
         lamp = self.house.anchors["lamp_light"]

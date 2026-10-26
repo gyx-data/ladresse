@@ -630,7 +630,10 @@ class Player:
             camera.rotation = Vec3(rx, ry, rz)
         # FOV : léger élargissement en course
         target_fov = self.fov + (6 if self.sprinting else 0) - self.stress * 0.05
-        camera.fov += (target_fov - camera.fov) * min(1.0, dt * 6.0)
+        zoom = getattr(self, "zoom_fov", None)
+        if zoom is not None:
+            target_fov = zoom                         # regard collé à une vitre / un judas
+        camera.fov += (target_fov - camera.fov) * min(1.0, dt * (3.0 if zoom is not None else 6.0))
 
     def _viewmodel(self, dt):
         t = self.time

@@ -860,6 +860,36 @@ def s_scan_beep(rng):
     return normalize(sine(2900, 0.09) * adsr(n, 0.002, 0.0, 1.0, 0.01), 0.35)
 
 
+@snd("digicode", spatial=True)
+def s_keypad(rng):
+    """Digicode du portail : quatre touches, puis le bip long d'ouverture et le grésillement de la gâche."""
+    parts = []
+    for f in (1850, 1650, 1950, 1750):
+        n = int(SR * 0.07)
+        parts.append(sine(f, 0.07) * adsr(n, 0.002, 0.0, 1.0, 0.01) * 0.6)
+        parts.append(np.zeros(int(SR * 0.16)))
+    n = int(SR * 0.5)
+    parts.append(sine(2350, 0.5) * adsr(n, 0.004, 0.0, 1.0, 0.05) * 0.7)
+    n = int(SR * 0.35)
+    parts.append(bandpass(rng.standard_normal(n), 300, 1400) * (0.5 + 0.5 * np.sign(np.sin(np.arange(n) / SR * 2 * np.pi * 60))) * 0.4)
+    return normalize(np.concatenate(parts), 0.55)
+
+
+@snd("rembobinage")
+def s_rewind(rng):
+    """Cassette qui rembobine : moteur qui monte en régime, voix aiguës accélérées, clac d'arrêt."""
+    d = 2.6
+    t = taxis(d)
+    f = 180 + 900 * (t / d) ** 1.6
+    whirr = np.sin(2 * np.pi * np.cumsum(f) / SR) * 0.35
+    chirps = bandpass(rng.standard_normal(len(t)), 1200, 5200) * (0.5 + 0.5 * np.sin(2 * np.pi * (6 + 30 * t / d) * t)) * 0.35
+    hiss = highpass(rng.standard_normal(len(t)), 3000) * 0.12
+    x = (whirr + chirps + hiss) * adsr(len(t), 0.05, 0.0, 1.0, 0.02)
+    n = int(SR * 0.12)
+    clac = lowpass(rng.standard_normal(n), 900) * np.exp(-np.arange(n) / (SR * 0.02)) * 1.2
+    return normalize(np.concatenate([x, clac]), 0.7)
+
+
 @snd("caisse_ok")
 def s_checkout_ok(rng):
     return normalize(melody([76, 81, 84], 0.12, (1.0, 0.3)), 0.4)

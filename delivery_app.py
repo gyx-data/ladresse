@@ -64,6 +64,8 @@ class DeliveryApp(App):
         self.loading_t = 0.0
         self.error_text = ""
         self._result_seen = False
+        self.tip_cb = None
+        self.tip_sent = None
         # reprise d'une sauvegarde : l'adresse de la commande déjà passée reste affichée
         key = getattr(self.phone.game.state, "address", None)
         if key in ("bonne", "piege") and key in gd.ADDRESSES:
@@ -99,6 +101,8 @@ class DeliveryApp(App):
         self.render()
 
     def go_back(self):
+        if self.page == "tip":
+            return True                       # le pourboire ne se ferme pas
         if self.page in ("home", "loading"):
             return self.page == "loading"
         order = {"address": "home", "menu": "home", "checkout": "menu", "error": "home", "confirmed": "home", "tracking": "home"}
@@ -436,6 +440,52 @@ class DeliveryApp(App):
         txt(self.root, "Commande impossible", 0, 0.015, 0.72, TXT, (0, 0), True, max_w=SW - 0.04)
         txt(self.root, self.error_text, 0, -0.04, 0.44, rgb(255, 140, 130), (0, 0), wrap=34, max_w=SW - 0.05, max_h=0.07)
         btn(self.root, "Retour à l'accueil", 0, -0.2, 0.24, 0.048, lambda: self._goto("home"), "ph_card", 0.46)
+
+    # ---------------------------------------------------------------
+    # Pourboire (le livreur est à la porte)
+    # ---------------------------------------------------------------
+    def open_tip(self, callback):
+        self.tip_cb = callback
+        self.tip_sent = None
+        self.page = "tip"
+        if self._visible():
+            self.render()
+
+    def close_tip(self):
+        self.tip_cb = None
+        if self.page == "tip":
+            self.page = "home"
+            if self._visible():
+                self.render()
+
+    def _tip(self, choice):
+        if self.tip_sent is not None or self.tip_cb is None:
+            return
+        self.tip_sent = choice
+        cb = self.tip_cb
+        self.render()
+        cb(choice)
+
+    def _page_tip(self):
+        self._brand(False)
+        y = 0.2
+        rect(self.root, 0, y, SW - 0.036, 0.12, CARD, z=0.0, radius=0.16)
+        rect(self.root, -0.135, y, 0.07, 0.07, rgb(28, 30, 36), z=-0.005, radius=0.5)
+        txt(self.root, "?", -0.135, y, 0.8, DIM, (0, 0), True, z=-0.01)
+        txt(self.root, "Votre livreur", -0.09, y + 0.022, 0.5, TXT, bold=True)
+        txt(self.root, "est à votre porte", -0.09, y - 0.002, 0.42, SUB)
+        txt(self.root, "Livreur partenaire · ★★★★★", -0.09, y - 0.028, 0.34, DIM)
+        txt(self.root, "Ajouter un pourboire ?", 0, 0.095, 0.62, TXT, (0, 0), True, max_w=SW - 0.05)
+        txt(self.root, "100 % du pourboire revient à votre livreur.", 0, 0.065, 0.34, SUB, (0, 0), max_w=SW - 0.05)
+        if self.tip_sent is None:
+            btn(self.root, "2 €", -0.09, -0.0, 0.16, 0.06, lambda: self._tip("2"), "ph_card", 0.6, bold=True)
+            btn(self.root, "5 €", 0.09, -0.0, 0.16, 0.06, lambda: self._tip("5"), "ph_card", 0.6, bold=True)
+            # le troisième bouton : on ne l'a jamais vu dans l'appli
+            btn(self.root, "Me laisser entrer", 0, -0.085, SW - 0.036, 0.06, lambda: self._tip("entrer"), "ph_red", 0.5, bold=True)
+            txt(self.root, "Vous pouvez aussi ne rien choisir.", 0, -0.15, 0.34, DIM, (0, 0), max_w=SW - 0.05)
+        else:
+            lbl = {"2": "Pourboire de 2 € envoyé.", "5": "Pourboire de 5 € envoyé.", "entrer": "Merci."}[self.tip_sent]
+            txt(self.root, lbl, 0, -0.02, 0.55, GREEN if self.tip_sent != "entrer" else RED, (0, 0), True, max_w=SW - 0.05)
 
     # ---------------------------------------------------------------
     MAP_W, MAP_H, MAP_Y = SW - 0.036, 0.25, 0.125

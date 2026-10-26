@@ -256,6 +256,8 @@ NOTEBOOK_PAGES = [
     "4 avril\n\nJ'ai barricadé la porte du sous-sol. Je sais ce qu'il y a en bas. Ça frappe la nuit.",
     "15 avril\n\nNe commande pas. Ne commande JAMAIS. Si tu commandes, il vient. Le livreur. "
     "Celui qui n'a pas de visage.",
+    "2 mai\n\nIl écrit comme l'assistance. Mêmes mots, même politesse. Mais quand c'est lui, son téléphone "
+    "s'allume. La lumière bleue passe sous la porte d'entrée. Toujours.",
     "(illisible)\n\nL'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE "
     "L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE L'ADRESSE ...\n"
     "[le mot est écrit 47 fois]",
@@ -309,7 +311,7 @@ RECEIPTS_TEXT = (
 NOTE_FRIGO = "Ne pas commander après 23h."
 NOTE_SDB = "IL SAIT OÙ TU ES"
 NOTE_COAT = "Un bout de papier : un numéro de téléphone... barré, plusieurs fois."
-NOTE_FRIGO_ADDRESS = "17 rue des Lilas, 06300 Nice"
+NOTE_FRIGO_ADDRESS = "17 rue des Lilas, 06300 Nice\nCode du portail : 1704\n\n(au crayon, d'une autre main) NE LE DONNE À PERSONNE"
 NOTE_DOOR_END_D = "Le gardien précédent est parti. Le poste est à vous."
 WALL_MESSAGE_PHOTO = "Derrière le papier peint, écrit à la main : « IL EST DÉJÀ ARRIVÉ »"
 
@@ -486,6 +488,7 @@ DOC_TITLES = {
     "journaux": "Journaux du salon",
     "note_frigo": "Note du réfrigérateur",
     "note_sdb": "Mot derrière le miroir",
+    "regles": "Règles (à ne pas oublier)",
 }
 
 SECONDARY_QUESTS = [

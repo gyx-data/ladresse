@@ -145,6 +145,9 @@ class AssistanceSystem:
         if self.remote:
             return
         self.send(gd.PAIRS[pid][opt])
+        courier = getattr(self.game, "courier", None)
+        if courier is not None:
+            courier.on_assistance_option(pid, opt)          # le faux message : son téléphone s'allume
         w = self.window.setdefault(pid, {"samples": 0, "light_on": 0, "start": self.now(), "talk_start": self.now()})
         if opt == "B":
             w["start"] = self.now()
