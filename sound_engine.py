@@ -302,6 +302,22 @@ def s_neon_hum(rng):
     return normalize(y, 0.5)
 
 
+@snd("mouches", loop=True, spatial=True)
+def s_flies(rng):
+    """Bourdonnement de mouches : quelques ailes qui vrombissent, passent et repassent."""
+    d = 4.0
+    t = taxis(d)
+    y = np.zeros(len(t))
+    for k in range(5):
+        f0 = rng.uniform(165, 245)
+        f = f0 * (1.0 + 0.05 * np.sin(2 * np.pi * int(rng.integers(2, 7)) / d * t + rng.uniform(0, 6.28)))
+        ph = 2 * np.pi * np.cumsum(f) / SR
+        env = (0.25 + 0.75 * (0.5 + 0.5 * np.sin(2 * np.pi * int(rng.integers(1, 3)) / d * t + rng.uniform(0, 6.28))) ** 2)
+        y += np.tanh(2.5 * np.sin(ph)) * env
+    y = bandpass(y, 140, 3200)
+    return normalize(y, 0.6)
+
+
 @snd("neon_buzz", spatial=True)
 def s_neon_buzz(rng):
     y = highpass(noise(0.12, rng), 800) * decay(int(0.12 * SR), 0.05)

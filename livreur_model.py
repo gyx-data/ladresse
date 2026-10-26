@@ -76,7 +76,7 @@ class LivreurModel:
         self.hips = Entity(parent=self.body, position=(0, 1.0, 0))
 
         def pelvis(b):
-            _tube(b, "jean", PANTS, [(-0.14, 0.15, 0.1, 0), (-0.04, 0.17, 0.11, 0), (0.08, 0.165, 0.105, 0)])
+            _tube(b, "jean_sale", PANTS, [(-0.14, 0.15, 0.1, 0), (-0.04, 0.17, 0.11, 0), (0.08, 0.165, 0.105, 0)])
             _tube(b, "cuir", (0.08, 0.07, 0.06), [(0.04, 0.172, 0.112, 0), (0.09, 0.172, 0.112, 0)], caps=False)   # ceinture
             b.obox("jante", 0, 0.05, 0.11, 0.05, 0.035, 0.01, 0, (0.7, 0.68, 0.6))
         _mesh(self.hips, pelvis)
@@ -87,15 +87,15 @@ class LivreurModel:
             hip = _Joint(self.hips, (side * 0.095, -0.08, 0))
 
             def thigh(b):
-                _tube(b, "jean", PANTS, [(-0.47, 0.058, 0.062, 0.0), (-0.3, 0.068, 0.072, 0.005), (-0.08, 0.08, 0.085, 0.0),
+                _tube(b, "jean_sale", PANTS, [(-0.47, 0.058, 0.062, 0.0), (-0.3, 0.068, 0.072, 0.005), (-0.08, 0.08, 0.085, 0.0),
                                          (0.02, 0.078, 0.08, 0.0)])
             _mesh(hip.pivot, thigh)
             knee = _Joint(hip.pivot, (0, -0.46, 0))
 
             def shin(b):
-                _tube(b, "jean", PANTS, [(-0.42, 0.052, 0.055, 0.0), (-0.25, 0.058, 0.064, -0.005), (-0.05, 0.062, 0.066, 0.0),
+                _tube(b, "jean_sale", PANTS, [(-0.42, 0.052, 0.055, 0.0), (-0.25, 0.058, 0.064, -0.005), (-0.05, 0.062, 0.066, 0.0),
                                          (0.03, 0.064, 0.066, 0.0)])
-                _tube(b, "jean", (0.12, 0.13, 0.15), [(-0.44, 0.06, 0.063, 0), (-0.4, 0.06, 0.063, 0)], caps=False)   # revers
+                _tube(b, "jean_sale", (0.12, 0.13, 0.15), [(-0.44, 0.06, 0.063, 0), (-0.4, 0.06, 0.063, 0)], caps=False)   # revers
             _mesh(knee.pivot, shin)
             ankle = _Joint(knee.pivot, (0, -0.44, 0))
 
@@ -112,32 +112,32 @@ class LivreurModel:
         def torso(b):
             prof = [(0.0, 0.16, 0.105, 0), (0.16, 0.168, 0.11, 0), (0.32, 0.19, 0.12, 0), (0.46, 0.215, 0.122, -0.005),
                     (0.55, 0.225, 0.115, -0.01), (0.61, 0.19, 0.1, -0.015), (0.66, 0.09, 0.075, -0.01)]
-            _tube(b, "etoffe", JACKET, prof, n=2.4, seg=18)
+            _tube(b, "veste_livreur", JACKET, prof, n=2.4, seg=18)
             # bas de veste élastique, bande réfléchissante, col montant, fermeture éclair
-            _tube(b, "etoffe", JACKET_DARK, [(-0.02, 0.165, 0.11, 0), (0.05, 0.165, 0.11, 0)], n=2.4, seg=18, caps=False)
-            _tube(b, "etoffe", (0.55, 0.55, 0.5), [(0.27, 0.187, 0.119, 0), (0.31, 0.19, 0.121, 0)], n=2.4, seg=18, caps=False)
-            _tube(b, "etoffe", JACKET_DARK, [(0.62, 0.1, 0.085, -0.01), (0.72, 0.085, 0.075, -0.005)], n=2.4, seg=14, caps=False)
+            _tube(b, "veste_livreur", JACKET_DARK, [(-0.02, 0.165, 0.11, 0), (0.05, 0.165, 0.11, 0)], n=2.4, seg=18, caps=False)
+            _tube(b, "veste_livreur", (0.55, 0.55, 0.5), [(0.27, 0.187, 0.119, 0), (0.31, 0.19, 0.121, 0)], n=2.4, seg=18, caps=False)
+            _tube(b, "veste_livreur", JACKET_DARK, [(0.62, 0.1, 0.085, -0.01), (0.72, 0.085, 0.075, -0.005)], n=2.4, seg=14, caps=False)
             b.obox("metal", 0, 0.02, 0.118, 0.012, 0.62, 0.008, 0, (0.15, 0.15, 0.16))
             b.obox("neon", 0.1, 0.42, 0.122, 0.07, 0.035, 0.006, 0, (1.0, 0.7, 0.3))          # logo QuickEats (poitrine)
             # taches sombres (sang séché ? sauce ?) et déchirure sur le flanc
             for (x, y, z, w, h) in ((-0.08, 0.2, 0.118, 0.07, 0.05), (0.06, 0.1, 0.113, 0.05, 0.08), (-0.12, 0.38, 0.12, 0.04, 0.03)):
-                b.obox("etoffe", x, y, z, w, h, 0.004, 0, STAIN)
-            b.obox("etoffe", 0.19, 0.18, 0.0, 0.004, 0.09, 0.06, 0, (0.3, 0.29, 0.28))
+                b.obox("veste_livreur", x, y, z, w, h, 0.004, 0, STAIN)
+            b.obox("veste_livreur", 0.19, 0.18, 0.0, 0.004, 0.09, 0.06, 0, (0.3, 0.29, 0.28))
             # bretelles du sac
             for x in (-0.11, 0.11):
                 b.obox("cuir", x, 0.3, 0.121, 0.035, 0.34, 0.006, 0, (0.12, 0.12, 0.13))
                 b.obox("cuir", x, 0.58, 0.0, 0.035, 0.012, 0.24, 0, (0.12, 0.12, 0.13))
             # sac isotherme sur le dos
             b.obox("sac_quickeats", 0, 0.12, -0.24, 0.4, 0.5, 0.24, 0, (0.68, 0.62, 0.56))     # sac sale, délavé
-            b.obox("etoffe", 0, 0.62, -0.24, 0.41, 0.03, 0.25, 0, JACKET_DARK)
+            b.obox("veste_livreur", 0, 0.62, -0.24, 0.41, 0.03, 0.25, 0, JACKET_DARK)
         _mesh(self.torso, torso)
 
         # cou trop long + tête
         self.neck = Entity(parent=self.torso, position=(0, 0.66, -0.01))
 
         def neck(b):
-            _tube(b, "peau", SKIN, [(-0.04, 0.055, 0.055, 0), (0.08, 0.042, 0.045, 0.01), (0.17, 0.045, 0.048, 0.02)], seg=12)
-            b.obox("peau", 0, 0.07, 0.04, 0.02, 0.03, 0.012, 0, SKIN_DARK)                     # pomme d'Adam
+            _tube(b, "peau_morte", SKIN, [(-0.04, 0.055, 0.055, 0), (0.08, 0.042, 0.045, 0.01), (0.17, 0.045, 0.048, 0.02)], seg=12)
+            b.obox("peau_morte", 0, 0.07, 0.04, 0.02, 0.03, 0.012, 0, SKIN_DARK)                     # pomme d'Adam
         _mesh(self.neck, neck)
         self.head = Entity(parent=self.neck, position=(0, 0.17, 0.02))
 
@@ -145,31 +145,31 @@ class LivreurModel:
             prof = [(-0.03, 0.04, 0.045, 0.035), (0.0, 0.06, 0.07, 0.03), (0.04, 0.072, 0.088, 0.02), (0.09, 0.08, 0.1, 0.01),
                     (0.15, 0.09, 0.108, 0.0), (0.21, 0.088, 0.104, -0.005), (0.26, 0.072, 0.088, -0.01), (0.295, 0.04, 0.05, -0.012),
                     (0.305, 0.01, 0.012, -0.012)]
-            _tube(b, "peau", SKIN, prof, n=2.0, seg=16, caps=False)
+            _tube(b, "peau_morte", SKIN, prof, n=2.0, seg=16, caps=False)
             # joues creusées, arcades saillantes, nez fin, oreilles
             from character_model import _ellipsoid
             for x in (-1, 1):
                 # joues creusées (ombre), arcades saillantes, oreilles décollées
-                b.loft("peau", [_ring(x * 0.058, 0.0, 0.08 + dy, 0.012 * f, 0.03 * f, 0.0, 2.0, 10, 0.0, 0.06)
+                b.loft("peau_morte", [_ring(x * 0.058, 0.0, 0.08 + dy, 0.012 * f, 0.03 * f, 0.0, 2.0, 10, 0.0, 0.06)
                                 for dy, f in ((-0.035, 0.3), (-0.02, 0.9), (0.0, 1.0), (0.02, 0.9), (0.035, 0.3))], SKIN_DARK)
-                b.loft("peau", [_ring(x * 0.038, 0.0, 0.175 + dy, 0.026 * f, 0.012 * f, 0.0, 2.0, 10, 0.0, 0.094)
+                b.loft("peau_morte", [_ring(x * 0.038, 0.0, 0.175 + dy, 0.026 * f, 0.012 * f, 0.0, 2.0, 10, 0.0, 0.094)
                                 for dy, f in ((-0.01, 0.4), (-0.005, 1.0), (0.005, 1.0), (0.01, 0.4))], SKIN)
-                b.loft("peau", [_ring(x * 0.09, 0.0, 0.14 + dy, 0.008 * f, 0.022 * f, 0.0, 2.0, 10, 0.0, -0.005)
+                b.loft("peau_morte", [_ring(x * 0.09, 0.0, 0.14 + dy, 0.008 * f, 0.022 * f, 0.0, 2.0, 10, 0.0, -0.005)
                                 for dy, f in ((-0.035, 0.3), (-0.02, 0.9), (0.01, 1.0), (0.032, 0.4))], SKIN_DARK)
             # nez long et fin (arête + narines)
-            b.loft("peau", [_ring(0.0, 0.0, 0.1 + dy, 0.012 * f, 0.016 * f, 0.0, 2.0, 10, 0.0, 0.106 + oz)
+            b.loft("peau_morte", [_ring(0.0, 0.0, 0.1 + dy, 0.012 * f, 0.016 * f, 0.0, 2.0, 10, 0.0, 0.106 + oz)
                             for dy, f, oz in ((0.0, 0.7, 0.004), (0.02, 1.0, 0.004), (0.045, 0.75, 0.0), (0.065, 0.45, -0.006))], SKIN)
             # crasse et marbrures sur la peau
             for (x, y, z, r) in ((-0.05, 0.22, 0.085, 0.02), (0.06, 0.07, 0.07, 0.018), (0.02, 0.0, 0.07, 0.015)):
-                _ellipsoid(b, "peau", (0.18, 0.15, 0.13), y, r, sx=1.0, sy=1.0, sz=0.35, cz=z, lat=5, seg=8, cx=x)
+                _ellipsoid(b, "peau_morte", (0.18, 0.15, 0.13), y, r, sx=1.0, sy=1.0, sz=0.35, cz=z, lat=5, seg=8, cx=x)
             # orbites vides (noires et profondes)
             for x in (-0.037, 0.037):
                 b.sphere("platre", x, 0.15, 0.086, 0.023, BLACK, lat=6, lon=10, sy=1.3)
             # casquette QuickEats : calotte + visière + bouton
-            _tube(b, "etoffe", JACKET, [(0.2, 0.094, 0.11, -0.005), (0.25, 0.09, 0.106, -0.01), (0.29, 0.07, 0.085, -0.015),
+            _tube(b, "veste_livreur", JACKET, [(0.2, 0.094, 0.11, -0.005), (0.25, 0.09, 0.106, -0.01), (0.29, 0.07, 0.085, -0.015),
                                         (0.315, 0.035, 0.045, -0.015), (0.322, 0.005, 0.006, -0.015)], n=2.0, seg=16, caps=False)
-            b.obox("etoffe", 0, 0.205, 0.15, 0.17, 0.012, 0.11, 0, JACKET_DARK)
-            b.sphere("etoffe", 0, 0.322, -0.015, 0.012, JACKET_DARK, lat=3, lon=6)
+            b.obox("veste_livreur", 0, 0.205, 0.15, 0.17, 0.012, 0.11, 0, JACKET_DARK)
+            b.sphere("veste_livreur", 0, 0.322, -0.015, 0.012, JACKET_DARK, lat=3, lon=6)
             b.obox("neon", 0, 0.245, 0.104, 0.06, 0.025, 0.006, 0, (1.0, 0.75, 0.35))
         _mesh(self.head, head)
         # bouche trop large (s'ouvre en poursuite) : entité à part pour animer son ouverture
@@ -193,29 +193,29 @@ class LivreurModel:
             sh = _Joint(self.torso, (side * 0.235, 0.56, -0.01))
 
             def upper(b):
-                _tube(b, "etoffe", JACKET, [(-0.37, 0.046, 0.048, 0), (-0.2, 0.052, 0.054, 0), (-0.02, 0.06, 0.062, 0),
+                _tube(b, "veste_livreur", JACKET, [(-0.37, 0.046, 0.048, 0), (-0.2, 0.052, 0.054, 0), (-0.02, 0.06, 0.062, 0),
                                             (0.03, 0.058, 0.06, 0)])
             _mesh(sh.pivot, upper)
             el = _Joint(sh.pivot, (0, -0.37, 0))
 
             def fore(b):
-                _tube(b, "etoffe", JACKET, [(-0.3, 0.038, 0.04, 0), (-0.15, 0.042, 0.045, 0), (0.02, 0.047, 0.05, 0)])
-                _tube(b, "etoffe", JACKET_DARK, [(-0.32, 0.04, 0.042, 0), (-0.28, 0.04, 0.042, 0)], caps=False)   # poignet
-                _tube(b, "peau", SKIN, [(-0.42, 0.024, 0.026, 0), (-0.31, 0.028, 0.03, 0)], seg=10)              # poignet maigre
+                _tube(b, "veste_livreur", JACKET, [(-0.3, 0.038, 0.04, 0), (-0.15, 0.042, 0.045, 0), (0.02, 0.047, 0.05, 0)])
+                _tube(b, "veste_livreur", JACKET_DARK, [(-0.32, 0.04, 0.042, 0), (-0.28, 0.04, 0.042, 0)], caps=False)   # poignet
+                _tube(b, "peau_morte", SKIN, [(-0.42, 0.024, 0.026, 0), (-0.31, 0.028, 0.03, 0)], seg=10)              # poignet maigre
             _mesh(el.pivot, fore)
             wr = _Joint(el.pivot, (0, -0.42, 0))
 
             def hand(b):
-                b.obox("peau", 0, -0.09, 0, 0.022, 0.1, 0.075, 0, SKIN)                        # paume (de profil)
-                b.obox("peau", -side * 0.0, -0.06, 0.045, 0.02, 0.06, 0.02, 0, SKIN_DARK)      # pouce
+                b.obox("peau_morte", 0, -0.09, 0, 0.022, 0.1, 0.075, 0, SKIN)                        # paume (de profil)
+                b.obox("peau_morte", -side * 0.0, -0.06, 0.045, 0.02, 0.06, 0.02, 0, SKIN_DARK)      # pouce
             _mesh(wr.pivot, hand)
             fingers = Entity(parent=wr.pivot, position=(0, -0.14, 0))
 
             def fing(b):
                 for k, z in enumerate((-0.027, -0.009, 0.009, 0.027)):
                     ln = 0.15 if k in (1, 2) else 0.12                                         # doigts démesurés
-                    b.obox("peau", 0, -ln, z, 0.014, ln, 0.013, 0, SKIN)
-                    b.obox("peau", 0, -ln - 0.004, z, 0.012, 0.008, 0.011, 0, (0.3, 0.27, 0.25))   # ongles sales
+                    b.obox("peau_morte", 0, -ln, z, 0.014, ln, 0.013, 0, SKIN)
+                    b.obox("peau_morte", 0, -ln - 0.004, z, 0.012, 0.008, 0.011, 0, (0.3, 0.27, 0.25))   # ongles sales
             _mesh(fingers, fing)
             self.arms.append((sh, el, wr, fingers))
 

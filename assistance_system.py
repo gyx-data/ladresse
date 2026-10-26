@@ -1,7 +1,9 @@
 """Chat d'assistance QuickEats : messages contradictoires, compte à rebours du livreur.
 
 Chronologie (secondes) :
-  première annulation + 120 s : messages 1-2-3 (« votre livreur est en chemin »)
+  première annulation : le joueur enquête (banque vérifiée, banque appelée, nouvelle commande refusée) ;
+  enquête terminée + 20 s : messages 1-2-3 (« votre livreur est en chemin »)
+  (multijoueur : le serveur garde son minutage fixe, annulation + 90 s)
   +20/+40 s  : paire 1 (lumières)      → évaluée à +110 s
   +125/+145  : paire 2 (étage)         → évaluée à +220 s
   +290/+310  : paire 3 (porte)         → évaluée au moment des coups à la porte
@@ -37,6 +39,7 @@ class AssistanceSystem:
         self._phase4_done = set()
         self.salt_truth_a = True
         self.messages_sent = 0
+        self.contact_scheduled = False
 
     # ------------------------------------------------------------------
     @property
@@ -80,7 +83,20 @@ class AssistanceSystem:
             return
         self.phase = 1
         self.status_text = "Commande annulée."
-        self.timers.after(gd.ASSIST_DELAY_AFTER_FIRST_CANCEL, self.start_contact)
+        if self.game.net is not None:
+            # multijoueur : le serveur envoie lui-même le contact, les paires et le compte à rebours
+            self.remote = True
+            return
+        # solo : l'assistance attend que le joueur ait compris l'annulation (quest_system → on_investigation_done)
+        if self.game.quests.investigation_done():
+            self.on_investigation_done()
+
+    def on_investigation_done(self):
+        """Banque vérifiée, banque appelée, nouvelle tentative refusée : QuickEats reprend contact."""
+        if self.phase != 1 or self.remote or self.contact_scheduled:
+            return
+        self.contact_scheduled = True
+        self.timers.after(gd.ASSIST_DELAY_AFTER_INVESTIGATION, self.start_contact)
 
     def start_contact(self):
         if self.phase != 1 or self.remote:
@@ -110,6 +126,7 @@ class AssistanceSystem:
         self.ts = 0.8 if self.game.state.address == "piege" else 1.0
         self.status_text = "Votre livreur est en chemin."
         self.game.set_act(3)
+        self.game.quests.on_event("delivery_started")
         self.game.save_checkpoint("livreur_en_chemin")
         if self.remote:
             return
@@ -307,6 +324,7 @@ class AssistanceSystem:
         self.status_text = "Livraison effectuée."
         game.phone.notify("QuickEats", gd.ASSIST_PHASE4[-1][1], "icone_quickeats", sound_on=True)
         game.on_delivery_done()
+        game.quests.on_event("delivery_done")
         # paires de la phase de survie (en multijoueur, le serveur envoie les messages)
         for pid in (4, 5):
             sch = gd.PAIR_SCHEDULE[pid]
@@ -338,8 +356,16 @@ class AssistanceSystem:
         self.pairs_done = set(d.get("pairs_done", []))
         now = self.now()
         el, rel = d.get("elapsed"), d.get("rel")
-        if self.phase == 1:
-            self.timers.after(10.0, self.start_contact)
+        if self.phase == 2 and el is None:
+            # sauvegardé entre le premier message et « en chemin » : le contact reprend depuis le début
+            self.phase = 1
+            if self.game.quests.investigation_done():
+                self.contact_scheduled = True
+                self.timers.after(10.0, self.start_contact)
+        elif self.phase == 1:
+            if self.game.quests.investigation_done():
+                self.contact_scheduled = True
+                self.timers.after(10.0, self.start_contact)
         elif self.phase in (2, 3, 4) and el is not None:
             self.t0 = now - el
             for pid in (1, 2, 3):
@@ -356,6 +382,7 @@ class AssistanceSystem:
                 if when > el:
                     self.timers.after(when - el, self._phase4, remaining, notif, app_text)
         elif self.phase == 5 and rel is not None:
+            self.game.quests.start("sous_sol", silent=True)          # anciennes sauvegardes : objectif du sous-sol
             self.t0 = now - self.total() - rel
             self.release_t0 = now - rel
             for pid in (4, 5):

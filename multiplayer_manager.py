@@ -670,12 +670,24 @@ class MultiplayerManager:
                 g.state.entity_type = m.get("entity")
                 g.state.meal = m.get("meal")
                 g.state.set("order_placed")
+                if m.get("by") not in (None, self.client.id):
+                    self._order_by_other(m)
             else:
                 g.phone.toast(m.get("message", "Erreur"))
         elif t == "correct":
             g.player.place(m["pos"], g.player.yaw, g.player.pitch)
         elif t == "game_over":
             self._game_over(m.get("result", "lose"))
+
+    def _order_by_other(self, m):
+        """Un autre joueur a commandé : la commande est celle de toute l'équipe (objectif « Commander » terminé)."""
+        g = self.game
+        g.quests.complete("commander")
+        g.set_act(2)
+        g.ui.refresh_objective()
+        meal = gd.MEALS.get(m.get("meal"), {}).get("name", "un repas")
+        who = self.players.get(m.get("by"), {}).get("name", "Un joueur")
+        g.phone.notify("QuickEats", f"{who} a commandé : {meal}.", "icone_quickeats", target=("quickeats",))
 
     def _remove_avatar(self, pid, name=None):
         a = self.avatars.pop(pid, None)
@@ -709,6 +721,10 @@ class MultiplayerManager:
                 if g.state.meal is None:
                     g.state.meal = "burger"
                 g.cancel_order()
+        elif ev == "assistance_contact":
+            # l'assistance reprend contact (message suivant) : l'objectif passe à « Lire les messages »
+            if a.phase < 2:
+                a.phase = 2
         elif ev == "delivery_started":
             a.remote = True
             a.start_delivery()
@@ -724,12 +740,16 @@ class MultiplayerManager:
         text = m.get("message", "")
         name = m.get("name", "?")
         mine = m.get("id") == self.client.id
-        phone.model.add_message("chat", name, text, mine=mine)
-        if not mine:
-            phone.notify(name, text, "icone_messages", target=("messages", "chat"))
+        c = phone.model.add_message("chat", name, text, mine=mine)
         app = phone.apps["messages"]
-        if phone.is_open and phone.current == "messages" and app.page == "thread" and app.conv == "chat":
+        viewing = phone.is_open and phone.current == "messages" and app.page == "thread" and app.conv == "chat"
+        if viewing:
+            c["unread"] = 0                     # conversation affichée : message lu, pas de bannière par-dessus
             app.render()
+            if not mine:
+                sound.play("notification", 0.4, channel="voice")
+        elif not mine:
+            phone.notify(name, text, "icone_messages", target=("messages", "chat"))
 
     def _on_death(self, m):
         g = self.game
@@ -801,6 +821,8 @@ class MultiplayerManager:
             destroy(self.over_ui)
         g.mode = "gameover"
         g.player.frozen = True
+        g.phone.close()                         # sinon le téléphone (et sa saisie en cours) restait sous l'écran de fin
+        g.exit_camera_mode()
         self.over_ui = Entity(parent=camera.ui, z=-20)
         rect(self.over_ui, 0, 0, 2.6, 1.4, rgb(0, 0, 0, 235), z=1)
         panel(self.over_ui, 0, 0, 0.9, 0.6, "panel", z=0.8)

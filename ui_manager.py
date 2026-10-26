@@ -742,9 +742,12 @@ class HUD:
         self.prompt_key = Entity(parent=self.prompt_root, model="quad", texture=kt, scale=0.042, x=-0.13, z=0)
         self.prompt = label(self.prompt_root, "", -0.1, 0, 0.8, color.white, origin=(-0.5, 0), z=-0.01)
         # sous-titres / pensées
-        self.sub_bg = rect(r, 0, -0.33, 1.1, 0.062, rgb(0, 0, 0, 0), z=0.1, radius=0.25)
+        # fond noir opaque dans la texture, transparence par la couleur de l'entité (fondu des sous-titres)
+        self.sub_bg = rect(r, 0, -0.33, 1.1, 0.062, rgb(0, 0, 0), z=0.1, radius=0.25)
+        self.sub_bg.color = rgb(0, 0, 0, 0)
         self.sub = label(r, "", 0, -0.33, 0.92, color.white, wrap=72, z=-0.1, max_w=1.5, max_h=0.12)
         self.sub_t = 0.0
+        self._sub_side = False          # téléphone sorti : sous-titres et astuces à gauche du téléphone
         # notification de quête (bandeau haut centre)
         self.quest_root = Entity(parent=r, y=0.38, enabled=False)
         panel(self.quest_root, 0, 0, 0.62, 0.06, "panel", z=0.05, radius=0.4)
@@ -773,13 +776,40 @@ class HUD:
 
     def say(self, text, duration=3.5, speaker=None):
         set_label(self.sub, (f"{speaker} : " if speaker else "") + text)
+        self.sub.wordwrap = 30 if self._sub_side else 72        # Text ne recoupe pas les lignes quand on change .text
         self.sub_t = duration
         self.sub.color = color.white
+        self._fit_sub_bg()
+
+    def _fit_sub_bg(self):
         bx = text_box(self.sub, self.root)
         if bx is not None:
             self.sub_bg.scale_x = min(1.62, bx[2] - bx[0] + 0.06)
             self.sub_bg.scale_y = bx[3] - bx[1] + 0.03
+            self.sub_bg.x = (bx[0] + bx[2]) / 2
             self.sub_bg.y = (bx[1] + bx[3]) / 2
+
+    def _place_subs(self, side):
+        """Téléphone sorti : les sous-titres et les astuces passent dans la marge gauche, au lieu de masquer le bas
+        de l'écran du téléphone (boutons « Commander », « Raccrocher », dock)."""
+        if side == self._sub_side:
+            return
+        self._sub_side = side
+        if side:
+            self.sub.position = Vec3(-0.61, -0.12, self.sub.z)
+            self.sub._fit = (0.5, 0.3)
+            self.tips.position = Vec3(-0.61, 0.12, self.tips.z)
+        else:
+            self.sub.position = Vec3(0, -0.33, self.sub.z)
+            self.sub._fit = (1.5, 0.12)
+            self.tips.position = Vec3(0, -0.2, self.tips.z)
+        if self.sub.text.strip():
+            set_label(self.sub, " ".join(self.sub.text.split()))       # recoupe proprement (sans doubles espaces)
+            self.sub.wordwrap = 30 if side else 72
+            self._fit_sub_bg()
+        if self.tips.text.strip():
+            self.tips.text = " ".join(self.tips.text.split())
+            self.tips.wordwrap = 34 if side else 80
 
     def quest(self, text, duration=4.0):
         set_label(self.quest_note, text)
@@ -789,6 +819,7 @@ class HUD:
 
     def tip(self, text, duration=8.0):
         self.tips.text = text
+        self.tips.wordwrap = 34 if self._sub_side else 80
         self.tips_t = duration
 
     def update(self, dt, game):
@@ -799,6 +830,7 @@ class HUD:
             self.fl_pct.text = f"{int(fb)} %"
         self.fl_bar.fill.color = color.rgb32(240, 220, 140) if fb > 20 else color.rgb32(240, 110, 70)
         self.fl_icon.texture = self.fl_tex_on if p.flashlight.on else self.fl_tex_off
+        self._place_subs(bool(game.phone.is_open))
         b = game.phone.model.battery
         self.ph_bar.set(b / 100.0)
         if self.ph_pct.text != f"{int(b)} %":

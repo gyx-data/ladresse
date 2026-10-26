@@ -98,6 +98,8 @@ class HouseEvents:
         for opened in st.opened:
             if opened == "frigo":
                 h.parts["frigo_porte"].set_open(True, instant=True)
+                self._sync_fridge_note()
+                self.house.anchors["frigo_light"].enabled = True
             elif opened == "tiroir_amis":
                 h.parts["tiroir_bureau"].set_open(True)
                 h.parts["tel_garnier"].enabled = True
@@ -289,15 +291,39 @@ class HouseEvents:
             part.set_open(False)
             light.enabled = False
             sound.play_at("porte_ferme", self.house.anchors["frigo"], 0.5)
+            self._fridge_buzz(False)
+            invoke(self._sync_fridge_note, delay=0.75)
             return
         part.set_open(True)
         light.enabled = True
         sound.play_at("porte_ouvre", self.house.anchors["frigo"], 0.5, pitch=1.4)
+        self._fridge_buzz(True)
+        invoke(self._sync_fridge_note, delay=0.75)
         self.state.opened.add("frigo")
         if not self.state.flag("frigo_note"):
             self.state.set("frigo_note")
             invoke(lambda: self.read_doc("note_frigo", "Note du réfrigérateur", [gd.NOTE_FRIGO]), delay=0.9)
             g.say(gd.INTERACT_TEXT["frigo_vide"])
+
+    def _fridge_buzz(self, on):
+        """Les mouches bourdonnent tant que le frigo est ouvert."""
+        h = self.handles.get("mouches")
+        if on and (h is None or not getattr(h, "alive", True)):
+            self.handles["mouches"] = sound.loop("mouches", 0.5, channel="sfx", pos=self.house.anchors["frigo_mouches"],
+                                                 fade_in=0.8, ref=2.0)
+        elif not on and h is not None:
+            h.fade_to(0.0, 1.5, stop=True)
+            self.handles.pop("mouches", None)
+
+    def _sync_fridge_note(self):
+        """Le papier de l'adresse est aimanté sur la porte : le point d'interaction suit la porte."""
+        it = self.game.interactions.get("adresse_frigo")
+        note = self.house.parts.get("papier_adresse")
+        if it is not None and note is not None:
+            p = note.world_position
+            d = self.house.parts["frigo_porte"]
+            # un peu devant la face avant (côté pièce quand fermée, côté -x quand la porte est ouverte)
+            it.pos = Vec3(p[0] - 0.12, p[1], p[2]) if d.is_open else Vec3(p[0], p[1], p[2] - 0.12)
 
     def h_adresse_frigo(self, it):
         st = self.state

@@ -207,6 +207,32 @@ def scenario():
     check(game.state.entity_type == "imposteur", "le repas détermine l'entité (burger → Imposteur)")
     game.phone.close()
 
+    # --- annulation : le livreur ne vient pas tant que le joueur n'a pas enquêté ---
+    for _ in range(40):
+        game.timers.update(1.0)
+    yield
+    check(game.state.flag("order_cancelled") and game.quests.is_active("comprendre"), "commande annulée → objectif « Comprendre »")
+    for _ in range(600):
+        game.timers.update(1.0)
+        game.assistance.update(0.05)
+    yield
+    check(game.assistance.phase == 1, "sans vérifier la banque, l'assistance ne se manifeste pas (pas de livreur)")
+    check("application bancaire" in game.quests.current_objective(), "objectif HUD : vérifier l'application bancaire")
+    check("application bancaire" in str(game.ui.hud.obj.text), "bandeau d'objectif du HUD à jour après l'annulation")
+    game.phone.open()
+    yield from wait(3)
+    game.phone.open_app("banque")
+    yield from wait(3)
+    game.phone.apps["banque"].call()
+    yield from wait(2)
+    game.phone.calls.hang_up()
+    game.phone.open_app("quickeats")
+    qe.confirm()
+    qe.loading_t = 5.0
+    yield from wait(3)
+    check(game.state.order_failed == 1 and game.quests.investigation_done(), "banque vérifiée, banque appelée, nouvelle commande refusée")
+    game.phone.close()
+
     # --- chronologie de l'assistance (accélérée) ---
     n = 0
     while game.assistance.phase < 5 and n < 2000:
@@ -218,6 +244,9 @@ def scenario():
     check(game.assistance.phase == 5, "la chronologie arrive jusqu'à « Livraison effectuée »")
     check(game.entity.active and game.entity.kind == "imposteur", "l'entité est lâchée dans la maison")
     check(len(game.state.pair_good) >= 3, f"{len(game.state.pair_good)} paires évaluées")
+    sv = game.quests.quests["survivre"]
+    check(all(f"p{i}" in sv.done_steps for i in (1, 2, 3)) and "sous-sol" in game.quests.current_objective(),
+          "objectifs : paires 1-3 comptées, objectif du sous-sol après la livraison")
     game.entity.set_visible(True)
 
     # --- IA : pathfinding et poursuite ---
@@ -324,7 +353,12 @@ def scenario():
     for _ in range(20):
         yield
     check(not mp.avatars, "départ du second joueur pris en compte")
+    game.phone.open()
     srv.stop()
+    for _ in range(30):
+        yield
+    check(not mp.in_game and game.mode == "gameover" and not game.phone.is_open,
+          "coupure du serveur : « Partie interrompue », téléphone rangé")
     mp.disconnect()
     game.to_main_menu()
     yield from wait(5)

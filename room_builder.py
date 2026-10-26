@@ -18,7 +18,7 @@ from texture_generator import textures, photo_meta
 
 # Taille (en mètres) couverte par une répétition de chaque texture
 TILE = {
-    "etoffe": 0.5, "peau": 0.5, "crepi": 2.5, "crepi_rose": 2.5, "tuiles": 1.6, "palmier_tronc": 1.0, "palme": 1.0, "geranium": 0.6, "papier_peint": 1.4, "papier_chambre": 1.4, "papier_couloir": 1.4,
+    "etoffe": 0.5, "peau": 0.5, "veste_livreur": 0.45, "peau_morte": 0.3, "jean_sale": 0.4, "crepi": 2.5, "crepi_rose": 2.5, "tuiles": 1.6, "palmier_tronc": 1.0, "palme": 1.0, "geranium": 0.6, "papier_peint": 1.4, "papier_chambre": 1.4, "papier_couloir": 1.4,
     "platre": 2.0, "plafond": 2.0, "parquet": 2.0, "carrelage": 1.0, "moquette": 1.5,
     "beton": 2.0, "asphalte": 3.0, "herbe": 2.0, "porte": 1.0, "planches": 1.0,
     "volet": 1.0, "bois_meuble": 1.0, "tissu": 1.0, "marbre": 1.0, "email": 1.0,
@@ -769,9 +769,24 @@ def _knob(b, cx, cz, rot, lx, ly, lz, r=0.022, col=(0.8, 0.8, 0.82)):
     b.sphere("metal", kx, ly, kz, r, col, lat=5, lon=10, sy=0.7)
 
 
-def wardrobe(b, x0, z0, x1, z1, y0, face="+x", height=2.1):
-    """Armoire ancienne : caisse (portes animées à part), socle mouluré, corniche, pieds tournés."""
-    b.box("bois_meuble", x0 + 0.03, y0 + 0.1, z0, x1 - 0.03, y0 + height - 0.08, z1, DARKWOOD, collide=True)
+def wardrobe(b, x0, z0, x1, z1, y0, face="+x", height=2.1, hollow=False):
+    """Armoire ancienne : caisse (portes animées à part), socle mouluré, corniche, pieds tournés.
+
+    hollow : caisse vide (façade vers +z) avec fond, flancs, plancher, plafond, étagère haute et tringle."""
+    if not hollow:
+        b.box("bois_meuble", x0 + 0.03, y0 + 0.1, z0, x1 - 0.03, y0 + height - 0.08, z1, DARKWOOD, collide=True)
+    else:
+        t, inner = 0.025, (0.42, 0.36, 0.3)
+        xa, xb, ya, yb = x0 + 0.03, x1 - 0.03, y0 + 0.1, y0 + height - 0.08
+        b.box("bois_meuble", xa, ya, z0, xb, yb, z0 + t, inner)                                # fond
+        b.box("bois_meuble", xa, ya, z0, xa + t, yb, z1, DARKWOOD)                             # flancs
+        b.box("bois_meuble", xb - t, ya, z0, xb, yb, z1, DARKWOOD)
+        b.box("bois_meuble", xa, ya, z0, xb, ya + t, z1, inner)                                # plancher / plafond
+        b.box("bois_meuble", xa, yb - t, z0, xb, yb, z1, DARKWOOD)
+        b.box("bois_meuble", xa + t, y0 + 1.78, z0 + t, xb - t, y0 + 1.8, z1 - 0.03, inner)    # étagère haute
+        rod(b, "metal", (xa + t, y0 + 1.66, (z0 + z1) / 2), (xb - t, y0 + 1.66, (z0 + z1) / 2), 0.012,
+            col=(0.75, 0.72, 0.66))                                                            # tringle
+        b.colliders.append((x0, y0, z0, x1, y0 + height, z1))
     b.box("bois_meuble", x0, y0 + 0.06, z0 - 0.01, x1, y0 + 0.14, z1 + 0.025, (0.45, 0.4, 0.36))
     b.box("bois_meuble", x0 - 0.04, y0 + height - 0.08, z0 - 0.02, x1 + 0.04, y0 + height, z1 + 0.05, (0.45, 0.4, 0.36))
     b.box("bois_meuble", x0 - 0.02, y0 + height - 0.12, z0 - 0.01, x1 + 0.02, y0 + height - 0.08, z1 + 0.03, (0.5, 0.45, 0.4))
@@ -868,6 +883,23 @@ def _ring(cx, cz, y, hw, hd, rot=0.0, n=2.6, seg=32, ox=0.0, oz=0.0):
         lz = oz + hd * math.copysign(abs(s_) ** (2.0 / n), s_)
         pts.append((cx + lx * ca + lz * sa, y, cz - lx * sa + lz * ca))
     return pts
+
+
+def rod(b, tex, p0, p1, r0, r1=None, col=(1, 1, 1), seg=8, caps=False):
+    """Tube lisse (manche, tige, barreau) de p0 à p1, rayon r0 -> r1 ; caps : bouts fermés."""
+    r1 = r0 if r1 is None else r1
+    ax = _norm(_sub(p1, p0))
+    ref = (0.0, 1.0, 0.0) if abs(ax[1]) < 0.9 else (1.0, 0.0, 0.0)
+    u = _norm(_cross(ax, ref))
+    v = _cross(ax, u)
+    rings = []
+    for (p, r) in ((p0, r0), (p1, r1)):
+        rings.append([tuple(p[i] + r * (math.cos(a) * u[i] + math.sin(a) * v[i]) for i in range(3))
+                      for a in [2 * math.pi * k / seg for k in range(seg)]])
+    b.loft(tex, rings, col)
+    if caps:
+        b.cap(tex, rings[0], tuple(-c for c in ax), col)
+        b.cap(tex, rings[1], ax, col)
 
 
 def lathe(b, tex, cx, cz, y0, profile, col=(1, 1, 1), n=2.0, seg=16, rot=0.0):

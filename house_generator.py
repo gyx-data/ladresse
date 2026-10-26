@@ -518,16 +518,23 @@ class House:
         sx0, sx1 = 6.1, 7.9
         zt, zb = 12.0, 16.2
         top_y = 2.8
-        # murs latéraux inclinés (suivent la pente du plafond) : on utilise des boîtes verticales par tronçons
+        # murs latéraux : le haut suit exactement la pente du plafond (faces trapézoïdales lisses, plus de dents de scie) ;
+        # la collision reste découpée en tronçons
+        def top(z):
+            return top_y + (y0 + h - top_y) * (z - zt) / (zb - zt)
+        for xw in (sx0, sx1):
+            for side in (-1, 1):
+                fx = xw + side * 0.1
+                b.quad("beton", (fx, y0 - 0.05, zt), (fx, y0 - 0.05, zb), (fx, top(zb), zb), (fx, top(zt), zt), (side, 0, 0),
+                       (0.9, 0.9, 0.9))
+            b.quad("beton", (xw - 0.1, top(zt), zt), (xw + 0.1, top(zt), zt), (xw + 0.1, top(zb), zb), (xw - 0.1, top(zb), zb),
+                   (0, 1, 0), (0.9, 0.9, 0.9))
         steps = 10
         for i in range(steps):
             za = zt + (zb - zt) * i / steps
             zb2 = zt + (zb - zt) * (i + 1) / steps
-            yc = top_y + (y0 + h - top_y) * (i + 0.5) / steps
-            ylo = y0
-            for xw, face in ((sx0, "+x"), (sx1, "-x")):
-                b.box("beton", xw - 0.1, ylo - 0.05, za, xw + 0.1, yc + 0.0, zb2, (0.9, 0.9, 0.9), collide=True,
-                      skip=("-y",))
+            for xw in (sx0, sx1):
+                b.colliders.append((xw - 0.1, y0 - 0.05, za, xw + 0.1, top(zb2), zb2))
         # plafond incliné de l'escalier
         b.quad("beton", (sx0, top_y, zt + 0.1), (sx1, top_y, zt + 0.1), (sx1, y0 + h, zb), (sx0, y0 + h, zb), (0, -1, 0),
                (0.8, 0.8, 0.8))

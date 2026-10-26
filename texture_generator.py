@@ -510,6 +510,65 @@ def tex_cloth_neutral(rng):
     return to_img(arr)
 
 
+@register("veste_livreur", 256)
+def tex_courier_jacket(rng):
+    """Veste de livreur en nylon (neutre, teintée par la couleur de sommet) : trame ripstop, plis, coutures,
+    crasse incrustée, éraflures et taches sombres."""
+    s = 256
+    yy, xx = np.mgrid[:s, :s]
+    arr = np.full((s, s), 222.0)
+    arr *= 1.0 - 0.07 * (((xx % 16) < 1) | ((yy % 16) < 1))                          # ripstop
+    arr *= 1.0 - 0.025 * (np.sin(xx * 1.9) * np.sin(yy * 1.9) > 0.3)                     # tissage
+    folds = fbm(s, rng, base=3, octaves=4, stretch=(1, 4))
+    arr *= 0.78 + 0.36 * folds                                                           # plis verticaux
+    arr *= 1.0 - 0.18 * ((yy % 128) < 3)                                                 # couture
+    grime = np.clip((fbm(s, rng, base=4, octaves=5) - 0.5) * 3.0, 0, 1)
+    arr = arr[..., None] * np.ones(3)
+    arr = arr * (1 - 0.55 * grime[..., None]) + np.array((70, 58, 44)) * 0.55 * grime[..., None]
+    stains = np.clip((fbm(s, rng, base=6, octaves=3) - 0.66) * 6.0, 0, 1)
+    arr = arr * (1 - 0.7 * stains[..., None]) + np.array((44, 22, 14)) * 0.7 * stains[..., None]   # taches (sang séché ?)
+    img = to_img(arr)
+    d = ImageDraw.Draw(img)
+    for _ in range(40):                                                                  # éraflures claires
+        x, y = int(rng.integers(0, s)), int(rng.integers(0, s))
+        L = int(rng.integers(4, 14))
+        d.line([x, y, x + L, y + int(rng.integers(-3, 4))], fill=(236, 232, 224), width=1)
+    return img
+
+
+@register("peau_morte", 256)
+def tex_dead_skin(rng):
+    """Peau grise de cadavre (neutre, teintée par la couleur de sommet) : marbrures, réseau de veines sombres,
+    pores, plaques violacées."""
+    s = 256
+    arr = np.full((s, s, 3), 214.0)
+    mott = fbm(s, rng, base=5, octaves=5)
+    arr *= (0.8 + 0.32 * mott)[..., None]
+    veins = fbm(s, rng, base=7, octaves=4)
+    vmask = np.clip(1.0 - np.abs(veins - 0.5) / 0.018, 0, 1) ** 1.5
+    arr = arr * (1 - 0.45 * vmask[..., None]) + np.array((70, 60, 96)) * 0.45 * vmask[..., None]
+    patch = np.clip((fbm(s, rng, base=3, octaves=3) - 0.6) * 4.0, 0, 1)
+    arr = arr * (1 - 0.35 * patch[..., None]) + np.array((96, 76, 104)) * 0.35 * patch[..., None]
+    pores = rng.random((s, s)) < 0.02
+    arr[pores] *= 0.82
+    return to_img(arr).filter(ImageFilter.GaussianBlur(0.6))
+
+
+@register("jean_sale", 256)
+def tex_dirty_denim(rng):
+    """Jean usé et sale (neutre, teinté par la couleur de sommet) : sergé diagonal, usure claire, boue en bas."""
+    s = 256
+    yy, xx = np.mgrid[:s, :s]
+    twill = 0.5 + 0.5 * np.sin((xx + yy) * 1.4)
+    arr = np.full((s, s), 200.0) * (0.84 + 0.16 * twill)
+    wear = fbm(s, rng, base=4, octaves=4, stretch=(1, 3))
+    arr *= 0.8 + 0.4 * wear
+    arr = arr[..., None] * np.ones(3)
+    mud = np.clip((fbm(s, rng, base=5, octaves=4) - 0.55) * 3.5, 0, 1) * (yy / s)[...] ** 2
+    arr = arr * (1 - 0.6 * mud[..., None]) + np.array((74, 62, 46)) * 0.6 * mud[..., None]
+    return to_img(arr)
+
+
 @register("jean", 128)
 def tex_denim(rng):
     """Toile de jean neutre (sergé diagonal), teintée par la couleur du vêtement."""

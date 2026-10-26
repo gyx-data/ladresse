@@ -711,12 +711,10 @@ class GameManager:
             return
         if self.phone.is_open:
             if key == settings.key("telephone"):
-                if self.phone.current == "messages" and self.phone.apps["messages"].composing:
-                    self.phone.apps["messages"].stop_compose()
-                    return
-                if not (self.phone.current == "messages" and self.phone.apps["messages"].composing) and \
-                        not (self.phone.current == "quickeats" and self.phone.apps["quickeats"].page == "address") and \
-                        not (self.phone.current == "appels" and self.phone.apps["appels"].page == "keypad"):
+                # en pleine saisie (message, adresse) la touche écrit sa lettre : seul Échap quitte la saisie
+                typing = (self.phone.current == "messages" and self.phone.apps["messages"].composing) or \
+                    (self.phone.current == "quickeats" and self.phone.apps["quickeats"].page == "address")
+                if not typing:
                     self.phone.close()
                     return
             self.phone.on_key(key)
@@ -827,7 +825,7 @@ class GameManager:
         st = self.state
         meal = gd.MEALS[st.meal]
         refused = st.flags.setdefault("refused_orders", [])
-        refused.append(("QuickEats", -meal["price"], "12/10"))
+        refused.append(("QuickEats", -meal["price"], "13/10"))         # ce soir (vendredi 13 octobre)
         st.set("order_cancelled")
         self.phone.notify("QuickEats", gd.FIRST_CANCEL, "icone_quickeats", target=("banque",))
         self.phone.model.add_message("support", gd.CONTACT_SUPPORT, gd.FIRST_CANCEL, mine=False)
@@ -1283,8 +1281,8 @@ class GameManager:
         self.effects.update(dt)
         self.ui.update(dt)
         sound.update(dt)
-        if self.net:
-            self.mp.update(dt)
+        if self.mp is not None and (self.net or self.is_multiplayer):
+            self.mp.update(dt)               # connexion perdue : il faut encore lire le message « disconnected »
         if self._frame % 20 == 0:
             shader_state.post_res = tuple(window.size)
             camera.set_shader_input("res", Vec2(window.size[0], window.size[1]))

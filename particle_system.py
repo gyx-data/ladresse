@@ -161,6 +161,50 @@ class InsectField:
                 s["e"].world_position = s["c"] + Vec3(math.cos(s["a"]) * s["r"], math.sin(s["a"] * 1.3) * s["r"] * 0.7, math.sin(s["a"] * 0.7) * s["r"])
 
 
+class FridgeFlies:
+    """Mouches qui s'échappent du frigo ouvert et tournent devant, et bouffées verdâtres de l'odeur."""
+
+    def __init__(self, center):
+        self.c = Vec3(*center)
+        self.parent = Entity(name="mouches_frigo")
+        rnd = random.Random(21)
+        self.flies = []
+        for k in range(10):
+            e = Entity(parent=self.parent, model="circle", color=color.rgba32(10, 10, 8, 235), scale=0.0065, billboard=True)
+            self.flies.append(dict(e=e, a=rnd.uniform(0, 6.28), r=rnd.uniform(0.1, 0.42), s=rnd.uniform(5, 11) * rnd.choice((-1, 1)),
+                                   h=rnd.uniform(-0.4, 0.5), ph=rnd.uniform(0, 6.28)))
+        self.haze = []
+        for k in range(5):
+            q = _quad("lueur", rnd.uniform(0.35, 0.6), color.rgba32(140, 160, 90, 0))
+            q.parent = self.parent
+            self.haze.append(dict(e=q, t=k / 5.0, x=rnd.uniform(-0.2, 0.2)))
+        self.k = 0.0
+        self.t = 0.0
+        _show(self.parent, False)
+
+    def update(self, dt, is_open, player):
+        self.k += ((1.0 if is_open else 0.0) - self.k) * min(1.0, dt * (1.5 if is_open else 0.6))
+        vis = self.k > 0.03 and bool(settings["particules"]) and (self.c - player.pos).length() < 9.0
+        _show(self.parent, vis)
+        if not vis:
+            return
+        self.t += dt
+        k = self.k
+        for f in self.flies:
+            f["a"] += dt * f["s"]
+            a = f["a"]
+            r = f["r"] * (0.3 + 0.7 * k)
+            out = -0.55 * k * (0.5 + 0.5 * math.sin(a * 0.37 + f["ph"]))          # vers la pièce (-z)
+            jit = math.sin(self.t * 31 + f["ph"]) * 0.015                            # vol saccadé
+            f["e"].world_position = self.c + Vec3(math.cos(a) * r + jit, f["h"] + math.sin(a * 1.7 + f["ph"]) * 0.09,
+                                                  out + math.sin(a) * r * 0.35)
+        for h in self.haze:
+            h["t"] = (h["t"] + dt * 0.22) % 1.0
+            p = h["t"]
+            h["e"].world_position = self.c + Vec3(h["x"] + math.sin(self.t * 0.7 + h["x"] * 9) * 0.08, 0.05 + p * 0.55, -0.1 - p * 0.55)
+            h["e"].color = color.rgba32(140, 160, 90, int(34 * k * math.sin(math.pi * p)))
+
+
 class MistField:
     """Brume au sol du sous-sol : particules grises lentes."""
 
@@ -201,6 +245,8 @@ class ParticleManager:
             else:
                 windows.append((fixed + (0.3 if fixed < 8 else -0.3), y, c))
         self.insects = InsectField(windows[:8])
+        A = game.house.anchors
+        self.fridge = FridgeFlies(A["frigo_mouches"]) if "frigo_mouches" in A else None
         self.t = 0.0
 
     def update(self, dt):
@@ -211,6 +257,9 @@ class ParticleManager:
         _show(self.mist.parent, zone in ("sous_sol", "escalier_cave") and bool(settings["particules"]))
         self.mist.update(dt, self.t)
         self.insects.update(dt, p)
+        if self.fridge is not None:
+            door = self.game.house.parts.get("frigo_porte")
+            self.fridge.update(dt, door is not None and door.is_open and p.level == 0, p)
         # pluie : visible uniquement par les fenêtres non condamnées (grenier) ou dehors
         self.rain.enabled = p.level >= 1 or zone == "dehors"
         self.rain.update(dt, p.eye_pos)
@@ -220,3 +269,5 @@ class ParticleManager:
         self.rain.parent.enabled = False
         self.insects.parent.enabled = False
         self.mist.parent.enabled = False
+        if self.fridge is not None:
+            self.fridge.parent.enabled = False

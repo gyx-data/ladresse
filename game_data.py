@@ -142,7 +142,20 @@ ASSIST_INTRO = [
            "Il sera chez vous dans 8 minutes."),
     (60.0, "Votre livreur est en chemin."),
 ]
-ASSIST_DELAY_AFTER_FIRST_CANCEL = 120.0
+ASSIST_DELAY_AFTER_FIRST_CANCEL = 120.0        # (ancien déclenchement fixe, gardé pour le multijoueur)
+# Solo : l'assistance ne contacte le joueur qu'une fois l'annulation « comprise » (banque vérifiée,
+# banque appelée, nouvelle tentative de commande), puis après ce délai.
+ASSIST_DELAY_AFTER_INVESTIGATION = 20.0
+
+# Pensées d'Adrien qui guident l'enquête sur l'annulation (sous-titres seulement, pas de voix enregistrée)
+LINE_CHECK_BANK = "Fonds insuffisants ? Il y a de l'argent sur ce compte... Je vais vérifier l'appli de la banque."
+LINE_CALL_BANK = "Le paiement est refusé alors que le solde est largement suffisant. J'appelle la banque."
+LINE_RETRY_ORDER = "Personne pour m'expliquer. Bon... je réessaie de commander."
+
+# Objectifs d'attente affichés dans le HUD
+OBJ_WAIT_ORDER = "Attendre votre commande QuickEats"
+OBJ_WAIT_SUPPORT = "Attendre une réponse de QuickEats"
+OBJ_READ_SUPPORT = "Lire les messages de QuickEats Support"
 DELIVERY_TOTAL_SECONDS = 480.0
 
 # Déroulé de l'attente (secondes depuis « Votre livreur est en chemin »)
@@ -305,7 +318,7 @@ INTERACT_TEXT = {
     "porte_condamnee": "La porte ne bouge pas. Elle semble bloquée de l'intérieur.",
     "volets_cloues": "Les volets sont cloués de l'extérieur.",
     "four": "Ça sent le brûlé.",
-    "frigo_vide": "Vide, à part une assiette de nourriture moisie et une note.",
+    "frigo_vide": "Ça empeste... Tout a pourri là-dedans, depuis des semaines. Et une note sur l'assiette.",
     "tiroirs_cles": "Un trousseau de clés. Elles n'ouvrent rien ici.",
     "miroir_drap": "Un drap recouvre le miroir.",
     "lit_forme": "Ce n'est qu'un amas d'oreillers. Mais la forme est dérangeante.",

@@ -441,3 +441,334 @@ def app_banner(kind="quickeats", w=640, h=120):
     arr = (c0 * (1 - a) + c1 * a) * np.ones((1, W, 1))
     base = Image.fromarray(arr.astype(np.uint8), "RGB").convert("RGBA")
     return base.resize((w, h), Image.LANCZOS)
+
+
+# ---------------------------------------------------------------------------
+# Téléphone : coque, fond d'écran, icônes d'applis, pictogrammes (interface du téléphone)
+# ---------------------------------------------------------------------------
+def _vgrad(w, h, top, bot):
+    """Image RGBA en dégradé vertical (couleurs RGB ou RGBA)."""
+    top = tuple(top) + ((255,) if len(top) == 3 else ())
+    bot = tuple(bot) + ((255,) if len(bot) == 3 else ())
+    a = np.linspace(0, 1, h)[:, None, None]
+    arr = (np.array(top, float) * (1 - a) + np.array(bot, float) * a) * np.ones((1, w, 1))
+    return Image.fromarray(arr.astype(np.uint8), "RGBA")
+
+
+def _mask_rr(w, h, r, box=None):
+    m = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(m).rounded_rectangle(box or [0, 0, w - 1, h - 1], radius=r, fill=255)
+    return m
+
+
+@cached
+def phone_frame(w=464, h=874, sw=432, sh=842, radius=58, screen_radius=40):
+    """Coque du téléphone vue de face : cadre titane, bordure noire, trou transparent à la place de l'écran
+    (coins arrondis) — posée DEVANT le contenu de l'écran pour en arrondir les angles."""
+    S = 3
+    W, H = w * S, h * S
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    m = 3 * S                                         # marge pour les boutons latéraux
+    # boutons latéraux (volume à gauche, verrouillage à droite)
+    for (y0, y1) in ((.2, .25), (.28, .36), (.38, .46)):
+        d.rounded_rectangle([0, int(H * y0), m + 4 * S, int(H * y1)], radius=2 * S, fill=(58, 60, 68))
+    d.rounded_rectangle([W - m - 4 * S, int(H * .3), W - 1, int(H * .42)], radius=2 * S, fill=(58, 60, 68))
+    # cadre métallique (dégradé + liseré clair)
+    body = _vgrad(W - 2 * m, H - 2 * m, (92, 94, 104), (40, 41, 48))
+    img.paste(body, (m, m), _mask_rr(W - 2 * m, H - 2 * m, radius * S))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([m, m, W - m - 1, H - m - 1], radius=radius * S, outline=(150, 152, 164), width=int(1.4 * S))
+    # verre noir
+    g = 4 * S
+    d.rounded_rectangle([m + g, m + g, W - m - g - 1, H - m - g - 1], radius=(radius - 4) * S, fill=(4, 4, 6))
+    # trou de l'écran
+    sx0 = (W - sw * S) // 2
+    sy0 = (H - sh * S) // 2
+    hole = _mask_rr(W, H, screen_radius * S, [sx0, sy0, sx0 + sw * S - 1, sy0 + sh * S - 1])
+    a = np.array(img.split()[3]).astype(np.int16) - np.array(hole).astype(np.int16)
+    img.putalpha(Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "L"))
+    return img.resize((w, h), Image.LANCZOS)
+
+
+@cached
+def phone_glow(w=600, h=1010, inner=(464, 874), col=(140, 170, 255)):
+    """Halo lumineux de l'écran dans le noir + ombre portée (posé derrière la coque)."""
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    x0, y0 = (w - inner[0]) // 2, (h - inner[1]) // 2
+    ImageDraw.Draw(img).rounded_rectangle([x0 - 6, y0 - 6, x0 + inner[0] + 6, y0 + inner[1] + 6], radius=70, fill=col + (70,))
+    img = img.filter(ImageFilter.GaussianBlur(26))
+    sh = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle([x0 + 8, y0 + 22, x0 + inner[0] - 8, y0 + inner[1] + 14], radius=60, fill=(0, 0, 0, 170))
+    return Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(14)))
+
+
+@cached
+def phone_wallpaper(w=432, h=842):
+    """Fond d'écran : nuit sur le Mont-Boron, lune voilée, une maison isolée avec une seule fenêtre allumée."""
+    rng = np.random.default_rng(1713)
+    yy = np.linspace(0, 1, h)[:, None]
+    xx = np.linspace(0, 1, w)[None, :]
+    top, mid, bot = np.array((10, 14, 30.)), np.array((30, 24, 50.)), np.array((8, 7, 12.))
+    t = (yy * np.ones((1, w)))[..., None]
+    arr = np.where(t < .55, top * (1 - t / .55) + mid * (t / .55), mid * (1 - (t - .55) / .45) + bot * ((t - .55) / .45))
+    # halo de lune
+    mx, my = .76, .56                    # lune basse, sous les icônes (l'horloge reste lisible)
+    dist = np.sqrt(((xx - mx) * w / h) ** 2 + (yy - my) ** 2)
+    arr = arr + (np.exp(-(dist / .16) ** 2) * 70)[..., None] * np.array((.75, .8, 1.0))
+    # nuages : bruit basse fréquence étiré
+    n = rng.random((12, 6))
+    cl = np.array(Image.fromarray((n * 255).astype(np.uint8)).resize((w, h), Image.BICUBIC)).astype(float) / 255
+    band = np.exp(-((yy - .3) / .14) ** 2)
+    arr *= (1 - .35 * np.clip(cl - .45, 0, 1) * 2 * band)[..., None]
+    # étoiles
+    for _ in range(70):
+        x, y = int(rng.integers(0, w)), int(rng.integers(0, int(h * .45)))
+        arr[y, x] = np.minimum(255, arr[y, x] + rng.uniform(40, 120))
+    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
+    d = ImageDraw.Draw(img)
+    moon = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(moon).ellipse([w * mx - 20, h * my - 20, w * mx + 20, h * my + 20], fill=255)
+    ImageDraw.Draw(moon).ellipse([w * mx - 11, h * my - 25, w * mx + 27, h * my + 13], fill=0)      # croissant
+    img.paste((226, 228, 236, 255), (0, 0), moon.filter(ImageFilter.GaussianBlur(0.6)))
+    # collines
+    pts = [(0, h)]
+    for i in range(0, w + 8, 8):
+        pts.append((i, h * (.66 - .05 * math.sin(i / w * 3.1 + .4) - .02 * math.sin(i / w * 11))))
+    pts.append((w, h))
+    d.polygon(pts, fill=(14, 13, 22))
+    # la maison (pignon) et sa fenêtre allumée
+    hx, hy = w * .3, h * .62
+    d.polygon([(hx - 34, hy), (hx, hy - 30), (hx + 34, hy)], fill=(6, 6, 10))
+    d.rectangle([hx - 28, hy, hx + 28, hy + 40], fill=(6, 6, 10))
+    d.rectangle([hx + 6, hy + 10, hx + 16, hy + 22], fill=(255, 196, 110))
+    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).ellipse([hx - 9, hy - 7, hx + 31, hy + 39], fill=(255, 170, 80, 60))
+    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(8)))
+    d = ImageDraw.Draw(img)
+    pts = [(0, h)]
+    for i in range(0, w + 8, 8):
+        pts.append((i, h * (.74 - .03 * math.sin(i / w * 5 + 1.7))))
+    pts.append((w, h))
+    d.polygon(pts, fill=(5, 5, 8))
+    # grain
+    a = np.array(img).astype(float)
+    a[..., :3] *= rng.normal(1.0, .035, (h, w))[..., None]
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGBA")
+
+
+def _glyph_draw(img, name, S, c, x0=0.0, y0=0.0):
+    """Dessine le pictogramme `name` dans le carré (x0, y0, côté S) de l'image, couleur c (RGBA)."""
+    d = ImageDraw.Draw(img)
+
+    def P(x, y):
+        return (x0 + x * S, y0 + y * S)
+
+    def B(a, b, cc, dd):
+        return [x0 + a * S, y0 + b * S, x0 + cc * S, y0 + dd * S]
+    lw = max(1, int(S * .09))
+    clear = (0, 0, 0, 0)
+    if name == "back":
+        d.line([P(.62, .2), P(.32, .5), P(.62, .8)], fill=c, width=lw, joint="curve")
+    elif name == "next":
+        d.line([P(.38, .2), P(.68, .5), P(.38, .8)], fill=c, width=lw, joint="curve")
+    elif name == "send":
+        d.line([P(.5, .8), P(.5, .26)], fill=c, width=lw)
+        d.line([P(.26, .48), P(.5, .24), P(.74, .48)], fill=c, width=lw, joint="curve")
+    elif name in ("phone", "hangup"):
+        lay = Image.new("RGBA", img.size, clear)
+        ld = ImageDraw.Draw(lay)
+        ld.arc(B(.14, .26, .86, .98), 200, 340, fill=c, width=int(S * .15))
+        ld.rounded_rectangle(B(.08, .5, .32, .68), radius=int(S * .07), fill=c)
+        ld.rounded_rectangle(B(.68, .5, .92, .68), radius=int(S * .07), fill=c)
+        if name == "phone":
+            lay = lay.rotate(135, resample=Image.BICUBIC, center=P(.5, .5))
+        img.alpha_composite(lay)
+    elif name == "backspace":
+        d.polygon([P(.06, .5), P(.3, .22), P(.92, .22), P(.92, .78), P(.3, .78)], outline=c, width=lw)
+        d.line([P(.46, .37), P(.72, .63)], fill=c, width=lw)
+        d.line([P(.72, .37), P(.46, .63)], fill=c, width=lw)
+    elif name == "search":
+        d.ellipse(B(.14, .14, .62, .62), outline=c, width=lw)
+        d.line([P(.56, .56), P(.84, .84)], fill=c, width=int(lw * 1.3))
+    elif name == "pin":
+        d.ellipse(B(.22, .08, .78, .62), fill=c)
+        d.polygon([P(.27, .46), P(.5, .94), P(.73, .46)], fill=c)
+        d.ellipse(B(.39, .24, .61, .46), fill=clear)
+    elif name == "check":
+        d.line([P(.18, .52), P(.42, .76), P(.84, .28)], fill=c, width=int(lw * 1.4), joint="curve")
+    elif name == "cross":
+        d.line([P(.24, .24), P(.76, .76)], fill=c, width=int(lw * 1.4))
+        d.line([P(.76, .24), P(.24, .76)], fill=c, width=int(lw * 1.4))
+    elif name == "bag":
+        d.rounded_rectangle(B(.18, .36, .82, .88), radius=int(S * .09), outline=c, width=int(lw * 1.2))
+        d.arc(B(.34, .12, .66, .52), 180, 360, fill=c, width=int(lw * 1.2))
+    elif name == "card":
+        d.rounded_rectangle(B(.08, .22, .92, .78), radius=int(S * .08), outline=c, width=lw)
+        d.rectangle(B(.08, .34, .92, .45), fill=c)
+    elif name == "torch":
+        d.polygon([P(.26, .08), P(.74, .08), P(.64, .4), P(.36, .4)], fill=c)
+        d.rounded_rectangle(B(.36, .42, .64, .92), radius=int(S * .05), fill=c)
+        d.ellipse(B(.44, .54, .56, .66), fill=clear)
+    elif name == "rain":
+        d.ellipse(B(.12, .28, .5, .62), fill=c)
+        d.ellipse(B(.32, .14, .78, .56), fill=c)
+        d.rounded_rectangle(B(.12, .42, .88, .62), radius=int(S * .1), fill=c)
+        for x in (.3, .5, .7):
+            d.line([P(x, .72), P(x - .07, .9)], fill=c, width=lw)
+    elif name == "battery_dead":
+        d.rounded_rectangle(B(.08, .3, .82, .7), radius=int(S * .08), outline=c, width=lw)
+        d.rectangle(B(.85, .42, .92, .58), fill=c)
+        d.rectangle(B(.15, .37, .23, .63), fill=c)
+    elif name == "speaker":
+        d.polygon([P(.14, .38), P(.32, .38), P(.54, .18), P(.54, .82), P(.32, .62), P(.14, .62)], fill=c)
+        d.arc(B(.46, .3, .78, .7), -50, 50, fill=c, width=lw)
+    elif name == "mute":
+        d.rounded_rectangle(B(.38, .12, .62, .58), radius=int(S * .12), fill=c)
+        d.arc(B(.26, .3, .74, .72), 0, 180, fill=c, width=lw)
+        d.line([P(.5, .72), P(.5, .86)], fill=c, width=lw)
+    elif name == "keypad":
+        for i in range(3):
+            for j in range(3):
+                d.ellipse(B(.2 + i * .23, .14 + j * .23, .34 + i * .23, .28 + j * .23), fill=c)
+        d.ellipse(B(.43, .83, .57, .97), fill=c)
+
+
+@cached
+def glyph(name, size=64, col=(255, 255, 255)):
+    """Pictogramme vectoriel (chevrons, combiné, envoyer, effacer, loupe, épingle...)."""
+    img = Image.new("RGBA", (size * SS, size * SS), (0, 0, 0, 0))
+    _glyph_draw(img, name, size * SS, tuple(col) + ((255,) if len(col) == 3 else ()))
+    return _finish(img, (size, size))
+
+
+APP_ICON_COLORS = {
+    "quickeats": ((255, 150, 50), (232, 70, 18), "bag"),
+    "banque": ((70, 128, 255), (22, 52, 170), None),
+    "messages": ((96, 226, 120), (30, 168, 74), None),
+    "appels": ((92, 224, 116), (28, 160, 66), "phone"),
+    "camera": ((170, 174, 186), (88, 92, 104), None),
+    "lampe": ((64, 66, 78), (24, 25, 30), "torch"),
+    "systeme": ((126, 130, 142), (72, 74, 86), "battery_dead"),
+}
+
+
+@cached
+def app_icon(name, size=160):
+    """Icône d'appli « squircle » : dégradé, reflet, pictogramme blanc."""
+    top, bot, gname = APP_ICON_COLORS.get(name, ((120, 120, 130), (60, 60, 70), None))
+    S = size * SS
+    mask = _mask_rr(S, S, int(S * .235))
+    out = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    out.paste(_vgrad(S, S, top, bot), (0, 0), mask)
+    w = (255, 255, 255, 255)
+    if name == "lampe":
+        beam = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        ImageDraw.Draw(beam).polygon([(S * .36, S * .32), (S * .64, S * .32), (S * .92, S * .0), (S * .08, S * .0)], fill=(255, 220, 120, 90))
+        beam = beam.filter(ImageFilter.GaussianBlur(S * .03))
+        beam.putalpha(ImageChops.multiply(beam.split()[3], mask))
+        out = Image.alpha_composite(out, beam)
+    if gname:
+        col = (255, 212, 96, 255) if name == "lampe" else w
+        k = .54 if name != "lampe" else .5
+        _glyph_draw(out, gname, S * k, col, S * (1 - k) / 2, S * (1 - k) / 2 + (S * .06 if name == "lampe" else 0))
+    d = ImageDraw.Draw(out)
+    if name == "banque":
+        d.polygon([(S * .18, S * .38), (S * .5, S * .18), (S * .82, S * .38)], fill=w)
+        for x in (.28, .43, .57, .72):
+            d.rectangle([S * (x - .045), S * .43, S * (x + .045), S * .69], fill=w)
+        d.rectangle([S * .18, S * .73, S * .82, S * .8], fill=w)
+    elif name == "messages":
+        d.ellipse([S * .15, S * .2, S * .85, S * .72], fill=w)
+        d.polygon([(S * .26, S * .6), (S * .18, S * .84), (S * .44, S * .68)], fill=w)
+    elif name == "camera":
+        d.rounded_rectangle([S * .14, S * .3, S * .86, S * .76], radius=int(S * .08), fill=(34, 36, 44))
+        d.rounded_rectangle([S * .36, S * .22, S * .58, S * .33], radius=int(S * .03), fill=(34, 36, 44))
+        d.ellipse([S * .33, S * .35, S * .67, S * .69], fill=(206, 210, 222))
+        d.ellipse([S * .39, S * .41, S * .61, S * .63], fill=(28, 38, 70))
+        d.ellipse([S * .44, S * .44, S * .51, S * .51], fill=(170, 200, 255))
+        d.ellipse([S * .73, S * .36, S * .79, S * .42], fill=(255, 196, 70))
+    # reflet doux en haut
+    hl = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(hl).ellipse([-S * .3, -S * .75, S * 1.3, S * .42], fill=(255, 255, 255, 28))
+    hl.putalpha(ImageChops.multiply(hl.split()[3], mask))
+    out = Image.alpha_composite(out, hl)
+    return out.resize((size, size), Image.LANCZOS)
+
+
+@cached
+def round_food(kind="burger", size=128, bg=(48, 40, 36)):
+    """Vignette ronde d'un plat QuickEats (catégories)."""
+    S = size * SS
+    out = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(out).ellipse([0, 0, S - 1, S - 1], fill=bg + (255,))
+    food = FOODS.get(kind)
+    if food is not None:
+        out.alpha_composite(food(256).resize((int(S * .78), int(S * .78)), Image.LANCZOS), (int(S * .11), int(S * .11)))
+    return out.resize((size, size), Image.LANCZOS)
+
+
+@cached
+def rounded_food(kind="burger", size=150, bg=(54, 42, 34)):
+    """Photo de plat dans un cadre arrondi (cartes du menu QuickEats)."""
+    S = size * 2
+    img = _vgrad(S, S, tuple(min(255, c + 26) for c in bg), bg)
+    food = FOODS.get(kind)
+    if food is not None:
+        s = int(S * .9)
+        img.alpha_composite(food(256).resize((s, s), Image.LANCZOS), ((S - s) // 2, (S - s) // 2))
+    img.putalpha(_mask_rr(S, S, int(S * .22)))
+    return img.resize((size, size), Image.LANCZOS)
+
+
+@cached
+def map_card(w=400, h=300, radius=26):
+    """Plan de suivi arrondi (rues, parc) avec l'itinéraire du livreur jusqu'au 17 rue des Lilas."""
+    base = map_texture(420, 420).resize((w, w), Image.LANCZOS).crop((0, 0, w, h)).convert("RGBA")
+    d = ImageDraw.Draw(base)
+    d.line(MAP_ROUTE_PX(w, h), fill=(255, 140, 40, 255), width=6, joint="curve")
+    base.putalpha(_mask_rr(w, h, radius))
+    return base
+
+
+def MAP_ROUTE_PX(w, h):
+    """Itinéraire du livreur sur la carte (pixels), partagé avec l'appli pour placer le point mobile."""
+    return [(w * x, h * y) for x, y in MAP_ROUTE]
+
+
+MAP_ROUTE = [(.02, .245), (.35, .245), (.35, .689), (.85, .689)]     # le long des rues du plan
+
+
+@cached
+def spinner_ring(size=96, col=(255, 122, 26)):
+    img, d = _canvas((size, size))
+    S = size * SS
+    d.arc([S * .08, S * .08, S * .92, S * .92], 0, 360, fill=(255, 255, 255, 40), width=int(S * .08))
+    d.arc([S * .08, S * .08, S * .92, S * .92], -90, 30, fill=col + (255,), width=int(S * .08))
+    return _finish(img, (size, size))
+
+
+@cached
+def status_badge(kind="check", size=160):
+    """Grand rond de statut (validé vert / erreur rouge / attente orange) avec halo."""
+    col = {"check": (52, 199, 89), "cross": (230, 58, 58), "clock": (255, 140, 40)}[kind]
+    S = size * SS
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(img).ellipse([S * .06, S * .06, S * .94, S * .94], fill=col + (80,))
+    img = img.filter(ImageFilter.GaussianBlur(S * .04))
+    d = ImageDraw.Draw(img)
+    d.ellipse([S * .18, S * .18, S * .82, S * .82], fill=col + (255,))
+    if kind == "clock":
+        d.line([(S * .5, S * .5), (S * .5, S * .31)], fill=(255, 255, 255), width=int(S * .05))
+        d.line([(S * .5, S * .5), (S * .64, S * .58)], fill=(255, 255, 255), width=int(S * .05))
+    else:
+        _glyph_draw(img, kind, S * .44, (255, 255, 255, 255), S * .28, S * .28)
+    return img.resize((size, size), Image.LANCZOS)
+
+
+@cached
+def soft_circle(size=128, col=(255, 214, 120), alpha=200):
+    """Disque flou (halo de la lampe, lueurs)."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(img).ellipse([size * .2, size * .2, size * .8, size * .8], fill=col + (alpha,))
+    return img.filter(ImageFilter.GaussianBlur(size * .1))
