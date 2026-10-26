@@ -257,9 +257,10 @@ def _rdc(house, rng):
 
     # ---------------- Buanderie ---------------------------------------
     rb.washing_machine(b, 15.3, 11.3, y0, 180)                     # hublot côté pièce (le mur est en z = 12)
-    rb.shelving_unit(b, 12.2, 11.2, 14.0, 11.8, y0)
-    b.box("planches", 12.3, y0 + 0.6, 11.3, 13.9, y0 + 0.63, 11.7, (0.8, 0.75, 0.7))
-    rb.delivery_bag(b, 13.0, 11.5, y0 + 0.63, 0, torn=False)
+    # étagère de 2 m : tablettes tous les 45 cm (la 2e, à 0,60-0,63, porte le sac de 40 cm sans qu'il traverse
+    # la tablette du dessus ; l'ancienne planche ajoutée en double à cette hauteur s'interpénétrait avec elle)
+    rb.shelving_unit(b, 12.2, 11.2, 14.0, 11.8, y0, height=2.0)
+    rb.delivery_bag(b, 13.0, 11.5, y0 + 0.632, 0, torn=False)
     point(house, "sac_propre", (13.0, 1.0, 11.2), "Examiner le sac", 0, radius=0.9)
     rb.crate(b, 12.7, 9.3, y0)
     rb.crate(b, 13.3, 9.2, y0, 0.4, 25)
@@ -711,7 +712,8 @@ def _etage(house, rng):
     for k, (zz, hh, c) in enumerate(((10.3, 0.12, (0.55, 0.3, 0.15)), (10.42, 0.09, (0.85, 0.85, 0.85)), (10.58, 0.14, (0.3, 0.45, 0.6)))):
         b.cyl("vitre" if k == 0 else "email", 15.78, py0 + 0.02, zz, 0.03, hh, 8, c)              # flacons
     b.obox("papier", 15.76, py0 + 0.255, 10.5, 0.08, 0.05, 0.14, 0, (0.9, 0.88, 0.82))          # boîte de médicaments
-    house.parts["pharmacie"] = hinged(house, 1, (px0 - 0.012, pz0), 0.5, 0.7, 0.02, (0, 1), (-1, 0), "email", white, y0=py0)
+    # porte à miroir (l'ancienne porte émaillée unie ressemblait à une plaque blanche posée sur le mur)
+    house.parts["pharmacie"] = hinged(house, 1, (px0 - 0.012, pz0), 0.5, 0.7, 0.02, (0, 1), (-1, 0), "miroir", (1, 1, 1), y0=py0)
     point(house, "pharmacie", (15.5, y0 + 1.6, 10.4), "Ouvrir l'armoire à pharmacie", 1, radius=1.0)
     A["eau_baignoire"] = Vec3(14.0, y0 + 0.6, 11.3)
     A["miroir1"] = Vec3(15.85, y0 + 1.55, 8.0)
@@ -767,7 +769,11 @@ def _grenier(house, rng):
     # silhouette figée (photo)
     hidden_entity(house, 2, "silhouette", (14.7, y0 + 0.9, 8.4), (0.9, 1.7), rot_y=0, name="grenier_entite")
     # trappe : hall d'accès (décor)
-    b.box("planches", 3.0, y0, 0.2, 4.6, y0 + 0.05, 1.0, (0.7, 0.65, 0.6))
+    # trappe à peine en saillie (2,4 cm) dans un cadre sombre, anneau de tirage en fer : plus l'estrade de 5 cm d'avant
+    b.box("bois_meuble", 2.96, y0, 0.16, 4.64, y0 + 0.012, 1.04, rb.DARKWOOD)
+    b.box("planches", 3.0, y0 + 0.012, 0.2, 4.6, y0 + 0.024, 1.0, (0.62, 0.58, 0.54))
+    b.box("metal", 3.75, y0 + 0.024, 0.86, 3.85, y0 + 0.03, 0.94, (0.22, 0.2, 0.18))
+    rb.rod(b, "metal", (3.72, y0 + 0.034, 0.9), (3.88, y0 + 0.034, 0.9), 0.008, col=(0.25, 0.23, 0.2))
 
 
 # ---------------------------------------------------------------------------
@@ -807,12 +813,15 @@ def _sous_sol(house, rng):
         rb.candle(b, px, pz, y0)
         house.candle_pos.append(Vec3(px, y0 + 0.28, pz))
     # étagères avec sacs de livraison déchirés
+    # étagères de 2,1 m : 47,5 cm entre tablettes, les sacs (40 cm) posés sur chaque tablette ne traversent plus
+    # celle du dessus et ne flottent plus au-dessus de la leur
     for k in range(3):
         sx = 3.4 + k * 2.45
-        rb.shelving_unit(b, sx, 23.2, sx + 2.1, 23.8, y0, levels=4, height=1.9)
+        rb.shelving_unit(b, sx, 23.2, sx + 2.1, 23.8, y0, levels=4, height=2.1)
         for lv in range(4):
+            top = y0 + 0.15 + lv * (2.1 - 0.2) / 4 + 0.03
             for j in range(4):
-                rb.delivery_bag(b, sx + 0.35 + j * 0.45, 23.5, y0 + 0.18 + lv * 0.43, rng.uniform(-8, 8), torn=True)
+                rb.delivery_bag(b, sx + 0.35 + j * 0.45, 23.5, top + 0.002, rng.uniform(-8, 8), torn=True)
     # taches sur les murs
     rb.wall_decal(b, "taches", 5.0, 1.2 + y0, 16.35, 3.0, 2.0, "+z", off=0.0, col=(1, 1, 1))
     rb.wall_decal(b, "taches", 10.8, 1.2 + y0, 20.0, 4.0, 2.0, "-x", off=0.0)
