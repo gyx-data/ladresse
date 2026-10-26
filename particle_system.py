@@ -23,22 +23,27 @@ def _quad(texture_name, scale, col=color.white):
 
 
 class DustField:
-    """Poussière : visible uniquement dans le faisceau de la lampe torche."""
+    """Poussière : visible uniquement dans le faisceau de la lampe torche (calcul vectorisé)."""
 
     def __init__(self, count=70):
+        import numpy as np
         self.count = count
-        self.parts = []
         self.parent = Entity(name="poussiere")
         rnd = random.Random(3)
+        self.ents = []
         for i in range(count):
             e = _quad("poussiere", rnd.uniform(0.012, 0.03))
             e.parent = self.parent
-            self.parts.append(dict(e=e, off=Vec3(rnd.uniform(-5, 5), rnd.uniform(-1.2, 1.5), rnd.uniform(-5, 5)),
-                                   vel=Vec3(rnd.uniform(-0.04, 0.04), rnd.uniform(-0.02, 0.03), rnd.uniform(-0.04, 0.04)),
-                                   ph=rnd.uniform(0, 6.28)))
+            e.enabled = False
+            self.ents.append(e)
+        self.off = np.array([[rnd.uniform(-5, 5), rnd.uniform(-1.2, 1.5), rnd.uniform(-5, 5)] for _ in range(count)])
+        self.vel = np.array([[rnd.uniform(-0.04, 0.04), rnd.uniform(-0.02, 0.03), rnd.uniform(-0.04, 0.04)] for _ in range(count)])
+        self.ph = np.array([rnd.uniform(0, 6.28) for _ in range(count)])
+        self.vis = [False] * count
         self.center = Vec3(0, 0, 0)
 
     def update(self, dt, player, extra_light=None):
+        import numpy as np
         if not settings["particules"]:
             self.parent.enabled = False
             return
@@ -46,48 +51,57 @@ class DustField:
         c = player.eye_pos
         fwd = player.forward
         on = player.flashlight.on and player.flashlight.battery > 0
-        for p in self.parts:
-            p["off"] += p["vel"] * dt
-            # bruit brownien léger
-            p["off"] += Vec3(math.sin(p["ph"] + player.time * 0.5), math.sin(p["ph"] * 1.7 + player.time * 0.4), math.cos(p["ph"] + player.time * 0.6)) * 0.002
-            off = p["off"]
-            # enroulement autour du joueur (toujours dans une boîte de 10 m)
-            for ax in (0, 2):
-                if off[ax] > 5:
-                    off[ax] -= 10
-                elif off[ax] < -5:
-                    off[ax] += 10
-            if off[1] > 1.6:
-                off[1] = -1.2
-            elif off[1] < -1.3:
-                off[1] = 1.5
-            p["off"] = off
-            pos = c + off
-            to = pos - c
-            d = to.length()
-            a = 0.0
-            if on and d > 0.2:
-                cosang = to.normalized().dot(fwd)
-                if cosang > 0.8 and d < 12:
-                    a = min(1.0, (cosang - 0.8) / 0.12) * max(0.0, 1.0 - d / 12.0) * 0.8
-            p["e"].world_position = pos
-            p["e"].alpha = a
-            p["e"].enabled = a > 0.01
+        t = player.time
+        off = self.off
+        off += self.vel * dt
+        off += np.stack([np.sin(self.ph + t * 0.5), np.sin(self.ph * 1.7 + t * 0.4), np.cos(self.ph + t * 0.6)], axis=1) * 0.002
+        for ax in (0, 2):
+            off[:, ax] = np.where(off[:, ax] > 5, off[:, ax] - 10, np.where(off[:, ax] < -5, off[:, ax] + 10, off[:, ax]))
+        off[:, 1] = np.where(off[:, 1] > 1.6, -1.2, np.where(off[:, 1] < -1.3, 1.5, off[:, 1]))
+        if on:
+            d = np.linalg.norm(off, axis=1)
+            cosang = (off @ np.array([fwd[0], fwd[1], fwd[2]])) / np.maximum(d, 1e-6)
+            a = np.where((d > 0.2) & (cosang > 0.8) & (d < 12),
+                         np.minimum(1.0, (cosang - 0.8) / 0.12) * np.maximum(0.0, 1.0 - d / 12.0) * 0.8, 0.0)
+        else:
+            a = np.zeros(self.count)
+        render = self.parent.getTop()
+        cx, cy, cz = c[0], c[1], c[2]
+        for i, e in enumerate(self.ents):
+            v = a[i] > 0.01
+            if v != self.vis[i]:
+                self.vis[i] = v
+                e.enabled = v
+            if v:
+                e.setPos(render, cx + off[i, 0], cy + off[i, 1], cz + off[i, 2])
+                e.setAlphaScale(float(a[i]))
 
 
 class RainField:
-    """Pluie : lignes verticales rapides, autour d'un centre fixe (extérieur)."""
+    """Pluie : gouttes (deux quads croisés, visibles sous tous les angles) réunies en UN maillage, dupliqué
+    en deux couches empilées qui défilent vers le bas en boucle. 2 objets à dessiner au lieu de `count`,
+    et plus aucune boucle Python par goutte à chaque image."""
 
     def __init__(self, center=(8, 4, -4), size=(24, 10, 12), count=140):
+        from ursina import Mesh
         self.center = Vec3(*center)
         self.size = size
-        self.parts = []
         self.parent = Entity(name="pluie")
         rnd = random.Random(8)
+        verts, uvs, tris = [], [], []
+        hw, hh = 0.01, 0.225
         for i in range(count):
-            e = Entity(parent=self.parent, model="quad", texture=textures.get("goutte"), scale=(0.02, 0.45),
-                       color=color.rgba32(190, 200, 225, 120))
-            e.billboard = False
+            x, y, z = rnd.uniform(-size[0] / 2, size[0] / 2), rnd.uniform(0, size[1]), rnd.uniform(-size[2] / 2, size[2] / 2)
+            for (ax, az) in ((hw, 0.0), (0.0, hw)):
+                k = len(verts)
+                verts += [Vec3(x - ax, y - hh, z - az), Vec3(x + ax, y - hh, z + az), Vec3(x + ax, y + hh, z + az), Vec3(x - ax, y + hh, z - az)]
+                uvs += [(0, 0), (1, 0), (1, 1), (0, 1)]
+                tris += [k, k + 1, k + 2, k, k + 2, k + 3]
+        mesh = Mesh(vertices=verts, uvs=uvs, triangles=tris, static=True)
+        self.layers = []
+        for j in range(2):
+            e = Entity(parent=self.parent, model=mesh, texture=textures.get("goutte"), color=color.rgba32(190, 200, 225, 120),
+                       double_sided=True)
             try:
                 from panda3d.core import TransparencyAttrib
                 e.setTransparency(TransparencyAttrib.M_alpha)
@@ -95,8 +109,9 @@ class RainField:
                 e.set_light_off()
             except Exception:
                 pass
-            self.parts.append([Vec3(rnd.uniform(-size[0] / 2, size[0] / 2), rnd.uniform(0, size[1]), rnd.uniform(-size[2] / 2, size[2] / 2)), e,
-                               rnd.uniform(10, 14)])
+            self.layers.append(e)
+        self.speed = 12.0
+        self.offset = 0.0
         self.enabled = True
 
     def update(self, dt, cam_pos=None):
@@ -106,15 +121,11 @@ class RainField:
         self.parent.enabled = self.enabled
         if not self.enabled:
             return
-        for p in self.parts:
-            p[0] = Vec3(p[0][0], p[0][1] - p[2] * dt, p[0][2])
-            if p[0][1] < 0:
-                p[0] = Vec3(p[0][0], self.size[1], p[0][2])
-            p[1].position = self.center + p[0] - Vec3(0, self.size[1] / 2, 0) + Vec3(0, 4, 0)
-            if cam_pos is not None:
-                # orientation vers la caméra (axe vertical seulement)
-                dx, dz = cam_pos[0] - p[1].x, cam_pos[2] - p[1].z
-                p[1].rotation_y = math.degrees(math.atan2(dx, dz)) + 180
+        h = self.size[1]
+        self.offset = (self.offset + self.speed * dt) % h
+        base = self.center + Vec3(0, 4 - h / 2, 0)
+        self.layers[0].position = base + Vec3(0, -self.offset, 0)
+        self.layers[1].position = base + Vec3(0, h - self.offset, 0)
 
 
 class InsectField:

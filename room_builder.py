@@ -482,8 +482,20 @@ class MeshBuilder:
                 e.set_depth_write(False)
                 e.set_bin("fixed", 20)
             ents.append(e)
-        for (name, cx, cz, y0, rot, size, stretch, pitch, free_yaw) in self.models:
-            models.place(name, parent, cx, cz, y0, rot, size, stretch, pitch, free_yaw)
+        if self.models:
+            holder = Entity(parent=parent, name="modeles", shader=shader)
+            holder.set_shader_input("emit", float(emit))
+            for (name, cx, cz, y0, rot, size, stretch, pitch, free_yaw) in self.models:
+                models.place(name, holder, cx, cz, y0, rot, size, stretch, pitch, free_yaw, shaded=False)
+            try:
+                # décors immobiles : les géométries passent sous un nœud Panda simple (les Entity Ursina portent
+                # des étiquettes Python qui empêchent la fusion) puis sont regroupées par texture
+                plain = holder.attachNewNode("fusion")
+                for gnp in holder.findAllMatches("**/+GeomNode"):
+                    gnp.wrtReparentTo(plain)
+                plain.flattenStrong()
+            except Exception:
+                pass
         self.entities = ents
         return ents
 

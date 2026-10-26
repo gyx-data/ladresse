@@ -904,14 +904,13 @@ class Neighborhood:
             slots["frais"].append((Vec3(xx, 1.2, SHOP[1] + 1.7), Vec3(xx, 0.95, SHOP[1] + 1.32), 0.0))
         used = {k: 0 for k in slots}
         self.product_points = []
+        pb = MeshBuilder("produits")          # tous les présentoirs dans un seul maillage par texture
         for art in CATALOG:
             lst = slots.get(art.shelf) or slots["epicerie"]
             p, stand, rot = lst[used.get(art.shelf, 0) % len(lst)]
             used[art.shelf] = used.get(art.shelf, 0) + 1
-            pb = MeshBuilder("produit")
             # présentoir + produits modélisés avec leur emballage (products.py)
             products.build(pb, art.id, stand[0], stand[1], stand[2], rot, floor=(art.shelf == "frais"))
-            pb.build(parent=self.root, emit=0.15)
             # étiquette prix sur le rebord avant du présentoir (lisible depuis l'allée)
             fx, fz = math.sin(math.radians(rot)), math.cos(math.radians(rot))
             sign(self.root, eur(art.card_price if art.card_price else art.price),
@@ -921,6 +920,7 @@ class Neighborhood:
                                                           + (f" (carte : {eur(a.card_price)})" if a.card_price else "")),
                                 (lambda it, a=art: self.take(a)), 0, radius=0.3, reach=2.0))
             self.product_points.append((art, p))
+        pb.build(parent=self.root, emit=0.15)
         for i, k in enumerate(self.kiosks):
             ia.add(Interactable(f"caisse_auto_{i}", (k[0], 1.3, k[2] + 0.2), "Utiliser la caisse automatique",
                                 lambda it: self.checkout.open(self._on_paid), 0, radius=0.4, reach=2.2))
@@ -1142,7 +1142,11 @@ class Neighborhood:
         else:
             self.all_players = [pp] + ([a.root.position for a in mp.avatars.values()] if g.is_multiplayer and mp else [])
             for n in self.npcs:
-                if (n.pos - pp).length() < 70:
+                d = (n.pos - pp).length()
+                vis = d < 48
+                if vis != n.root.enabled:            # bascule seulement au changement (stash/unstash coûteux)
+                    n.root.enabled = vis
+                if d < 70:
                     n.update(dt, pp)
             for c in self.traffic:
                 c.update(dt, pp)

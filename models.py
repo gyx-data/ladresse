@@ -50,7 +50,7 @@ def _template(name):
     return _templates[name]
 
 
-def place(name, parent, cx, cz, y0, rot=0.0, size=None, stretch=False, pitch=0.0, free_yaw=False):
+def place(name, parent, cx, cz, y0, rot=0.0, size=None, stretch=False, pitch=0.0, free_yaw=False, shaded=True):
     """Pose `name` au sol en (cx, y0, cz), tourné de `rot` degrés.
 
     size = (largeur x, hauteur y, profondeur z) de l'emprise locale : le modèle y est inscrit en gardant
@@ -59,8 +59,10 @@ def place(name, parent, cx, cz, y0, rot=0.0, size=None, stretch=False, pitch=0.0
     """
     if not available(name):
         return None
-    root = Entity(parent=parent, position=(cx, y0, cz), rotation_y=rot, shader=horror_shader)
-    root.set_shader_input("emit", 0.0)
+    # shaded=False : le shader est porté par le parent commun (permet la fusion des décors identiques)
+    root = Entity(parent=parent, position=(cx, y0, cz), rotation_y=rot, shader=horror_shader if shaded else None)
+    if shaded:
+        root.set_shader_input("emit", 0.0)
     scaler = Entity(parent=root)                                   # échelle dans le repère de l'emprise
     turner = Entity(parent=scaler, rotation=(pitch, _YAW_FIX.get(name, 0.0), 0))
     inner = _template(name).copyTo(turner)
@@ -85,5 +87,13 @@ def place(name, parent, cx, cz, y0, rot=0.0, size=None, stretch=False, pitch=0.0
     lo, hi = inner.getTightBounds(root)
     # pose : centré en x/z, posé sur le sol (repère Ursina : y vers le haut)
     scaler.position = (-(lo.x + hi.x) / 2, -lo.y, -(lo.z + hi.z) / 2)
+    if not shaded:
+        for node in (root, scaler, turner):          # Ursina pose un shader par défaut sur chaque Entity :
+            node.clearShader()                        # on l'enlève pour hériter de celui du parent (fusion possible)
     _placed.append((root, name))
     return root
+
+
+def placed_bounds():
+    """Boîtes englobantes des modèles posés (pour les audits ; à appeler avant la fusion des décors)."""
+    return [(root, name) for (root, name) in _placed if not root.is_empty()]

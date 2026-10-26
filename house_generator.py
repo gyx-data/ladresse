@@ -995,14 +995,18 @@ class House:
         n = int(dist / 0.35) + 1
         count = 0
         last = None
+        # candidats cherchés une seule fois pour tout le segment (au lieu d'une recherche par échantillon)
+        ylo, yhi = min(ay, by) - 0.4, max(ay, by) + 0.4
+        cands = [c for c in self._near((ax + bx) * 0.5, (az + bz) * 0.5, dist * 0.5 + 0.3)
+                 if c[4] - c[1] >= 1.2 and c[1] <= yhi and c[4] >= ylo]
+        if not cands:
+            return 2 if abs(ay - by) > 2.0 else 0
         for i in range(1, n):
             t = i / n
             x, z, y = ax + dx * t, az + dz * t, ay + (by - ay) * t
             hit = None
-            for c in self._near(x, z, 0.1):
+            for c in cands:
                 if c[1] > y + 0.4 or c[4] < y - 0.4:
-                    continue
-                if c[4] - c[1] < 1.2:
                     continue
                 if c[0] <= x <= c[3] and c[2] <= z <= c[5]:
                     hit = c
