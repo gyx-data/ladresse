@@ -115,7 +115,11 @@ def neighborhood_tests():
           f"fruit de l'étal au panier ({art.name}, {art.price:.2f} €)")
     w0 = nb.theft_warnings
     tp(14.0, 0.0, -12.0, 0.0)
-    yield from wait(3)
+    for _ in range(60):                       # le portique réagit à la mise à jour suivante du quartier
+        yield
+        if nb.theft_warnings > w0:
+            break
+    yield from wait(2)
     check(nb.theft_warnings == w0 + 1 and p.pos[2] < -17.0, "partir avec les fruits sans payer : ramené à l'étal")
     nb._drop_basket()
     # restaurant
@@ -351,6 +355,19 @@ def scenario():
         yield
     av = next(iter(mp.avatars.values()), None)
     check(av is not None and abs(av.root.position[2] - 2.0) < 0.3, "position du second joueur reçue et interpolée")
+    # le coéquipier fouille le manteau, lit le carnet et ouvre une porte : la maison de l'hôte suit
+    door_id = next(did for did, d in game.house.doors.items() if not d.is_open and not d.locked)
+    sync = {"type": "world_sync", "opened": ["manteau"], "docs": ["carnet"], "doors": {door_id: True}}
+    sock.sendall((json.dumps({"type": "to", "to": "all", "d": sync}) + "\n").encode())
+    for _ in range(40):
+        yield
+    check("manteau" in game.state.opened and "carnet" in game.state.docs and game.house.doors[door_id].is_open,
+          "monde partagé : objet fouillé, document lu et porte ouverte par le coéquipier")
+    from world_sync import snapshot, diff
+    before = snapshot(game)
+    game.state.opened.add("tiroir_cuisine")
+    d = diff(before, snapshot(game))
+    check(d == {"opened": ["tiroir_cuisine"]}, "monde partagé : seule la différence est envoyée")
     sock.close()
     for _ in range(20):
         yield

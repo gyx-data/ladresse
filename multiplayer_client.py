@@ -191,7 +191,9 @@ class NetClient:
         # seuls le serveur (état de la partie) et les positions des joueurs sont acceptés
         # + l'état du quartier partagé, simulé par le créateur du salon (seul émetteur accepté)
         hood = d.get("type") == "hood" and sender == self.host_id
-        if (sender == SERVER_ID or d.get("type") == "move" or hood) and self.inbox.qsize() < 4000:
+        # changements du monde (portes, objets fouillés, documents lus) envoyés par un coéquipier
+        world = d.get("type") == "world_sync" and sender != SERVER_ID
+        if (sender == SERVER_ID or d.get("type") == "move" or hood or world) and self.inbox.qsize() < 4000:
             self.inbox.put(dict(d, _from=sender))
 
     def _udp_loop(self):

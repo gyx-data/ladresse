@@ -659,6 +659,12 @@ class MultiplayerManager:
             self._on_death(m)
         elif t == "player_left":
             self._remove_avatar(m.get("id"), m.get("name"))
+        elif t == "world_sync":
+            import world_sync
+            try:
+                world_sync.apply(g, m)
+            except Exception:
+                pass
         elif t == "door_state":
             d = g.house.doors.get(m.get("door_id"))
             if d is not None and m.get("by") != self.client.id:

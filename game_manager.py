@@ -753,7 +753,13 @@ class GameManager:
 
     def interact(self):
         if self.interactions.target is not None:
-            self.interactions.use()
+            if self.is_multiplayer:
+                from world_sync import WorldSync
+                if getattr(self, "world_sync", None) is None:
+                    self.world_sync = WorldSync(self)
+                self.world_sync.around(self.interactions.use)          # maison partagée : les autres voient le changement
+            else:
+                self.interactions.use()
 
     # --- appareil photo --------------------------------------------------
     def enter_camera_mode(self):
