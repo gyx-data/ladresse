@@ -67,6 +67,8 @@ class EntityPuppet:
         self.head = None
         self.head_turn = 0.0
         self.crouch = 0.0
+        self.model = None
+        self.look_target = None
         if kind == "rampant":
             self._build_crawler()
         elif kind == "imposteur":
@@ -77,8 +79,14 @@ class EntityPuppet:
 
     # --- constructions ------------------------------------------------
     def _build_humanoid(self):
-        """Le livreur « déformé » : silhouette trop longue dans un uniforme QuickEats délavé et taché,
-        peau grise, orbites vides, casquette. Les proportions dérangeantes restent (bras jusqu'aux genoux)."""
+        """Le livreur « déformé » : modèle articulé lissé, animations et effets dans livreur_model.py."""
+        from livreur_model import LivreurModel
+        m = self.model = LivreurModel(self.root)
+        self.head = m.head
+        self.parts = {"torso": m.torso, "arm_l": m.arms[0][0].pivot, "arm_r": m.arms[1][0].pivot,
+                      "leg_l": m.legs[0][0].pivot, "leg_r": m.legs[1][0].pivot, "bag": m.torso}
+
+    def _build_humanoid_old(self):
         r = self.root
         jacket, pants, skin = (0.42, 0.2, 0.09), (0.12, 0.12, 0.14), (0.52, 0.5, 0.47)
         self.parts["torso"] = _block(r, (0.30, 0.72, 0.17), (0, 1.22, 0), jacket, "tissu", 0.04, 0.4)
@@ -159,6 +167,10 @@ class EntityPuppet:
         self.root.rotation_y = yaw
 
     def animate(self, dt, speed, moving, state="patrol"):
+        if self.model is not None:
+            self.model.look_target = self.look_target
+            self.model.animate(dt, speed, moving, state)
+            return
         if not moving:
             speed = 0.0
         self.phase += dt * speed * 3.6
@@ -761,6 +773,10 @@ class EntityAI:
     def _update_visuals(self, dt):
         if not self.visible:
             return
+        p = self.game.player
+        tgt = p.eye_pos if (self.sees_player or self.dist_to_player < 5.0) and not self.dormant else None
+        for pup in self.puppets:
+            pup.look_target = tgt
         self.behavior.update_visuals(self, dt)
 
     def _check_kill(self):

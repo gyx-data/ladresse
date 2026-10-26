@@ -1,6 +1,7 @@
 """Jumpscares : visuel + audio synchronisés.
 
-Séquence : flash blanc (0,05 s) → image du jumpscare (0,5 s) → écran noir + bruit sourd.
+Séquence : flash blanc (0,05 s) → le Livreur (modèle 3D animé, livreur_model.py) se jette sur la caméra
+→ écran noir + bruit sourd. Le Rampant et l'Imposteur gardent leurs images.
 « Réduire les jumpscares » atténue les flashes et le volume des stingers.
 """
 import math
@@ -26,6 +27,53 @@ class JumpscareSystem:
         self.kind = None
         self.on_done = None
         self.duration = 0.5
+        self.lunging = False
+        self.lunge = None                  # modèle 3D du livreur, construit une fois (pas d'à-coup au moment du cri)
+        self.lunge_bg = None
+        self.extra = []
+        try:
+            self._build_lunge()
+        except Exception:
+            self.lunge = None
+
+    # --- le Livreur qui se jette sur la caméra -------------------------------
+    def _build_lunge(self):
+        """Modèle 3D accroché à la caméra. Un fond noir écrit sa profondeur sans test (il efface celle du décor)
+        puis le modèle est dessiné par-dessus : jamais caché par un mur, même collé à la caméra."""
+        from livreur_model import LivreurModel
+        self.lunge_root = Entity(parent=camera, enabled=False)
+        self.lunge_bg = Entity(parent=self.lunge_root, model="quad", color=color.rgb32(4, 3, 3), position=(0, 0, 2.2),
+                               scale=(9, 6))
+        self.lunge_bg.set_bin("fixed", 40)
+        self.lunge_bg.set_depth_test(False)
+        self.lunge_bg.set_depth_write(True)
+        self.lunge_bg.set_light_off()
+        self.lunge = LivreurModel(self.lunge_root)
+        if self.lunge.shadow is not None:
+            self.lunge.shadow.enabled = False
+        self.lunge.root.rotation_y = 180                  # face à la caméra
+        for np_ in self.lunge.root.find_all_matches("**/+GeomNode"):
+            np_.set_bin("fixed", 41)
+        # deux silhouettes de plus pour « Les Multiples » (mêmes modèles, plus loin, dans l'ombre)
+        for x in (-1.0, 1.0):
+            m = LivreurModel(self.lunge_root)
+            if m.shadow is not None:
+                m.shadow.enabled = False
+            m.root.rotation_y = 180 + math.degrees(math.atan2(x, 2.4))    # tournés vers la caméra
+            m.root.position = (x, -1.85, 2.4)
+            m.root.setColorScale(0.35, 0.35, 0.38, 1)
+            for np_ in m.root.find_all_matches("**/+GeomNode"):
+                np_.set_bin("fixed", 41)
+            m.root.enabled = False
+            self.extra.append(m)
+
+    def _place_lunge(self, dist):
+        """Recale le modèle pour que sa tête soit au centre de l'écran, à `dist` mètres de la caméra."""
+        m = self.lunge
+        hp = m.head.get_pos(self.lunge_root)
+        cur = m.root.position
+        target = (0.0, -0.02, dist)
+        m.root.position = (cur[0] + target[0] - hp[0], cur[1] + target[1] - (hp[1] + 0.13), cur[2] + target[2] - hp[2])
 
     def _clear(self):
         for e in self.items:
@@ -65,9 +113,20 @@ class JumpscareSystem:
         self.root.enabled = True
         self.bg.color = color.rgba32(0, 0, 0, 0)
         self.duration = 0.5 if not reduce else 0.35
-        if kind == "silencieux":
-            self._add("silhouette", (0, -0.05), (1.5, 1.5), rgb(20, 20, 24))
-            self._add("silhouette", (0, 0.25), (0.9, 0.9), rgb(8, 8, 10))
+        self.lunging = self.lunge is not None and kind in ("silencieux", "multiple", "porte", "generic", "base")
+        if self.lunging:
+            self.duration = 0.85 if not reduce else 0.5
+            self.lunge_root.enabled = True
+            self.lunge.root.position = (0, 0, 0)
+            self.lunge.state = "chase"
+            self.lunge.mouth_open = 1.0
+            self.lunge.eye_level = 1.0
+            self.lunge.look_target = camera.world_position              # le visage fixe le joueur
+            for _ in range(20):                              # pose de poursuite, regard sur le joueur, dès la 1re image
+                self.lunge.animate(1 / 30, 3.0, True, "chase")
+            self._place_lunge(1.6 if not reduce else 2.2)
+            for m in self.extra:
+                m.root.enabled = kind == "multiple"
         elif kind == "rampant":
             self._add("silhouette", (0, 0.35), (1.9, 1.0), rgb(10, 8, 8), rot=180)
             self._add("mains", (0, 0.1), (1.3, 1.3), rgb(255, 255, 255))
@@ -89,6 +148,26 @@ class JumpscareSystem:
         if not self.active:
             return
         self.t += dt
+        if self.lunging:
+            m = self.lunge
+            reduce = settings["reduire_jumpscares"]
+            m.look_target = camera.world_position
+            m.animate(dt, 3.0, True, "chase")
+            m.mouth.scale_y = 3.4 + math.sin(self.t * 38) * 0.5            # mâchoire grande ouverte, qui tremble
+            m.head.rotation_z += random.uniform(-9, 9)                     # tête qui tressaute
+            # la tête fonce sur la caméra (0,12 s) puis reste collée en tremblant
+            k = min(1.0, self.t / 0.12)
+            far, near = (1.8, 0.5) if not reduce else (2.4, 0.9)
+            self._place_lunge(far + (near - far) * (1 - (1 - k) ** 3))
+            if self.t > 0.12:
+                m.root.x += random.uniform(-0.012, 0.012)
+                m.root.y += random.uniform(-0.012, 0.012)
+            for e in m.eyes:
+                e.scale = 2.2 if random.random() > 0.15 else 0.4
+            for x in self.extra:
+                if x.root.enabled:
+                    x.look_target = camera.world_position
+                    x.animate(dt, 1.5, True, "chase")
         for e in self.items:
             e.x += random.uniform(-0.006, 0.006)
             e.y += random.uniform(-0.006, 0.006)
@@ -96,6 +175,9 @@ class JumpscareSystem:
 
     def _finish(self):
         self._clear()
+        if self.lunge is not None:
+            self.lunge_root.enabled = False
+            self.lunging = False
         self.root.enabled = False
         self.active = False
         sound.play("sourd_mort", 0.9, channel="sfx")

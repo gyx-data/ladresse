@@ -940,6 +940,13 @@ class GameManager:
         elif item == "bougie":
             st.remove_item(item)
             self._place_candle()
+        elif item.startswith("primeur_"):
+            # fruit ou légume de l'étal : un peu de santé, un peu moins de stress
+            self.player.health = min(100.0, self.player.health + 8.0)
+            self.player.relieve_stress(8.0)
+            st.remove_item(item)
+            raw = item in ("primeur_yellow_onion", "primeur_food_ginger_01", "primeur_sweet_potato")
+            self.say("Cru... c'est pas terrible. Mais ça cale." if raw else "Un truc frais. Ça fait du bien.")
         elif item == "journal":
             self.inv_panel.hide()
             self.ui.docs.open("Nice-Matin", ["\n\n".join(gd.NEWSPAPER_HEADLINES)])

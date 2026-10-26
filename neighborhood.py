@@ -26,7 +26,7 @@ from lighting_system import LightSource
 import products
 import fresh_aisle
 from room_builder import MeshBuilder
-from shop import (CATALOG, SHOP_NAME, RESTO_NAME, Basket, SelfCheckout, RestaurantCounter, eur)
+from shop import (CATALOG, SHOP_NAME, RESTO_NAME, Basket, SelfCheckout, RestaurantCounter, eur, primeur_article)
 from fidelite import Loyalty
 from sound_engine import engine as sound
 from ui_widgets import label, rect, rgb
@@ -563,21 +563,21 @@ class Neighborhood:
         # tapis d'entrée
         b.box("moquette", SHOP_DOOR_X - 1.6, 0.01, z1 + 0.18, SHOP_DOOR_X + 1.6, 0.04, z1 + 1.25,
               (0.16, 0.17, 0.19), tile=1.0)
-        # bacs en bois (fruits/légumes) devant la vitrine gauche
-        produce_colors = ((0.78, 0.12, 0.1), (0.94, 0.62, 0.08), (0.25, 0.58, 0.18),
-                          (0.86, 0.26, 0.12), (0.42, 0.68, 0.18), (0.96, 0.78, 0.16))
-        for bin_i, cx in enumerate((12.6, 15.4, 18.2)):
-            bx0, bx1 = cx - 0.9, cx + 0.9
-            bz0, bz1 = z1 + 0.32, z1 + 1.12
-            wood = (0.48, 0.29, 0.16) if bin_i % 2 == 0 else (0.56, 0.35, 0.2)
-            b.box("bois_meuble", bx0, 0, bz0, bx1, 0.68, bz1, wood, collide=True, skip=("+y",))
-            b.box("bois_meuble", bx0, 0.68, bz0, bx1, 0.78, bz0 + 0.08, wood)
-            b.box("bois_meuble", bx0, 0.68, bz1 - 0.08, bx1, 0.78, bz1, wood)
-            b.box("bois_meuble", bx0, 0.68, bz0 + 0.08, bx0 + 0.08, 0.78, bz1 - 0.08, wood)
-            b.box("bois_meuble", bx1 - 0.08, 0.68, bz0 + 0.08, bx1, 0.78, bz1 - 0.08, wood)
-            for k in range(3):
-                item = fresh_aisle.PRODUCE[(bin_i * 3 + k) % len(fresh_aisle.PRODUCE)]
-                fresh_aisle.produce_crate(b, bx0 + 0.3 + k * 0.6, 0.42, (bz0 + bz1) / 2, item, rng, w=0.55, d=0.62, real=3)
+        # étals de primeur en gradins devant la vitrine gauche (cagettes posées dessus, ardoises de prix côté rue)
+        self.primeur_points = []
+        for stand_i, cx in enumerate((12.9, 15.15)):            # accolés : pas de recoin entre les deux
+            cz = z1 + 0.78
+            items = [fresh_aisle.PRODUCE[(stand_i * 8 + k) % len(fresh_aisle.PRODUCE)] for k in range(8)]
+            fresh_aisle.produce_stand(b, cx, cz, rng, items)
+            # une cagette = un article à prendre (mêmes positions que dans produce_stand : 2 rangées de 4)
+            for row, (yy, zz) in enumerate(((0.85, cz - 0.25), (0.55, cz + 0.25))):
+                for k in range(4):
+                    self.primeur_points.append((primeur_article(items[row * 4 + k]),
+                                                Vec3(cx - 1.1 + 0.28 + k * 0.55, yy + 0.12, zz)))
+            for sx in (cx - 1.06, cx + 1.06):                   # pieds en métal qui dépassent sous le plateau
+                b.box("metal", sx - 0.03, 0.0, cz + 0.44, sx + 0.03, 0.06, cz + 0.5, (0.2, 0.2, 0.22))
+            # bloc de collision sur toute l'emprise (cagettes comprises) : on ne peut ni entrer ni grimper dessus
+            b.colliders.append((cx - 1.12, 0.0, cz - 0.52, cx + 1.12, 1.0, cz + 0.52))
         # distributeur de sacs
         b.box("metal", 23.35, 0, z1 + 0.32, 23.82, 0.88, z1 + 0.62, (0.48, 0.5, 0.54), collide=True)
         b.box("ecran_noir", 23.43, 0.56, z1 + 0.63, 23.74, 0.74, z1 + 0.65, (0.8, 0.84, 0.88))
@@ -921,6 +921,10 @@ class Neighborhood:
                                 (lambda it, a=art: self.take(a)), 0, radius=0.3, reach=2.0))
             self.product_points.append((art, p))
         pb.build(parent=self.root, emit=0.15)
+        # cagettes de l'étal de primeur devant la vitrine : prises au panier, payées à la caisse automatique
+        for i, (art, p) in enumerate(self.primeur_points):
+            ia.add(Interactable(f"primeur_{i}", p, (lambda a=art: f"Prendre : {a.name} — {eur(a.price)}"),
+                                (lambda it, a=art: self.take(a)), 0, radius=0.24, reach=2.0))
         for i, k in enumerate(self.kiosks):
             ia.add(Interactable(f"caisse_auto_{i}", (k[0], 1.3, k[2] + 0.2), "Utiliser la caisse automatique",
                                 lambda it: self.checkout.open(self._on_paid), 0, radius=0.4, reach=2.2))
@@ -1115,7 +1119,10 @@ class Neighborhood:
         # antivol : sortie du magasin avec des articles non payés
         x0, z0, x1, z1 = SHOP
         in_shop = x0 < pp[0] < x1 and z0 < pp[2] < z1 - 0.3
-        if self.was_in_shop and not in_shop and self.basket.unpaid and pp[2] > z1 - 0.6 and abs(pp[0] - SHOP_DOOR_X) < 2.5:
+        on_front = x0 - 1.0 < pp[0] < x1 + 1.0 and z1 - 0.3 < pp[2] < z1 + 5.0     # trottoir devant le magasin
+        left_door = self.was_in_shop and not in_shop and pp[2] > z1 - 0.6 and abs(pp[0] - SHOP_DOOR_X) < 2.5
+        left_stall = not in_shop and not on_front and self.basket.unpaid
+        if self.basket.unpaid and (left_door or left_stall):
             self.theft_warnings += 1
             sound.play_at("antivol", Vec3(SHOP_DOOR_X, 1.2, z1 - 0.9), 0.9, ref=6.0)
             line = ("Monsieur ! Le panier, ça se paie en caisse." if self.theft_warnings < 3 else
@@ -1124,8 +1131,11 @@ class Neighborhood:
             if self.theft_warnings >= 3:
                 self.basket.clear()
                 self._refresh_ui()
-            p.place((SHOP_DOOR_X, 0.0, z1 - 1.9), 180.0, p.pitch)
-            in_shop = True
+            if left_door:
+                p.place((SHOP_DOOR_X, 0.0, z1 - 1.9), 180.0, p.pitch)
+                in_shop = True
+            else:                                       # ramené devant l'étal de primeur
+                p.place((14.0, 0.0, z1 + 2.4), 180.0, p.pitch)
         self.was_in_shop = in_shop
         # PNJ et voitures
         mp = getattr(g, "mp", None)

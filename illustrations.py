@@ -283,7 +283,17 @@ def icon_signal(size=48, bars=1):
 def item_icon(name, size=96):
     img, d = _canvas((size, size))
     S = size
-    if name == "pile":
+    if name.startswith("primeur_"):
+        # fruit/légume de l'étal : trois fruits ronds de sa couleur (reflet + queue + feuille)
+        import inventory
+        col = tuple(int(c * 255) for c in inventory.ITEM_DEFS.get(name, ("", "", (0.8, 0.3, 0.2), True))[2])
+        dark = tuple(int(c * 0.7) for c in col)
+        for (x, y, r) in ((.36, .62, .2), (.64, .62, .2), (.5, .4, .21)):
+            d.ellipse([_s(S * (x - r)), _s(S * (y - r)), _s(S * (x + r)), _s(S * (y + r))], fill=col, outline=dark, width=_s(S * .02))
+            d.ellipse([_s(S * (x - r * .55)), _s(S * (y - r * .6)), _s(S * (x - r * .1)), _s(S * (y - r * .25))], fill=(255, 255, 255, 90))
+        d.line([(_s(S * .5), _s(S * .2)), (_s(S * .53), _s(S * .1))], fill=(90, 60, 30), width=_s(S * .03))
+        d.ellipse([_s(S * .53), _s(S * .08), _s(S * .7), _s(S * .16)], fill=(70, 140, 50))
+    elif name == "pile":
         d.rounded_rectangle([_s(S * .3), _s(S * .22), _s(S * .7), _s(S * .88)], radius=_s(S * .06), fill=(240, 196, 40))
         d.rectangle([_s(S * .42), _s(S * .12), _s(S * .58), _s(S * .22)], fill=(200, 200, 205))
         d.rectangle([_s(S * .3), _s(S * .5), _s(S * .7), _s(S * .62)], fill=(40, 40, 46))

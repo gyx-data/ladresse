@@ -68,6 +68,33 @@ CATALOG = [
 ]
 CATALOG_BY_ID = {a.id: a for a in CATALOG}
 
+
+def primeur_article(item):
+    """Article du panier pour une cagette de l'étal de primeur (fresh_aisle.PRODUCE) : même prix que l'ardoise.
+    Enregistré à part du CATALOG (pas de présentoir en rayon) mais payé à la caisse comme le reste."""
+    model, col, _size, nom, prix = item
+    aid = "primeur_" + model
+    if aid not in CATALOG_BY_ID:
+        piece = "pièce" in prix
+        price = float(prix.split("€")[0].strip().replace(",", "."))
+        name = f"{nom} — {'à la pièce' if piece else '1 kg'}"
+        short = (nom.upper() + (" PCE" if piece else " 1KG"))[:20]
+        CATALOG_BY_ID[aid] = Article(aid, name, short, price, None, aid, 1, col, "primeur")
+        # objet d'inventaire du même nom (se mange depuis le panneau Tab, voir GameManager.use_item)
+        import inventory
+        inventory.ITEM_DEFS[aid] = (nom, ("À la pièce" if piece else "1 kg") + ", de l'étal du Carrefour. Ça se mange.",
+                                    col, True)
+    return CATALOG_BY_ID[aid]
+
+
+def _register_primeur():
+    import fresh_aisle
+    for item in fresh_aisle.PRODUCE:
+        primeur_article(item)
+
+
+_register_primeur()          # dès l'import : les fruits d'une sauvegarde s'affichent dans l'inventaire
+
 # annonces vocales de la caisse automatique
 KIOSK_LINES = {
     "bienvenue": "Bonjour et bienvenue. Veuillez scanner votre premier article.",

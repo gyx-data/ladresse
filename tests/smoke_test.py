@@ -104,6 +104,20 @@ def neighborhood_tests():
     check("Carte fidélité 9531 700 002" in co.ticket_text(), "ticket de caisse avec la carte")
     co.close()
     check(nb.basket.count == 0 and not nb.ui.enabled, "panier vidé après paiement")
+    # étal de primeur devant la vitrine : une cagette se prend comme un article, et partir sans payer ramène à l'étal
+    stall = [it for it in game.interactions.items.values() if it.id.startswith("primeur_")]
+    check(len(stall) == 8 * 2, f"{len(stall)} cagettes achetables sur l'étal de primeur")
+    tp(14.0, 0.0, -18.6, 180.0)
+    yield from wait(3)
+    stall[0].on_use(stall[0])
+    art = CATALOG_BY_ID[nb.basket.as_lines()[0][0].id]
+    check(nb.basket.count == 1 and art.shelf == "primeur" and abs(nb.basket.total - art.price) < 0.01,
+          f"fruit de l'étal au panier ({art.name}, {art.price:.2f} €)")
+    w0 = nb.theft_warnings
+    tp(14.0, 0.0, -12.0, 0.0)
+    yield from wait(3)
+    check(nb.theft_warnings == w0 + 1 and p.pos[2] < -17.0, "partir avec les fruits sans payer : ramené à l'étal")
+    nb._drop_basket()
     # restaurant
     h0 = p.health = 50.0
     nb.counter.open()
