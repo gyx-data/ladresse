@@ -1100,8 +1100,11 @@ def delivery_bag(b, cx, cz, y0, rot=0.0, torn=True):
 
 
 def shelving_unit(b, x0, z0, x1, z1, y0, face="+x", levels=4, height=1.9):
+    # montants débordant de 4 mm autour des tablettes : sinon les chants des planches sont coplanaires
+    # avec les faces des montants et scintillent (z-fighting)
+    e = 0.004
     for post in ((x0, z0), (x0, z1 - 0.05), (x1 - 0.05, z0), (x1 - 0.05, z1 - 0.05)):
-        b.box("metal", post[0], y0, post[1], post[0] + 0.05, y0 + height, post[1] + 0.05, (0.7, 0.7, 0.7))
+        b.box("metal", post[0] - e, y0, post[1] - e, post[0] + 0.05 + e, y0 + height, post[1] + 0.05 + e, (0.7, 0.7, 0.7))
     for l in range(levels):
         yy = y0 + 0.15 + l * (height - 0.2) / levels
         b.box("planches", x0, yy, z0, x1, yy + 0.03, z1, (0.8, 0.75, 0.7))
