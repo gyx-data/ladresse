@@ -699,7 +699,10 @@ class GameManager:
         if self.mode != "playing":
             return
         if key == "escape":
-            if self.camera_mode:
+            nb = self.neighborhood
+            if nb is not None and nb.ui_visible():
+                nb.on_key(key)                     # caisse / comptoir : Échap ferme l'écran (et non la pause)
+            elif self.camera_mode:
                 self.exit_camera_mode()
             elif self.inv_panel.visible:
                 self.inv_panel.hide()
