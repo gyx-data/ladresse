@@ -4,6 +4,7 @@ Le `GameManager` possède tous les systèmes et fait le lien entre eux (quêtes,
 téléphone, entité, événements de la maison, interface...).
 """
 import math
+import os
 import random
 
 from ursina import Entity, Vec2, Vec3, camera, mouse, scene, color, invoke, window, application, destroy
@@ -570,6 +571,8 @@ class GameManager:
     def set_mouse(self, free):
         if not free and self.paused:
             free = True                 # une fenêtre qui se ferme pendant la pause ne doit pas capturer la souris
+        if os.environ.get("LADRESSE_TESTS_INVISIBLES"):
+            free = True                 # tests automatiques : ne jamais capturer la souris de la personne sur la machine
         mouse.locked = not free
         mouse.visible = free
 

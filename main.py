@@ -54,6 +54,9 @@ loadPrcFileData("", "sync-video 1" if settings["vsync"] else "sync-video 0")
 # tampon de profondeur 24 bits (le tampon de post-traitement en demandait « au moins 1 », souvent 16 bits) :
 # plus de scintillement entre surfaces proches (tableaux, vitres, décalcomanies) vues de loin
 loadPrcFileData("", "depth-bits 24")
+# les états de rendu (transformations, attributs) inutilisés sont ramassés par quarts à chaque image au lieu d'être
+# tous parcourus à chaque image (~1 ms par image avec les passants animés) ; la mémoire est libérée pareil
+loadPrcFileData("", "garbage-collect-states-rate 0.25")
 
 from ursina import Ursina, window, camera, color, time as utime
 
@@ -79,6 +82,15 @@ def create_app():
     if not settings["plein_ecran"]:
         res = config.RESOLUTIONS.get(settings["resolution"], (1280, 720))
         kwargs["size"] = res
+    if os.environ.get("LADRESSE_TESTS_INVISIBLES"):
+        # tests automatiques : fenêtre placée hors de l'écran, en arrière-plan, et priorité basse, pour ne pas gêner
+        # la personne qui travaille sur la machine (un tampon hors écran ne supporte pas les réglages de fenêtre)
+        kwargs["position"] = (-6000, -6000)
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
+        except Exception:
+            pass
     app = Ursina(**kwargs)
     window.title = config.GAME_TITLE
     window.color = color.black
@@ -107,7 +119,25 @@ def _optimize_ursina():
     Entity.__init__ = fast_init
 
 
+import perf                     # boucle d'update allégée, minuterie Windows précise (perf.py)
+perf.install()
 app = create_app()
+
+
+def _hide_test_window(task=None):
+    """Tests automatiques : la fenêtre reste hors de l'écran et en arrière-plan (Ursina la recentre en démarrant)."""
+    from panda3d.core import WindowProperties
+    wp = WindowProperties()
+    wp.setOrigin(-6000, -6000)
+    wp.setForeground(False)
+    wp.setZOrder(WindowProperties.Z_bottom)
+    app.win.requestProperties(wp)
+    return task.again if task is not None else None
+
+
+if os.environ.get("LADRESSE_TESTS_INVISIBLES"):
+    _hide_test_window()
+    app.taskMgr.doMethodLater(0.5, _hide_test_window, "fenetre_tests")
 _close_splash()
 _optimize_ursina()
 import typography

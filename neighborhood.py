@@ -211,9 +211,13 @@ class NPC:
         self.root.rotation_y += dy * min(1.0, dt * 6.0)
         sp = self.speed if moving else 0.0
         self.speed_now += (sp - self.speed_now) * min(1.0, dt * 8.0)
-        self.model.animate(dt, self.speed_now, 0.62 if self.pose == "sit" else 0.0, 0.0, self.speed > 2.5, False)
+        # membres animés seulement à portée de vue (au-delà, dans le brouillard, le passant glisse sans qu'on le voie)
+        if dist_p < NPC_ANIM_DIST:
+            self.model.animate(dt, self.speed_now, 0.62 if self.pose == "sit" else 0.0, 0.0, self.speed > 2.5, False)
         self.it.pos = self.pos + Vec3(0, 1.45 if self.pose != "sit" else 1.1, 0)
 
+
+NPC_ANIM_DIST = 32.0
 
 # =============================================================================
 # Circulation

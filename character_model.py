@@ -69,13 +69,15 @@ class _Limb:
     def __init__(self, parent, pos):
         self.pivot = Entity(parent=parent, position=pos)
 
+    # rotation_x d'Ursina = -P (Entity.rotation_directions) : on passe directement par Panda3D, sans les
+    # allers-retours Vec3 de la propriété Ursina (des centaines d'appels par image avec les passants)
     @property
     def rx(self):
-        return self.pivot.rotation_x
+        return -self.pivot.getP()
 
     @rx.setter
     def rx(self, v):
-        self.pivot.rotation_x = v
+        self.pivot.setP(-v)
 
 
 class CharacterModel:
