@@ -252,7 +252,7 @@ class CourierStory:
     def _gate_beep(self):
         sound.play_at("digicode", Vec3(7.7, 1.3, -6.2), 1.0, ref=7.0)
         self.game.player.add_stress(15)
-        self.game.say("Le portail... il vient d'entrer dans le jardin.", 4.0, voice=False)
+        self.game.say("Le portail... il vient d'entrer dans le jardin.", 4.0)
 
     # ------------------------------------------------------------------
     # Déroulé
@@ -365,7 +365,7 @@ class CourierStory:
             sound.play("stinger_alerte", 0.5)
             p.add_stress(22)
             p.shake(0.2, 0.25)
-            g.say("Sous le lampadaire... il est immense. Et il me regarde.", 4.5, voice=False)
+            g.say("Sous le lampadaire... il est immense. Et il me regarde.", 4.5)
             self.say("Je te vois.")
 
     # --- la voisine -------------------------------------------------------
