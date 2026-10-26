@@ -677,7 +677,9 @@ class Neighborhood:
         wall = (0.9, 0.88, 0.85)
         # la face côté rue est construite plus bas, percée derrière fenêtres / volets / porte (anti z-fighting)
         # villa explorable : coque sans collision (les murs intérieurs portent les collisions), porte ouverte
-        b.box(tex, x0, 0, z0, x1, h, z1, wall, collide=not explorable, skip=("-z",) if street_side < 0 else ("+z",))
+        # (pignon est construit par bianchi_house, percé de ses fenêtres)
+        b.box(tex, x0, 0, z0, x1, h, z1, wall, collide=not explorable,
+              skip=(("-z",) if street_side < 0 else ("+z",)) + (("+x",) if explorable else ()))
         zm = (z0 + z1) / 2
         rc = (0.85, 0.78, 0.74)
         # toit à deux pans débordant + génoises (corniche) + cheminée
@@ -769,11 +771,12 @@ class Neighborhood:
             ang = math.radians(70.0)
             hx, hz = door_x - 0.5, fz_wall - out * 0.03
             cx_, cz_ = hx + 0.5 * math.cos(ang), hz - out * 0.5 * math.sin(ang)
-            b.obox("porte", cx_, yd, cz_, 1.0, 1.65, 0.05, -70.0 if out < 0 else 70.0, (0.75, 0.6, 0.5))
-        holes.append((door_x - 0.5, yd, door_x + 0.5, 2.25))
+            b.obox("porte", cx_, yd, cz_, 1.0, 2.1, 0.05, -70.0 if out < 0 else 70.0, (0.75, 0.6, 0.5))
+        dtop = 2.7 if explorable else 2.25                  # porte à hauteur d'homme quand on peut entrer
+        holes.append((door_x - 0.5, yd, door_x + 0.5, dtop))
         a, c = zz(back, 0.1)
-        for (u0, u1, v0, v1) in ((door_x - 0.62, door_x - 0.5, 0.15, 2.25), (door_x + 0.5, door_x + 0.62, 0.15, 2.25),
-                                 (door_x - 0.62, door_x + 0.62, 2.25, 2.4)):
+        for (u0, u1, v0, v1) in ((door_x - 0.62, door_x - 0.5, 0.15, dtop), (door_x + 0.5, door_x + 0.62, 0.15, dtop),
+                                 (door_x - 0.62, door_x + 0.62, dtop, dtop + 0.15)):
             b.box("crepi", u0, v0, a, u1, v1, c, (0.97, 0.96, 0.93))
             holes.append((u0, v0, u1, v1))
         # face du mur côté rue, privée des trous ; ni sous le soubassement (y < 0.6) ni sous la corniche (y > h - 0.26),
@@ -792,7 +795,7 @@ class Neighborhood:
                 b.quad(tex, (xb, ya, z1), (xa, ya, z1), (xa, yb, z1), (xb, yb, z1), nrm, wall, uv_off=((x1 - xb) / tu, ya / tu))
         a, c = zz(0.0, 0.45)
         b.box("beton", door_x - 0.8, 0, a, door_x + 0.8, 0.15, c, (0.6, 0.58, 0.55))
-        lx, ly, lz = door_x + 0.85, 2.15, fz + out * 0.12
+        lx, ly, lz = door_x + 0.85, dtop - 0.1, fz + out * 0.12
         b.box("metal", lx - 0.05, ly - 0.12, min(fz, lz), lx + 0.05, ly + 0.12, max(fz, lz), (0.15, 0.15, 0.15))
         be.sphere("neon", lx, ly - 0.05, lz + out * 0.03, 0.06, (1.0, 0.8, 0.5), lat=4, lon=8)
 

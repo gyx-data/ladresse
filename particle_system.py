@@ -261,7 +261,7 @@ class ParticleManager:
             door = self.game.house.parts.get("frigo_porte")
             self.fridge.update(dt, door is not None and door.is_open and p.level == 0, p)
         # pluie : visible uniquement par les fenêtres non condamnées (grenier) ou dehors
-        self.rain.enabled = p.level >= 1 or zone == "dehors"
+        self.rain.enabled = (p.level >= 1 and zone != "villa") or zone == "dehors"
         self.rain.update(dt, p.eye_pos)
 
     def hide_all(self):

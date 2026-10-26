@@ -981,7 +981,7 @@ class House:
 
     def zone_at(self, x, z, y):
         lvl = self.level_at(y)
-        if lvl == 0:
+        if lvl in (0, 1):                     # (la villa de la voisine a un étage)
             for (x0, z0, x1, z1, name) in getattr(self, "extra_zones", ()):
                 if x0 <= x <= x1 and z0 <= z <= z1:
                     return name
