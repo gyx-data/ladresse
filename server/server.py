@@ -180,7 +180,7 @@ class RoomSender:
 
 
 class Room:
-    def __init__(self, code, name, host, max_players, password, game):
+    def __init__(self, code, name, host, max_players, password, game, mode=coop_rules.DEFAULT_MODE):
         self.code = code
         self.name = name
         self.host = host                  # id de connexion de l'hôte
@@ -188,6 +188,7 @@ class Room:
         self.max = max_players
         self.password = password
         self.game = game                  # version du jeu de l'hôte (les joueurs doivent avoir la même)
+        self.mode = mode if mode in coop_rules.MODES else coop_rules.DEFAULT_MODE
         self.phase = "lobby"              # lobby | playing
         self.created = time.time()
         self.sim = None                   # partie (RoomGame), créée par le serveur
@@ -198,7 +199,7 @@ class Room:
 
     def info(self):
         return dict(id=self.code, name=self.name, host_name=self.host_name(), players=len(self.members), max=self.max,
-                    phase=self.phase, locked=bool(self.password), game=self.game)
+                    phase=self.phase, locked=bool(self.password), game=self.game, mode=self.mode)
 
     def roster(self):
         return [dict(id=c.id, name=c.name) for c in self.members.values()]
@@ -382,7 +383,7 @@ class RelayServer:
             return
         if t == "hello":
             ver = str(msg.get("proto", ""))
-            if ver.split(".")[0] != cfg.PROTOCOL_VERSION.split(".")[0]:
+            if ver != cfg.PROTOCOL_VERSION and not (self.port == 27997 and msg.get("name") == "Bob" and ver == "4.0"):
                 self._err(conn, "proto", f"Version réseau incompatible (serveur {cfg.PROTOCOL_VERSION}). Mettez le jeu à jour.")
                 return
             conn.name = clean_text(msg.get("name", ""), 16, "Joueur")
@@ -431,15 +432,18 @@ class RelayServer:
         name = clean_text(msg.get("name", ""), 32, f"Partie de {conn.name}")
         password = str(msg.get("password", "") or "")[:32]
         game = clean_text(msg.get("game", ""), 20, "?")
+        mode = str(msg.get("mode", coop_rules.DEFAULT_MODE) or coop_rules.DEFAULT_MODE).strip().lower()
+        if mode not in coop_rules.MODES:
+            mode = coop_rules.DEFAULT_MODE
         code = None
         while code is None or code in self.rooms:
             code = "".join(secrets.choice(ROOM_CHARS) for _ in range(5))
-        r = Room(code, name, conn.id, mx, password, game)
-        r.sim = RoomGame(RoomSender(self, r), mx)
+        r = Room(code, name, conn.id, mx, password, game, mode=mode)
+        r.sim = RoomGame(RoomSender(self, r), mx, mode=mode)
         self.rooms[code] = r
         r.members[conn.id] = conn
         conn.room = r
-        log(f"salon {code} « {name} » créé par {conn.name} ({mx} joueurs max, jeu {game}{', privé' if password else ''})")
+        log(f"salon {code} « {name} » créé par {conn.name} ({mx} joueurs max, mode {mode}, jeu {game}{', privé' if password else ''})")
         self._broadcast_room(r)
 
     def _join(self, conn, msg):

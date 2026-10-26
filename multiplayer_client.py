@@ -15,7 +15,7 @@ import time
 
 import config
 
-PROTOCOL_VERSION = "4.0"      # protocole réseau (server_config.PROTOCOL_VERSION, version majeure)
+PROTOCOL_VERSION = "4.1"      # protocole réseau (server_config.PROTOCOL_VERSION)
 SERVER_ID = 0                 # expéditeur des messages de la partie (le serveur)
 SEND_RATE = 20.0              # positions envoyées par seconde
 KEEPALIVE = 0.5               # renvoi de la position même immobile (s)
@@ -122,8 +122,8 @@ class NetClient:
     def list_rooms(self):
         self.send(dict(type="list"))
 
-    def create_room(self, name, max_players, password=""):
-        self.send(dict(type="create", name=name, max=int(max_players), password=password, game=config.VERSION))
+    def create_room(self, name, max_players, password="", mode="coop"):
+        self.send(dict(type="create", name=name, max=int(max_players), password=password, mode=mode, game=config.VERSION))
 
     def join_room(self, code, password=""):
         self.send(dict(type="join", room=code, password=password, game=config.VERSION))
@@ -312,6 +312,15 @@ class NetClient:
 
     def send_enter_house(self):
         self._to_host(dict(type="enter_house"))
+
+    def send_door_opened(self, door="entree"):
+        self._to_host(dict(type="door_opened", door=door))
+
+    def send_code_given(self):
+        self._to_host(dict(type="code_given"))
+
+    def send_quest_done(self, quest):
+        self._to_host(dict(type="quest_done", quest=quest))
 
     def send_start(self):
         if self.is_host:

@@ -10,6 +10,9 @@ OUTSIDE_SPAWN = (11.2, 0.0, -6.9)       # trottoir devant le 17 (identique au so
 
 MAX_PLAYERS = 4                # limite par défaut d'un salon (l'hôte peut choisir de 1 à 8)
 ROOM_MAX_CHOICES = (2, 3, 4, 5, 6, 8)
+MODES = ("coop", "solo_survie", "traitre", "cauchemar")
+DEFAULT_MODE = "coop"
+QUEST_IDS = ("telephone_garnier", "commande_annulee", "sel_entrees")
 TICK_RATE = 20
 TICK_DT = 1.0 / TICK_RATE
 
@@ -57,4 +60,13 @@ PARANOIA = [
     "{autre} vous a menti sur la porte.",
     "Un seul d'entre vous est réellement ici.",
     "Restez près de {autre}. Il sait comment sortir.",
+]
+
+TRAITOR_ORDERS = [
+    "Ouvre la porte d'entrée. Je ferai le reste.",
+    "Donne-moi le code du portail (1704).",
+    "Éteins une lumière dans le couloir ou le salon.",
+    "Attire l'un d'eux seul dans une pièce à l'étage.",
+    "Fais du bruit loin des autres pour les disperser.",
+    "Ne les laisse pas tracer le sel devant les entrées.",
 ]

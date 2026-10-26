@@ -42,7 +42,7 @@ def free_port():
 class Raw:
     """Client brut (TCP + UDP) pour piloter le relais."""
 
-    def __init__(self, port, name=None, proto="4.0"):
+    def __init__(self, port, name=None, proto="4.1"):
         self.port = port
         self.s = socket.create_connection(("127.0.0.1", port), timeout=3)
         self.s.settimeout(0.05)
@@ -110,8 +110,11 @@ class Raw:
 def relay_tests(port, server):
     print("== relais ==")
     bad = Raw(port, "Vieux", proto="2.0")
-    check(bad.wait("error", pred=lambda m: m.get("code") == "proto") is not None, "ancien client refusé (protocole)")
+    check(bad.wait("error", pred=lambda m: m.get("code") == "proto") is not None, "ancien client 2.0 refusé (protocole)")
     bad.close()
+    bad40 = Raw(port, "Vieux40", proto="4.0")
+    check(bad40.wait("error", pred=lambda m: m.get("code") == "proto") is not None, "ancien client 4.0 refusé (protocole 4.1)")
+    bad40.close()
     anon = Raw(port)
     anon.send(type="list")
     check(anon.wait("error", pred=lambda m: m.get("code") == "hello") is not None, "list sans hello refusé")
@@ -356,6 +359,104 @@ def game_tests(port, server):
     check(code not in server.rooms, "dernier joueur parti : salon supprimé")
 
 
+def mode_tests(port, server):
+    """Test de chaque mode de jeu (liste des salons, lancement, règles dédiées)."""
+    print("== modes de jeu ==")
+    from multiplayer_client import NetClient
+    for mode in ("coop", "solo_survie", "traitre", "cauchemar"):
+        c1, c2 = NetClient(), NetClient()
+        c1.connect("127.0.0.1", port, f"Hote_{mode}")
+        c2.connect("127.0.0.1", port, f"Inv_{mode}")
+        got = {"1": [], "2": []}
+
+        def drain(t=0.25):
+            end = time.time() + t
+            while time.time() < end:
+                got["1"] += c1.poll()
+                got["2"] += c2.poll()
+                time.sleep(0.02)
+
+        def find(who, typ, pred=None, t=2.0):
+            end = time.time() + t
+            while time.time() < end:
+                for m in got[who]:
+                    if m.get("type") == typ and (pred is None or pred(m)):
+                        got[who].remove(m)
+                        return m
+                drain(0.04)
+            return None
+
+        drain(0.2)
+        c1.create_room(f"Salon {mode}", 4, mode=mode)
+        rm = find("1", "room")
+        code = rm["room"]["id"] if rm else None
+        check(rm is not None and rm["room"].get("mode") == mode, f"mode {mode} présent à la création du salon")
+        c2.list_rooms()
+        lst = find("2", "rooms")
+        check(lst is not None and any(r["id"] == code and r.get("mode") == mode for r in lst["rooms"]),
+              f"mode {mode} présent dans la liste des parties")
+        c2.join_room(code)
+        find("2", "room")
+        drain(0.15)
+        c1.send_start()
+        m1 = find("1", "mode")
+        m2 = find("2", "mode")
+        check(m1 is not None and m2 is not None and m1.get("mode") == mode and m2.get("mode") == mode,
+              f"mode {mode} transmis à tous au lancement")
+        if mode == "traitre":
+            check(m1.get("traitre") in (c1.id, c2.id) and m1.get("traitre") == m2.get("traitre"),
+                  "mode traitre : un joueur tiré au hasard")
+            sim = server.rooms[code].sim
+            sim._send_traitor_order()
+            traitor_key = "1" if m1.get("traitre") == c1.id else "2"
+            other_key = "2" if traitor_key == "1" else "1"
+            ord_msg = find(traitor_key, "ordre")
+            drain(0.15)
+            check(ord_msg is not None and bool(ord_msg.get("text"))
+                  and not [x for x in got[other_key] if x.get("type") == "ordre"],
+                  "mode traitre : ordre secret reçu uniquement par le traître")
+        else:
+            check(m1.get("traitre") is None, f"mode {mode} : traitre=None")
+
+        if mode == "coop":
+            # quêtes partagées -> victoire adresse_retiree
+            c1.send_quest_done("telephone_garnier")
+            c2.send_quest_done("commande_annulee")
+            c1.send_quest_done("sel_entrees")
+            w1 = find("1", "win")
+            w2 = find("2", "win")
+            check(w1 is not None and w2 is not None and w1.get("ending") == "adresse_retiree",
+                  "3 quêtes finies -> win(adresse_retiree) envoyé aux vivants")
+        elif mode == "solo_survie":
+            # porte ouverte au livreur : seul celui qui ouvre est emporté, l'autre survit et gagne
+            c2.send_door_opened("entree")
+            d1 = find("1", "player_death")
+            w1 = find("1", "win")
+            check(d1 is not None and d1["id"] == c2.id and d1["cause"] == "porte"
+                  and w1 is not None and w1.get("ending") == "solo_survie",
+                  "solo_survie + door_opened : seul celui qui ouvre meurt, l'autre gagne")
+        elif mode == "cauchemar":
+            # code_given + fin du compte à rebours : seul le joueur ayant donné le code / isolé est emporté
+            sim = server.rooms[code].sim
+            c1.send_enter_house()
+            c2.send_enter_house()
+            drain(0.2)
+            c2.send_code_given()
+            drain(0.1)
+            sim._ev_countdown(60)
+            d1 = find("1", "player_death")
+            check(d1 is not None and d1["id"] == c2.id and d1["cause"] == "code" and sim.state.players[c1.id].alive,
+                  "code_given : seul le joueur ayant donné le code est emporté au passage du livreur")
+            # c1 est toujours dedans et seul survivant : à remaining=0 la partie continue en survival
+            sim._ev_countdown(0)
+            drain(0.2)
+            check(sim.state.players[c1.id].alive and sim.state.phase == "survival",
+                  "fin du compte à rebours : la partie continue tant qu'il reste un survivant dans la maison")
+        c1.close()
+        c2.close()
+        time.sleep(0.1)
+
+
 def load_test(port, server, rooms=40):
     """Beaucoup de salons en même temps sur la même boucle de jeu."""
     print("== charge ==")
@@ -392,6 +493,7 @@ def main():
     try:
         relay_tests(port, server)
         game_tests(port, server)
+        mode_tests(port, server)
         load_test(port, server)
     except Exception:
         import traceback

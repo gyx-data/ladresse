@@ -95,6 +95,7 @@ class PlayerState:
         self.messages_sent = 0
         self.ready = False
         self.inside = False           # quartier partagé : déjà entré dans la maison
+        self.code_given = False       # a donné le code du portail au livreur
 
     def info(self):
         return dict(id=self.id, name=self.name, color=list(self.color), alive=self.alive)
@@ -277,8 +278,11 @@ class EntityState:
 class GameState:
     """Partie en cours : lobby → exploration → commande → attente → survie."""
 
-    def __init__(self, max_players=None):
+    def __init__(self, max_players=None, mode=cfg.DEFAULT_MODE):
         self.max_players = max_players or cfg.MAX_PLAYERS
+        self.mode = mode if mode in cfg.MODES else cfg.DEFAULT_MODE
+        self.traitre = None
+        self.quests_done = set()
         self.players = {}
         self.host = None
         self.phase = "lobby"     # lobby | explore | ordered | countdown | survival | over

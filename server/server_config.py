@@ -54,7 +54,7 @@ def _default_port():
 
 HOST = _get("HOST", "0.0.0.0", str)
 PORT = _get("PORT", _default_port(), int, 1, 65535)        # IP publique : 5.180.34.43
-PROTOCOL_VERSION = "4.0"     # protocole réseau (4 = parties tenues par le serveur)
+PROTOCOL_VERSION = "4.1"     # protocole réseau (4.1 = modes de jeu et quêtes serveur)
 MOTD = _get("MOTD", "Bienvenue au 17 rue des Lilas.", str)[:200]
 LOG_FILE = _get("LOG", os.path.join(HERE, "server.log"), str)
 

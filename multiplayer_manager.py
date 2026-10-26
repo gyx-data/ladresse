@@ -29,6 +29,14 @@ BLOOD = (176, 22, 20)
 OK_GREEN = (110, 170, 120)
 ROWS = 6
 ROOM_MAX_CHOICES = (2, 3, 4, 5, 6, 8)
+GAME_MODES = (
+    ("coop", "Coop", "L'équipe accomplit les quêtes ensemble pour retirer l'adresse."),
+    ("solo_survie", "Chacun pour soi", "Le livreur ne prend qu'une adresse : dès qu'un joueur est emporté, les autres gagnent."),
+    ("traitre", "Traître", "Un joueur reçoit en secret les ordres du livreur et gagne s'il fait emporter quelqu'un."),
+    ("cauchemar", "Cauchemar", "Comme Coop, mais un seul contact tue et pas de retour en arrière."),
+)
+MODE_LABELS = {k: lbl for k, lbl, _ in GAME_MODES}
+MODE_DESCS = {k: desc for k, _, desc in GAME_MODES}
 # mêmes couleurs que server/coop_rules.JACKET_COLORS (ordre d'arrivée dans le salon)
 JACKET_COLORS = [(0.75, 0.2, 0.2), (0.2, 0.45, 0.8), (0.2, 0.65, 0.3), (0.85, 0.7, 0.15),
                  (0.55, 0.25, 0.7), (0.9, 0.45, 0.15), (0.2, 0.7, 0.7), (0.85, 0.85, 0.85)]
@@ -169,7 +177,12 @@ class MultiplayerManager:
         self.lobby_open = False
         self._pending_status = None
         self._create_max = int(settings.get("mp_max", 4))
+        self._create_mode = "coop"
+        self._draft_room = None
+        self._draft_pass = ""
         self._join_target = None
+        self.game.mp_mode = "coop"
+        self.game.mp_traitre = False
 
     # ------------------------------------------------------------------
     @property
@@ -245,7 +258,7 @@ class MultiplayerManager:
     # --- liste des parties ---------------------------------------------
     def _page_browser(self):
         b = self.body
-        cols = ((-0.66, "PARTIE"), (-0.13, "HÔTE"), (0.13, "JOUEURS"), (0.27, "ÉTAT"))
+        cols = ((-0.66, "PARTIE"), (-0.21, "MODE"), (0.01, "HÔTE"), (0.21, "JOUEURS"), (0.34, "ÉTAT"))
         for x, t in cols:
             label(b, t, x, 0.255, 0.5, rgb(*MUTED), origin=(-0.5, 0), z=0)
         rooms = self.rooms
@@ -279,10 +292,13 @@ class MultiplayerManager:
     def _room_row(self, b, room, y):
         rect(b, 0.0, y, 1.38, 0.062, rgb(255, 255, 255, 9), z=0.5)
         name = room.get("name", "?") + ("   · privée" if room.get("locked") else "")
-        label(b, name, -0.66, y, 0.72, rgb(*BONE), origin=(-0.5, 0), z=0.2, max_w=0.5)
-        label(b, room.get("host_name", "?"), -0.13, y, 0.62, rgb(*MUTED), origin=(-0.5, 0), z=0.2, max_w=0.24)
+        label(b, name, -0.66, y, 0.72, rgb(*BONE), origin=(-0.5, 0), z=0.2, max_w=0.42)
+        mode_id = room.get("mode", "coop")
+        mode_col = rgb(*BLOOD) if mode_id in ("traitre", "cauchemar") else rgb(*BONE)
+        label(b, MODE_LABELS.get(mode_id, mode_id), -0.21, y, 0.6, mode_col, origin=(-0.5, 0), z=0.2, max_w=0.2)
+        label(b, room.get("host_name", "?"), 0.01, y, 0.6, rgb(*MUTED), origin=(-0.5, 0), z=0.2, max_w=0.18)
         n, mx = room.get("players", 0), room.get("max", 4)
-        label(b, f"{n} / {mx}", 0.13, y, 0.65, rgb(*BONE) if n < mx else rgb(*BLOOD), origin=(-0.5, 0), z=0.2)
+        label(b, f"{n} / {mx}", 0.21, y, 0.65, rgb(*BONE) if n < mx else rgb(*BLOOD), origin=(-0.5, 0), z=0.2)
         reason = None
         if room.get("phase") != "lobby":
             reason = "En cours"
@@ -290,8 +306,8 @@ class MultiplayerManager:
             reason = "Complète"
         elif room.get("game") != config.VERSION:
             reason = f"Version {room.get('game')}"
-        label(b, reason or "En attente", 0.27, y, 0.6, rgb(*MUTED) if reason else rgb(*OK_GREEN), origin=(-0.5, 0), z=0.2,
-              max_w=0.2)
+        label(b, reason or "En attente", 0.34, y, 0.58, rgb(*MUTED) if reason else rgb(*OK_GREEN), origin=(-0.5, 0), z=0.2,
+              max_w=0.16)
         if reason is None:
             button(b, "Rejoindre", 0.6, y, 0.15, 0.046, lambda rm=room: self._join(rm), style="primary", size=0.62)
 
@@ -308,23 +324,36 @@ class MultiplayerManager:
     # --- création --------------------------------------------------------
     def _page_create(self):
         b = self.body
-        label(b, "CRÉER UNE PARTIE", -0.4, 0.24, 1.1, rgb(*BONE), origin=(-0.5, 0), z=0)
-        label(b, "Nom de la partie", -0.4, 0.15, 0.6, rgb(*MUTED), origin=(-0.5, 0), z=0)
-        self.f_room = InputField(default_value=f"Partie de {self._pseudo()}", parent=b, position=(0.06, 0.11, -0.05),
-                                 scale=(0.92, 0.05), character_limit=32)
-        label(b, "Joueurs maximum", -0.4, 0.03, 0.6, rgb(*MUTED), origin=(-0.5, 0), z=0)
-        button(b, "‹", -0.32, -0.02, 0.05, 0.05, lambda: self._step_max(-1), style="dark", size=0.9)
-        self.max_lbl = label(b, str(self._create_max), -0.23, -0.02, 1.1, rgb(*BONE), z=0)
-        button(b, "›", -0.14, -0.02, 0.05, 0.05, lambda: self._step_max(1), style="dark", size=0.9)
-        label(b, "Conseillé : 2 à 4. Au-delà, la maison devient très peuplée.", -0.08, -0.02, 0.52, rgb(*MUTED),
-              origin=(-0.5, 0), z=0, max_w=0.6)
-        label(b, "Mot de passe (facultatif)", -0.4, -0.1, 0.6, rgb(*MUTED), origin=(-0.5, 0), z=0)
-        self.f_pass = InputField(default_value="", parent=b, position=(-0.16, -0.14, -0.05), scale=(0.48, 0.05),
-                                 character_limit=32)
-        label(b, "La partie tourne sur le serveur : elle continue même si vous partez avant la fin.", 0, -0.22, 0.55,
+        label(b, "CRÉER UNE PARTIE", -0.62, 0.25, 1.05, rgb(*BONE), origin=(-0.5, 0), z=0)
+        label(b, "Nom de la partie", -0.62, 0.175, 0.58, rgb(*MUTED), origin=(-0.5, 0), z=0)
+        default_room = self._draft_room if self._draft_room is not None else f"Partie de {self._pseudo()}"
+        self.f_room = InputField(default_value=default_room, parent=b, position=(-0.16, 0.13, -0.05),
+                                 scale=(0.92, 0.048), character_limit=32)
+        label(b, "Joueurs maximum", -0.62, 0.055, 0.58, rgb(*MUTED), origin=(-0.5, 0), z=0)
+        button(b, "‹", -0.56, 0.005, 0.05, 0.048, lambda: self._step_max(-1), style="dark", size=0.9)
+        self.max_lbl = label(b, str(self._create_max), -0.47, 0.005, 1.05, rgb(*BONE), z=0)
+        button(b, "›", -0.38, 0.005, 0.05, 0.048, lambda: self._step_max(1), style="dark", size=0.9)
+        label(b, "Mot de passe (facultatif)", -0.14, 0.055, 0.58, rgb(*MUTED), origin=(-0.5, 0), z=0)
+        self.f_pass = InputField(default_value=self._draft_pass or "", parent=b, position=(0.15, 0.005, -0.05),
+                                 scale=(0.58, 0.048), character_limit=32)
+        label(b, "Mode de jeu", -0.62, -0.07, 0.58, rgb(*MUTED), origin=(-0.5, 0), z=0)
+        xs = (-0.465, -0.155, 0.155, 0.465)
+        for (mid, mlabel, _), x in zip(GAME_MODES, xs):
+            button(b, mlabel, x, -0.125, 0.29, 0.05, lambda m=mid: self._set_mode(m),
+                   style="primary" if self._create_mode == mid else "dark", size=0.68)
+        self.mode_desc_lbl = label(b, MODE_DESCS.get(self._create_mode, ""), 0.0, -0.19, 0.54, rgb(*BONE), z=0, max_w=1.28)
+        label(b, "La partie tourne sur le serveur : elle continue même si vous partez avant la fin.", 0, -0.255, 0.5,
               rgb(*MUTED), z=0, max_w=1.3)
         button(b, "Annuler", 0.2, -0.36, 0.18, 0.055, lambda: self._render("browser"), style="dark", size=0.75)
         button(b, "Créer", 0.5, -0.36, 0.3, 0.06, self._create, style="primary", size=0.9)
+
+    def _set_mode(self, mode):
+        if self.f_room is not None:
+            self._draft_room = self.f_room.text
+        if self.f_pass is not None:
+            self._draft_pass = self.f_pass.text
+        self._create_mode = mode
+        self._render("create")
 
     def _step_max(self, d):
         ch = list(ROOM_MAX_CHOICES)
@@ -339,7 +368,9 @@ class MultiplayerManager:
         self._save_pseudo()
         settings["mp_max"] = self._create_max
         settings.save()
-        self.client.create_room(self.f_room.text.strip(), self._create_max, self.f_pass.text.strip())
+        self._draft_room = None
+        self._draft_pass = ""
+        self.client.create_room(self.f_room.text.strip(), self._create_max, self.f_pass.text.strip(), mode=self._create_mode)
         self._set_status("Création de la partie...")
 
     # --- mot de passe -----------------------------------------------------
@@ -374,7 +405,8 @@ class MultiplayerManager:
         room = self.room or {}
         mx = room.get("max", 4)
         label(b, room.get("name", "Partie"), -0.66, 0.245, 1.1, rgb(*BONE), origin=(-0.5, 0), z=0, max_w=1.0)
-        info = f"Code {room.get('id', '?')}   ·   {len(self.players)} / {mx} joueurs" + ("   ·   privée" if room.get("locked") else "")
+        mode_lbl = MODE_LABELS.get(room.get("mode", "coop"), room.get("mode", "Coop"))
+        info = f"Code {room.get('id', '?')}   ·   Mode : {mode_lbl}   ·   {len(self.players)} / {mx} joueurs" + ("   ·   privée" if room.get("locked") else "")
         label(b, info, -0.66, 0.195, 0.58, rgb(*MUTED), origin=(-0.5, 0), z=0)
         is_host = self.client.is_host
         cols = 2 if mx > 4 else 1
@@ -627,7 +659,14 @@ class MultiplayerManager:
                 self._set_status("Connexion perdue.", False)
                 self._render("browser")
             return
+        if t == "mode":
+            g.mp_mode = m["mode"]
+            g.mp_traitre = (m.get("traitre") is not None and m.get("traitre") == self.client.id)
+            return
         if t == "start":
+            if "mode" in m:
+                g.mp_mode = m["mode"]
+                g.mp_traitre = (m.get("traitre") is not None and m.get("traitre") == self.client.id)
             self.players = {p["id"]: p for p in m.get("players", [])}
             self.start_game(outside=bool(m.get("outside")), spawn=m.get("spawn"))
             return
@@ -682,8 +721,43 @@ class MultiplayerManager:
                 g.phone.toast(m.get("message", "Erreur"))
         elif t == "correct":
             g.player.place(m["pos"], g.player.yaw, g.player.pitch)
+        elif t == "ordre":
+            self._on_ordre(m)
+        elif t == "quest_done":
+            q = m.get("quest")
+            if q and hasattr(g, "state"):
+                g.state.set("mp_quest_" + q, True)
+        elif t == "win":
+            self._on_win(m)
         elif t == "game_over":
             self._game_over(m.get("result", "lose"))
+
+    def _on_ordre(self, m):
+        text = m.get("text", "")
+        if not text:
+            return
+        ph = self.game.phone
+        conv = ph.model.conversations.get("livreur")
+        if conv is None:
+            return
+        conv["hidden"] = False
+        ph.model.add_message("livreur", "Votre livreur", text)
+        ph.notify("Votre livreur", text, "icone_messages", target=("messages", "livreur"))
+        sound.play("vibration", 0.7, channel="voice")
+        app = ph.apps.get("messages")
+        if ph.is_open and ph.current == "messages" and app is not None and (app.page == "list" or app.conv == "livreur"):
+            app.render()
+
+    def _on_win(self, m):
+        ending = m.get("ending", "adresse_retiree")
+        if ending == "traitre":
+            self._end_screen("MISSION ACCOMPLIE", rgb(*BLOOD), "Le livreur a emporté sa cible grâce à vous.", rgb(*BONE))
+        elif ending == "solo_survie":
+            self._end_screen("SURVIVANT", rgb(*BONE), "Le livreur a pris une autre adresse. Vous êtes épargné.", rgb(*MUTED))
+        elif getattr(self.game, "mp_traitre", False) and ending == "adresse_retiree":
+            self._end_screen("ÉCHEC DU TRAÎTRE", rgb(*BLOOD), "Les survivants ont retiré l'adresse des favoris.", rgb(200, 120, 120))
+        else:
+            self._end_screen("ADRESSE INTROUVABLE", rgb(*BONE), "Le 17 rue des Lilas a été retiré des favoris du livreur.", rgb(*MUTED))
 
     def _order_by_other(self, m):
         """Un autre joueur a commandé : la commande est celle de toute l'équipe (objectif « Commander » terminé)."""

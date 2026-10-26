@@ -10,7 +10,7 @@ import time
 import unicodedata
 
 import coop_rules as cfg
-from coop_state import GameState, EntityState, dist3
+from coop_state import GameState, EntityState, dist3, nearest_waypoint
 
 
 class PeerLink:
@@ -24,9 +24,9 @@ class PeerLink:
 
 
 class RoomGame:
-    def __init__(self, sender, max_players=cfg.MAX_PLAYERS):
+    def __init__(self, sender, max_players=cfg.MAX_PLAYERS, mode=cfg.DEFAULT_MODE):
         self.sender = sender            # objet du serveur : sender.to(cibles, message, udp=False)
-        self.state = GameState(max_players)
+        self.state = GameState(max_players, mode=mode)
         self.owner = None               # créateur du salon (seul à pouvoir lancer)
         self.last_tcp_entity = 0.0
         self.errors = []
@@ -120,6 +120,15 @@ class RoomGame:
             self._kill(ps, str(msg.get("cause", "entity_contact"))[:32])
         elif t == "enter_house":
             self._on_enter_house(ps)
+        elif t == "door_opened":
+            if msg.get("door", "entree") in ("entree", "front", "porte"):
+                self._kill(ps, "porte")
+        elif t == "code_given":
+            ps.code_given = True
+            if s.phase == "survival":
+                s.schedule(3.0, self._kill, ps, "code")
+        elif t == "quest_done":
+            self._on_quest_done(ps, msg)
 
     def _on_move(self, ps, msg):
         # les positions sont diffusées directement de joueur à joueur ; l'hôte s'en sert pour l'IA et l'anti-triche
@@ -143,6 +152,8 @@ class RoomGame:
         ps.pos = pos
         ps.rot = rot
         ps.last_move = now
+        if self.state.phase not in ("lobby", "outside"):
+            ps.inside = (-0.5 <= pos[0] <= 16.5 and -0.5 <= pos[2] <= 12.5)
 
     def _on_interact(self, ps, msg):
         target = str(msg.get("target", ""))[:64]
@@ -178,9 +189,25 @@ class RoomGame:
         s.address = addr
         s.phase = "ordered"
         kind = cfg.MEALS[meal]
-        s.entity = EntityState(kind, addr.startswith(cfg.NIGHTMARE_ADDRESS))
+        s.entity = EntityState(kind, addr.startswith(cfg.NIGHTMARE_ADDRESS) or s.mode == "cauchemar")
         self.broadcast(dict(type="order_result", ok=True, meal=meal, entity=kind, by=ps.id))
         s.schedule(cfg.FIRST_CANCEL_DELAY, self._ev_cancel)
+
+    def _on_quest_done(self, ps, msg):
+        s = self.state
+        if s.phase in ("lobby", "over"):
+            return
+        q = str(msg.get("quest", "")).strip()
+        if q not in cfg.QUEST_IDS:
+            return
+        s.quests_done.add(q)
+        self.broadcast(dict(type="quest_done", quest=q, by=ps.id, done=sorted(s.quests_done)), exclude=ps.id)
+        if all(qid in s.quests_done for qid in cfg.QUEST_IDS):
+            alive_ids = [p.id for p in s.alive_players()]
+            s.phase = "over"
+            s.winner = True
+            if alive_ids:
+                self.sender.to(alive_ids, dict(type="win", ending="adresse_retiree"))
 
     # ------------------------------------------------------------------
     # Déroulé de la partie
@@ -190,14 +217,32 @@ class RoomGame:
         outside = cfg.OUTSIDE_START
         s.phase = "outside" if outside else "explore"
         s.t = 0.0
+        s.quests_done.clear()
+        s.traitre = random.choice(list(s.players)) if (s.mode == "traitre" and s.players) else None
         ox, oy, oz = cfg.OUTSIDE_SPAWN
         for ps in s.players.values():
             ps.alive = True
-            ps.inside = False
+            ps.inside = not outside
+            ps.code_given = False
             ps.pos = [ox + (ps.slot - 1.5) * 0.8, oy, oz] if outside else [7.0 + (ps.slot - 1.5) * 0.4, 0.0, 0.8]
             ps.last_move = time.time()
+        self.broadcast(dict(type="mode", mode=s.mode, traitre=s.traitre))
         self.broadcast(dict(type="start", players=[p.info() for p in s.players.values()], outside=outside,
-                            spawn=[list(p.pos) for p in s.players.values()]))
+                            spawn=[list(p.pos) for p in s.players.values()], mode=s.mode, traitre=s.traitre))
+        if s.mode == "traitre" and s.traitre is not None:
+            s.schedule(random.uniform(60.0, 90.0), self._send_traitor_order)
+
+    def _send_traitor_order(self):
+        s = self.state
+        if s.phase in ("lobby", "over") or s.mode != "traitre":
+            return
+        ps = s.players.get(s.traitre)
+        if ps is not None and ps.alive:
+            idx = getattr(s, "_ordre_idx", 0)
+            text = cfg.TRAITOR_ORDERS[idx % len(cfg.TRAITOR_ORDERS)]
+            s._ordre_idx = idx + 1
+            ps.conn.send(dict(type="ordre", text=text))
+        s.schedule(random.uniform(60.0, 90.0), self._send_traitor_order)
 
     def _on_enter_house(self, ps):
         """Quartier partagé : un joueur franchit la porte. La nuit commence quand tous les vivants sont dedans."""
@@ -205,6 +250,9 @@ class RoomGame:
         if s.phase != "outside" or ps.inside:
             return
         ps.inside = True
+        if ps.pos[2] < 0.0:
+            ps.pos = [7.0 + (ps.slot - 1.5) * 0.4, 0.0, 1.0]
+            ps.last_move = time.time()
         self._check_all_inside()
 
     def _check_all_inside(self):
@@ -218,6 +266,9 @@ class RoomGame:
         if alive and len(inside) == len(alive):
             s.phase = "explore"
             s.t = 0.0
+            s.pending.clear()
+            if s.mode == "traitre" and s.traitre is not None:
+                s.schedule(random.uniform(60.0, 90.0), self._send_traitor_order)
             self.broadcast(dict(type="game_event", event="night_start"))
 
     def _ev_cancel(self):
@@ -257,9 +308,26 @@ class RoomGame:
             if text:
                 ps.conn.send(dict(type="assistance_msg", text=text, pair_id=0, option="-"))
 
+    def _is_outside(self, ps):
+        x, _, z = ps.pos
+        return (not ps.inside) or x < -0.5 or x > 16.5 or z < -0.5 or z > 12.5
+
+    def _same_room(self, a, b):
+        if abs(a.pos[1] - b.pos[1]) > 1.8:
+            return False
+        return nearest_waypoint(a.pos) == nearest_waypoint(b.pos) or dist3(a.pos, b.pos) <= 4.5
+
     def _ev_countdown(self, remaining):
         s = self.state
+        if s.phase == "over":
+            return
         self.broadcast(dict(type="game_event", event="delivery_arriving", countdown=remaining))
+        # le joueur qui a donné le code du portail est emporté au prochain passage du livreur
+        for p in list(s.alive_players()):
+            if getattr(p, "code_given", False):
+                self._kill(p, "code")
+        if s.phase == "over":
+            return
         if remaining == 60:
             for _ in range(3):
                 self.broadcast(dict(type="event", name="knock"))
@@ -270,6 +338,20 @@ class RoomGame:
                 ent.visible = True
                 ent.speed_mult *= 0.6
         elif remaining == 0:
+            if not all(qid in s.quests_done for qid in cfg.QUEST_IDS):
+                alive = s.alive_players()
+                outside_victims = [p for p in alive if self._is_outside(p)]
+                inside_alive = [p for p in alive if not self._is_outside(p)]
+                alone_victims = []
+                if len(inside_alive) > 1:
+                    for p in inside_alive:
+                        if not any(self._same_room(p, q) for q in inside_alive if q.id != p.id):
+                            alone_victims.append(p)
+                for p in outside_victims + alone_victims:
+                    if p.alive and s.phase != "over":
+                        self._kill(p, "dehors" if p in outside_victims else "isole")
+            if s.phase == "over" or not s.alive_players():
+                return
             ent = s.entity
             if ent is not None:
                 ent.speed_mult /= 0.6
@@ -281,18 +363,35 @@ class RoomGame:
                 s.schedule(tb, self._send_pair, pid_, 1)
 
     def _kill(self, ps, cause):
-        if not ps.alive:
+        if not ps.alive or self.state.phase == "over":
             return
         ps.alive = False
         self.broadcast(dict(type="player_death", id=ps.id, cause=cause))
         self.broadcast(dict(type="event", name="jumpscare", target=ps.id))
-        self._check_end()
+        self._check_end(killed=ps)
 
-    def _check_end(self):
+    def _check_end(self, killed=None):
         s = self.state
         if s.phase in ("lobby", "over") or not s.players:
             return
-        if s.phase in ("survival", "countdown") and not s.alive_players():
+        alive = s.alive_players()
+        if killed is not None:
+            if s.mode == "solo_survie" and alive:
+                s.phase = "over"
+                s.winner = True
+                self.sender.to([p.id for p in alive], dict(type="win", ending="solo_survie"))
+                self.sender.to([p.id for p in s.players.values() if not p.alive], dict(type="game_over", result="lose"))
+                return
+            if s.mode == "traitre" and s.traitre is not None and killed.id != s.traitre:
+                s.phase = "over"
+                s.winner = "traitre"
+                if s.traitre in s.players:
+                    self.sender.to([s.traitre], dict(type="win", ending="traitre"))
+                others = [pid for pid in s.players if pid != s.traitre]
+                if others:
+                    self.sender.to(others, dict(type="game_over", result="lose"))
+                return
+        if not alive:
             s.phase = "over"
             s.winner = False
             self.broadcast(dict(type="game_over", result="lose"))
