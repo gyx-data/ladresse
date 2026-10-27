@@ -1,0 +1,10 @@
+{
+  "motd": "Bienvenue au 17 rue des Lilas.",
+  "max_rooms": 64,
+  "max_room_players": 8,
+  "max_rooms_per_ip": 4,
+  "max_connections": 256,
+  "max_per_ip": 8,
+  "client_timeout": 25,
+  "udp_fallback_hz": 12
+}

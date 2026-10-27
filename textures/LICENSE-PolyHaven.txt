@@ -1,0 +1,3 @@
+Textures photo de ce dossier : Poly Haven (https://polyhaven.com), licence CC0 1.0 (domaine public).
+Aucune attribution n'est requise ; la source de chaque image est listée dans textures.json.
+Recolorées automatiquement au chargement par texture_generator.py ; pour les re-télécharger : python fetch_textures.py
