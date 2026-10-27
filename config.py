@@ -156,6 +156,7 @@ DEFAULT_SETTINGS = {
     "plein_ecran": True,
     "vsync": True,
     "fps_max": "60",
+    "rendu_multicoeur": True,         # Panda3D : cull et draw sur leurs propres threads (redémarrage requis)
     "msaa": 4,
     # Audio
     "vol_main": 80,

@@ -54,6 +54,11 @@ loadPrcFileData("", "sync-video 1" if settings["vsync"] else "sync-video 0")
 # tampon de profondeur 24 bits (le tampon de post-traitement en demandait « au moins 1 », souvent 16 bits) :
 # plus de scintillement entre surfaces proches (tableaux, vitres, décalcomanies) vues de loin
 loadPrcFileData("", "depth-bits 24")
+# rendu multi-cœur : l'envoi des objets à la carte graphique (draw) tourne sur son propre thread au lieu de partager
+# celui de Python : 1,5 à 1,9 fois plus d'images par seconde (46 -> 72 dans la rue, 61 -> 116 dans la maison).
+# (« Cull/Draw » irait plus vite mais fait planter la génération des glyphes de texte de Panda3D.)
+if settings.get("rendu_multicoeur", True):
+    loadPrcFileData("", "threading-model /Draw")
 # les états de rendu (transformations, attributs) inutilisés sont ramassés par quarts à chaque image au lieu d'être
 # tous parcourus à chaque image (~1 ms par image avec les passants animés) ; la mémoire est libérée pareil
 loadPrcFileData("", "garbage-collect-states-rate 0.25")

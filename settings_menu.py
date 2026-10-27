@@ -22,6 +22,7 @@ GRAPHICS = [
     ("Plein écran", "plein_ecran", None),
     ("Synchronisation verticale", "vsync", None),
     ("Images par seconde max", "fps_max", ["30", "60", "120", "144", "Illimité"]),
+    ("Rendu multi-cœur (redémarrage)", "rendu_multicoeur", None),
 ]
 
 AUDIO = [

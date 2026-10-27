@@ -23,7 +23,9 @@ def _log(msg):
 def _shot(name):
     try:
         from ursina import application
-        application.base.screenshot(os.path.join(OUT, name + ".png"), defaultFilename=False)
+        from panda3d.core import Filename
+        # win.saveScreenshot marche aussi avec le rendu multi-cœur (base.screenshot n'écrit plus rien dans ce mode)
+        application.base.win.saveScreenshot(Filename.fromOsSpecific(os.path.join(OUT, name + ".png")))
         _log("capture " + name)
     except Exception as e:
         _log(f"capture {name} impossible : {e}")
