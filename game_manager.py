@@ -307,6 +307,7 @@ class GameManager:
 
     def menu_window_flicker(self):
         """Les lumières de la maison s'allument et s'éteignent brièvement."""
+        self.glow_quads = [q for q in self.glow_quads if not q.is_empty()]     # détruits avec l'ancienne maison
         for q in self.glow_quads:
             q.enabled = True
         seq = [(0.0, 150), (0.25, 0), (0.45, 120), (0.7, 0)]
@@ -317,11 +318,14 @@ class GameManager:
 
     def _set_glow(self, a):
         for q in self.glow_quads:
+            if q.is_empty():
+                continue
             q.color = color.rgba32(255, 190, 110, a)
 
     def _glow_off(self):
         for q in self.glow_quads:
-            q.enabled = False
+            if not q.is_empty():
+                q.enabled = False
 
     def _update_menu(self, dt):
         self.menu_t += dt
@@ -1091,6 +1095,11 @@ class GameManager:
             done = lambda: self.courier.rewind(cause)          # la nuit de livraison : on rembobine
         if scared:
             done()
+        elif self.jumpscare.active:
+            # le screamer d'un contact encaissé tourne encore : c'est sa fin qui mène à l'écran de mort
+            # (sinon le nouveau screamer était ignoré et le joueur restait mort sans écran de fin)
+            self.jumpscare.on_done = done
+            self.jumpscare.fatal = True
         else:
             self.jumpscare.trigger(kind or "generic", on_done=done)
 
